@@ -2,13 +2,13 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// Owns the status-bar item and the popover. Designed for near-zero idle cost:
-///  • usage is polled every 5 minutes (tiny JSON), plus on popover-open and on wake;
-///  • the menu-bar label refreshes on a 30 s timer (countdown is minute-granular);
-///  • the per-second SwiftUI ticker exists only while the popover is open.
+/// Owns the status-bar item and popover. See inline notes on the near-zero-idle design.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let account = AccountStore()
+    private let settings = Settings()
+    private let notifications = NotificationManager()
+    private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
 
@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         LoginItem.enableOnFirstLaunchIfNeeded()
         installEditMenu()
+        if settings.notificationsEnabled { notifications.requestAuthorization() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -32,37 +33,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.animates = false
         popover.delegate = self
 
-        // Start/stop polling as auth state changes.
-        auth.onSignedIn = { [weak self] in
-            self?.store.start()
-            self?.updateLabel()
+        auth.onSignedIn = { [weak self] in self?.store.start(); self?.updateLabel() }
+        auth.onSignedOut = { [weak self] in self?.store.clear(); self?.updateLabel() }
+        store.onEvent = { [weak self] in self?.handle($0) }
+
+        // Redraw the bar on usage/auth/settings changes (e.g. async refresh, mode switch).
+        for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange] {
+            publisher.receive(on: RunLoop.main)
+                .sink { [weak self] in self?.updateLabel() }
+                .store(in: &cancellables)
         }
-        auth.onSignedOut = { [weak self] in
-            self?.store.clear()
-            self?.updateLabel()
-        }
-        // Redraw the bar whenever usage or auth state changes (e.g. when an async refresh
-        // returns), not just on the 30 s tick. `receive(on:)` defers a tick so the published
-        // values are already updated when we read them.
-        store.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.updateLabel() }
-            .store(in: &cancellables)
-        auth.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.updateLabel() }
-            .store(in: &cancellables)
+
+        hotKey.onActivate = { [weak self] in self?.togglePopover() }
+        hotKey.register()
 
         if auth.isSignedIn { store.start() }
         updateLabel()
-        // Redraw once more after the status button is fully realized, to avoid a blank/black
-        // pill on a cold launch.
         DispatchQueue.main.async { [weak self] in self?.updateLabel() }
 
         labelTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateLabel() }
         }
-
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleWake),
             name: NSWorkspace.didWakeNotification, object: nil
@@ -73,20 +64,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         )
     }
 
-    /// Agent apps have no menu bar, so standard keyboard shortcuts (Cmd+V/C/X/A) don't reach
-    /// text fields. Installing a minimal Edit menu restores them via the responder chain.
+    private func handle(_ event: UsageEvent) {
+        switch event {
+        case .reset:
+            if settings.notificationsEnabled { notifications.notifyRefill() }
+        case .crossedThreshold(let threshold, let remaining, let eta):
+            if settings.notificationsEnabled {
+                notifications.notifyThreshold(threshold, remaining: remaining, etaToReset: eta)
+            }
+            if threshold >= 90 { ShortcutRunner.run(settings.lowUsageShortcut) }
+        }
+    }
+
     private func installEditMenu() {
         let mainMenu = NSMenu()
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
-
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
-
         NSApp.mainMenu = mainMenu
     }
 
@@ -95,20 +94,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Task { await store.refresh(); updateLabel() }
     }
 
-    @objc private func handleThemeChange() {
-        updateLabel()
-    }
+    @objc private func handleThemeChange() { updateLabel() }
 
     private func updateLabel() {
         guard let button = statusItem.button else { return }
+        let mode = settings.displayMode
         let signedIn = auth.isSignedIn
         let snapshot = store.snapshot
+        let burn = store.burnEstimate
         let error = store.errorMessage
         let now = Date()
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            image = MenuBarLabel.image(signedIn: signedIn, snapshot: snapshot, errorMessage: error, now: now)
+            image = MenuBarLabel.image(
+                mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn, errorMessage: error, now: now
+            )
         }
         button.image = image
         button.imagePosition = .imageOnly
@@ -127,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let content = MenuContentView()
             .environmentObject(store)
             .environmentObject(auth)
+            .environmentObject(settings)
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
@@ -141,9 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             Task { @MainActor in self?.closePopover() }
         }
 
-        if auth.isSignedIn {
-            Task { await store.refresh(); updateLabel() }
-        }
+        if auth.isSignedIn { Task { await store.refresh(); updateLabel() } }
     }
 
     private func closePopover() {

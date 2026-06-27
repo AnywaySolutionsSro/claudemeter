@@ -31,6 +31,22 @@ local estimate:
 Each shows percent **remaining** and a live **reset countdown**. The menu-bar pill turns
 orange under 25 % and red under 10 %.
 
+## Personality & extras
+
+- **Display modes** (switch in the dropdown): `Percentage` · `Burn rate` (🔥 ETA-to-limit) ·
+  `Mood face` (😎→💀) · `Fuel gauge` (battery) · `Pet` (a cat that sleeps when you're out).
+- **Burn rate & ETA** — estimates how fast you're spending and when you'll hit the limit, plus
+  *"2.1× your usual pace"* vs. your history.
+- **Sparkline** of the current session window, and *"maxed N windows this week"*.
+- **Notifications** — nudges at 80 / 90 / 100 % used, and a **"Tank refilled 🎉"** on reset.
+- **Cooldown view** when empty, with a one-click **"Remind me when it resets."**
+- **Global hotkey** ⌥⌘U toggles the dropdown.
+- **Run a Shortcut** when usage drops ≤ 10 % (e.g. flip on a Focus mode).
+- **⋯ menu** — quick links to buy more usage / upgrade / help.
+
+History for burn-rate/sparkline/stats is stored at
+`~/Library/Application Support/ClaudeMeter/history.json` (usage numbers only).
+
 ## How it works
 
 ClaudeMeter signs in with **its own** OAuth login (one-time, in your browser) and stores the
@@ -100,15 +116,19 @@ signed (un-notarized) build that opens via right-click → Open. See
 ```
 Sources/
   ClaudeMeterCore/            Pure, unit-tested core (no AppKit dependency)
-    Models/                   UsageBucket, UsageSnapshot, AuthTokens
-    Services/                 UsageResponseDecoder, ISODate, PKCE
+    Models/                   UsageBucket, UsageSnapshot, AuthTokens, UsageSample
+    Services/                 UsageResponseDecoder, ISODate, PKCE,
+                              BurnRate, UsageStats, Personality
     Formatting.swift          percent / countdown helpers
   ClaudeMeter/                Menu-bar app shell
     App/                      main, AppDelegate, UsageStore, AuthModel
     Support/                  Keychain, AccountStore, OAuthLoginService,
                               LoopbackCallbackServer, TokenRefresher, UsageClient,
-                              AuthEndpoints, ResponseCache, LoginItem, UsageError
-    Views/                    MenuBarLabel (pill renderer), MenuContentView, UsageRow
+                              AuthEndpoints, ResponseCache, LoginItem, UsageError,
+                              Settings, UsageHistory, NotificationManager,
+                              HotKey, ShortcutRunner
+    Views/                    MenuBarLabel (mode renderer), MenuContentView,
+                              UsageRow, Sparkline
 Tests/ClaudeMeterCoreTests/   Decoder, PKCE, formatting tests
 Resources/                    AppIcon.icns + make_icon.swift (regenerates the icon)
 docs/                         Endpoint reference, release guide, development notes
