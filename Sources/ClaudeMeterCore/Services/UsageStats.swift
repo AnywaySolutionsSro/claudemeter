@@ -38,11 +38,15 @@ public enum UsageStats {
         return thresholds.filter { $0 > previous && $0 <= current }.sorted()
     }
 
-    /// A window reset is detectable when the reset timestamp jumps forward.
-    public static func didReset(previousResetsAt: Date?, currentResetsAt: Date?) -> Bool {
-        guard let current = currentResetsAt else { return false }
-        guard let previous = previousResetsAt else { return false }
-        return current > previous
+    /// A window refilled when utilization drops sharply between two readings — the only
+    /// reliable signal, since `resets_at` creeps forward continuously and would false-trigger.
+    public static func didRefill(
+        previousUtilization: Double?,
+        currentUtilization: Double,
+        dropThreshold: Double = 25
+    ) -> Bool {
+        guard let previous = previousUtilization else { return false }
+        return previous - currentUtilization >= dropThreshold
     }
 
     /// Count of distinct session windows that reached `>= maxedAt`% within `since`.

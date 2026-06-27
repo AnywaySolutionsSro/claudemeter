@@ -31,11 +31,17 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(UsageStats.crossedThresholds(previous: nil, current: 85, thresholds: [80, 90, 100]), [80])
     }
 
-    func testDidReset() {
-        let later = reset.addingTimeInterval(3600)
-        XCTAssertTrue(UsageStats.didReset(previousResetsAt: reset, currentResetsAt: later))
-        XCTAssertFalse(UsageStats.didReset(previousResetsAt: reset, currentResetsAt: reset))
-        XCTAssertFalse(UsageStats.didReset(previousResetsAt: nil, currentResetsAt: later))
+    func testDidRefillOnlyOnSharpDrop() {
+        // Real reset: 90% → 5%.
+        XCTAssertTrue(UsageStats.didRefill(previousUtilization: 90, currentUtilization: 5))
+        // Steady usage (the false-positive case): 62% → 62%.
+        XCTAssertFalse(UsageStats.didRefill(previousUtilization: 62, currentUtilization: 62))
+        // Normal climb within a window.
+        XCTAssertFalse(UsageStats.didRefill(previousUtilization: 38, currentUtilization: 40))
+        // No prior reading.
+        XCTAssertFalse(UsageStats.didRefill(previousUtilization: nil, currentUtilization: 5))
+        // Small dip (jitter) doesn't count.
+        XCTAssertFalse(UsageStats.didRefill(previousUtilization: 40, currentUtilization: 30))
     }
 
     func testMaxedWindows() {

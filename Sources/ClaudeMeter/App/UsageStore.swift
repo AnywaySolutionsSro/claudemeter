@@ -34,6 +34,9 @@ final class UsageStore: ObservableObject {
     private var timer: Timer?
     private var lastAttempt: Date?
     private var backoffUntil: Date?
+    /// Events only fire once we've seen a live reading this session, so the (possibly stale)
+    /// on-disk cache never triggers spurious notifications on launch.
+    private var hasLiveBaseline = false
 
     init(client: UsageClient, refreshInterval: TimeInterval = 300, minFetchInterval: TimeInterval = 30) {
         self.client = client
@@ -67,6 +70,7 @@ final class UsageStore: ObservableObject {
         backoffUntil = nil
         burnEstimate = nil
         paceRatio = nil
+        hasLiveBaseline = false
     }
 
     func refresh(force: Bool = false) async {
@@ -92,7 +96,10 @@ final class UsageStore: ObservableObject {
                 history = UsageHistory.append(sample, to: history)
             }
             recompute(now: now)
-            detectEvents(previous: previous, current: fresh, now: now)
+            if hasLiveBaseline {
+                detectEvents(previous: previous, current: fresh, now: now)
+            }
+            hasLiveBaseline = true
         } catch UsageError.rateLimited(let retryAfter) {
             backoffUntil = Date().addingTimeInterval(retryAfter ?? 120)
             present(UsageError.rateLimited(retryAfter: retryAfter).errorDescription ?? "Rate limited.")
@@ -114,7 +121,7 @@ final class UsageStore: ObservableObject {
     private func detectEvents(previous: UsageSnapshot?, current: UsageSnapshot, now: Date) {
         guard let previous, let bucket = current.fiveHour else { return }
 
-        if UsageStats.didReset(previousResetsAt: previous.fiveHour?.resetsAt, currentResetsAt: bucket.resetsAt) {
+        if UsageStats.didRefill(previousUtilization: previous.fiveHour?.utilization, currentUtilization: bucket.utilization) {
             onEvent?(.reset(nextResetsAt: bucket.resetsAt))
         }
 
