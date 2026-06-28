@@ -41,9 +41,17 @@ struct Provider: TimelineProvider {
     }
 }
 
+private let activeGradient = LinearGradient(
+    colors: [Color.green, Color(red: 0.2, green: 0.85, blue: 0.6)],
+    startPoint: .leading, endPoint: .trailing
+)
+
 struct ClaudeMeterWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
+
+    private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
+    private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
 
     var body: some View {
         Group {
@@ -53,31 +61,75 @@ struct ClaudeMeterWidgetEntryView: View {
             default: listView(limit: 3)
             }
         }
-        .padding(10)
+        .padding(12)
         .containerBackground(.background, for: .widget)
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "gauge.medium")
-            Text("Claude").font(.system(size: 11, weight: .bold))
+        HStack(spacing: 6) {
+            Image(systemName: "gauge.with.dots.needle.67percent")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(activeGradient)
+            Text("Claude Sessions").font(.system(size: 12, weight: .bold))
             Spacer()
-            if let snapshot = entry.snapshot {
-                Text("\(snapshot.runningCount) live")
-                    .font(.system(size: 10)).foregroundColor(.secondary)
-            }
+            livePill
         }
     }
 
+    private var livePill: some View {
+        HStack(spacing: 3) {
+            Circle().fill(Color.green).frame(width: 6, height: 6)
+            Text("\(entry.snapshot?.runningCount ?? 0)")
+                .font(.system(size: 11, weight: .bold)).monospacedDigit()
+        }
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(Color.green.opacity(0.15)))
+    }
+
+    // MARK: - Session bar
+
+    @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(s.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Spacer(minLength: 4)
+                Text(Formatting.tokenCount(s.totalTokens))
+                    .font(.system(size: 12, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.12))
+                    Capsule().fill(activeGradient)
+                        .frame(width: max(8, geo.size.width * CGFloat(s.totalTokens) / CGFloat(maxTokens)))
+                }
+            }
+            .frame(height: 7)
+        }
+    }
+
+    // MARK: - Layouts
+
     @ViewBuilder private var smallView: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            header
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(activeGradient)
+                Text("\(entry.snapshot?.runningCount ?? 0) active")
+                    .font(.system(size: 12, weight: .bold))
+                Spacer()
+            }
             Spacer(minLength: 0)
-            if let top = entry.snapshot?.sessions.first {
-                Text(top.projectName).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+            if let top = sessions.first {
                 Text(Formatting.tokenCount(top.totalTokens))
-                    .font(.system(size: 20, weight: .bold)).monospacedDigit()
-                Text("top session").font(.system(size: 9)).foregroundColor(.secondary)
+                    .font(.system(size: 26, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(activeGradient)
+                Text(top.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                GeometryReader { geo in
+                    Capsule().fill(activeGradient).frame(width: geo.size.width, height: 5)
+                }.frame(height: 5)
             } else {
                 emptyLabel
             }
@@ -85,37 +137,24 @@ struct ClaudeMeterWidgetEntryView: View {
     }
 
     @ViewBuilder private func listView(limit: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                header
-                Spacer()
-                if let snapshot = entry.snapshot {
-                    Text("\(Formatting.tokenCount(snapshot.totalTokens)) total")
-                        .font(.system(size: 10)).foregroundColor(.secondary).monospacedDigit()
-                }
-            }
-            Divider()
-            if let sessions = entry.snapshot?.sessions, !sessions.isEmpty {
-                ForEach(sessions.prefix(limit)) { s in
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                        Text(s.projectName).font(.system(size: 12)).lineLimit(1)
-                        Spacer()
-                        Text(Formatting.tokenCount(s.totalTokens))
-                            .font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                    }
-                }
+        VStack(alignment: .leading, spacing: 9) {
+            header
+            if sessions.isEmpty {
+                Spacer(minLength: 0)
+                HStack { Spacer(); emptyLabel; Spacer() }
                 Spacer(minLength: 0)
             } else {
-                Spacer(minLength: 0)
-                emptyLabel
+                ForEach(sessions.prefix(limit)) { sessionBar($0) }
                 Spacer(minLength: 0)
             }
         }
     }
 
     private var emptyLabel: some View {
-        Text("No active sessions").font(.system(size: 11)).foregroundColor(.secondary)
+        VStack(spacing: 4) {
+            Image(systemName: "moon.zzz").font(.system(size: 18)).foregroundStyle(.secondary)
+            Text("No active sessions").font(.system(size: 11)).foregroundColor(.secondary)
+        }
     }
 }
 

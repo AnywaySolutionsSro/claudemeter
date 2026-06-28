@@ -70,7 +70,8 @@ final class SessionMonitor: ObservableObject {
         SessionScanner(
             discoverer: TranscriptSource(),
             processProbe: LibprocProcessProbe(),
-            desktopDetector: DesktopAppProbe()
+            desktopDetector: DesktopAppProbe(),
+            snapshotLimit: 12   // enough running sessions to fill the large widget
         )
     }
 
