@@ -21,16 +21,20 @@ final class SessionMonitor: ObservableObject {
     private var timer: Timer?
     private var isScanning = false
 
-    /// The shared App Group container URL for the widget snapshot, or `nil` if the
-    /// entitlement/container isn't available (e.g. the plain SwiftPM build).
-    nonisolated static func groupSnapshotURL() -> URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: SnapshotStore.appGroupID)?
+    /// Bundle id of the widget extension.
+    static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
+
+    /// The widget's own sandbox container Documents path. A non-sandboxed app can
+    /// write here, and the sandboxed widget can always read its own container —
+    /// unlike the App Group container, which the widget is denied reading from when
+    /// the writer is a non-sandboxed process.
+    nonisolated static func widgetInboxURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Containers/\(widgetBundleID)/Data/Documents", isDirectory: true)
             .appendingPathComponent("snapshot.json")
     }
 
-    /// Local copy under Application Support — always writable, useful even without
-    /// the widget.
+    /// Local copy under Application Support — always writable, useful for diagnostics.
     nonisolated static func localSnapshotURL() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ClaudeMeter", isDirectory: true)
@@ -47,9 +51,10 @@ final class SessionMonitor: ObservableObject {
         guard signature != lastSignature else { return }
         lastSignature = signature
 
-        if let group = Self.groupSnapshotURL() {
-            try? snapshotStore.write(snapshot, to: group)
-        }
+        // Deliver into the widget's own container (the only place the sandboxed
+        // widget can reliably read from a non-sandboxed writer). Local copy for
+        // diagnostics.
+        try? snapshotStore.write(snapshot, to: Self.widgetInboxURL())
         try? snapshotStore.write(snapshot, to: Self.localSnapshotURL())
         WidgetCenter.shared.reloadAllTimelines()
     }

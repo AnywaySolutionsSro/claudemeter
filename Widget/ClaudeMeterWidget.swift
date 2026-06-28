@@ -1,6 +1,9 @@
 import WidgetKit
 import SwiftUI
+import OSLog
 import ClaudeMeterCore
+
+private let widgetLog = Logger(subsystem: "com.jakubzak.claudemeter.widget", category: "snapshot")
 
 /// Timeline entry carrying the latest published session snapshot (or `nil` when
 /// the app hasn't written one yet / the shared container isn't reachable).
@@ -29,13 +32,11 @@ struct Provider: TimelineProvider {
     }
 
     private func loadEntry() -> SnapshotEntry {
-        guard
-            let container = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: SnapshotStore.appGroupID),
-            let snapshot = store.read(from: container.appendingPathComponent("snapshot.json"))
-        else {
-            return SnapshotEntry(date: Date(), snapshot: nil)
-        }
+        // Read from our own container Documents, where the app delivers the snapshot.
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("snapshot.json")
+        let snapshot = store.read(from: url)
+        widgetLog.log("loaded \(snapshot?.sessions.count ?? -1) sessions from \(url.path, privacy: .public)")
         return SnapshotEntry(date: Date(), snapshot: snapshot)
     }
 }

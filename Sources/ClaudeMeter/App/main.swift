@@ -27,17 +27,12 @@ if CommandLine.arguments.contains("--dump-sessions") {
 
 // Diagnostic: report where the widget snapshot resolves and whether writing works.
 if CommandLine.arguments.contains("--snapshot-test") {
-    let group = SessionMonitor.groupSnapshotURL()
-    FileHandle.standardError.write("group snapshot URL: \(group?.path ?? "nil (no entitlement/container)")\n".data(using: .utf8)!)
-    FileHandle.standardError.write("local snapshot URL: \(SessionMonitor.localSnapshotURL().path)\n".data(using: .utf8)!)
+    let inbox = SessionMonitor.widgetInboxURL()
+    FileHandle.standardError.write("widget inbox URL: \(inbox.path)\n".data(using: .utf8)!)
     let snapshot = SessionSnapshot.make(from: [], now: Date())
     let store = SnapshotStore()
-    if let group {
-        do { try store.write(snapshot, to: group); FileHandle.standardError.write("group write: OK\n".data(using: .utf8)!) }
-        catch { FileHandle.standardError.write("group write FAILED: \(error)\n".data(using: .utf8)!) }
-    }
-    do { try store.write(snapshot, to: SessionMonitor.localSnapshotURL()); FileHandle.standardError.write("local write: OK\n".data(using: .utf8)!) }
-    catch { FileHandle.standardError.write("local write FAILED: \(error)\n".data(using: .utf8)!) }
+    do { try store.write(snapshot, to: inbox); FileHandle.standardError.write("widget inbox write: OK\n".data(using: .utf8)!) }
+    catch { FileHandle.standardError.write("widget inbox write FAILED: \(error)\n".data(using: .utf8)!) }
     exit(0)
 }
 
