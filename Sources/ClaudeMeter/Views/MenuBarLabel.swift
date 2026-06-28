@@ -33,7 +33,7 @@ enum MenuBarLabel {
         case .classic:
             var text = Formatting.percent(remaining)
             if let reset { text += " · " + Formatting.countdown(reset) }
-            return pill(text: text, textColor: textColor, borderColor: borderColor)
+            return gaugePill(text: text, remaining: remaining)
 
         case .burnRate:
             // Only show an ETA when the limit would actually be hit before the window resets.
@@ -92,6 +92,55 @@ enum MenuBarLabel {
 
     /// A car-style fuel gauge: a 120° dial with E…F, tick marks, and a needle pointing at the
     /// remaining level (echoes the speedometer app icon).
+    /// Width of the fixed menu-bar slot, sized to the widest Classic content so the item never
+    /// resizes (which would shift the button and misalign the popover).
+    static func recommendedSlotWidth() -> CGFloat {
+        let reference = "100% · 4h59m"
+        let textWidth = (reference as NSString).size(withAttributes: [.font: font]).width
+        return ceil(textWidth + horizontalPadding * 2 + lineWidth * 2 + 4)
+    }
+
+    /// Classic pill whose border is a receding "fuel ring": a faint full track plus a coloured
+    /// arc spanning the remaining fraction (green ≥50 %, yellow ≥20 %, red below).
+    private static func gaugePill(text: String, remaining: Double) -> NSImage {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        let width = ceil(textSize.width) + horizontalPadding * 2
+        let height = ceil(textSize.height) + verticalPadding * 2
+
+        let level = max(0, min(1, remaining / 100))
+        let progressColor: NSColor = remaining >= 50 ? .systemGreen : (remaining >= 20 ? .systemYellow : .systemRed)
+
+        return draw(width: width, height: height) {
+            let inset = lineWidth / 2
+            let rect = NSRect(x: inset, y: inset, width: width - lineWidth, height: height - lineWidth)
+            let radius = min(cornerRadius, rect.width / 2, rect.height / 2)
+            let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+            path.lineCapStyle = .round
+
+            path.lineWidth = lineWidth
+            NSColor.labelColor.withAlphaComponent(0.18).setStroke()
+            path.stroke()
+
+            if level > 0.001 {
+                let perimeter = roundedRectPerimeter(rect: rect, radius: radius)
+                path.lineWidth = lineWidth + 0.6
+                path.setLineDash([perimeter * level, perimeter + 1], count: 2, phase: 0)
+                progressColor.setStroke()
+                path.stroke()
+            }
+
+            let origin = NSPoint(x: (width - textSize.width) / 2, y: (height - textSize.height) / 2)
+            (text as NSString).draw(at: origin, withAttributes: attributes)
+        }
+    }
+
+    private static func roundedRectPerimeter(rect: NSRect, radius: CGFloat) -> CGFloat {
+        let straight = 2 * (rect.width - 2 * radius) + 2 * (rect.height - 2 * radius)
+        let corners = 2 * .pi * radius
+        return straight + corners
+    }
+
     private static func fuelGauge(remaining: Double) -> NSImage {
         let width: CGFloat = 40, height: CGFloat = 18
         let pivot = NSPoint(x: width / 2, y: 4)

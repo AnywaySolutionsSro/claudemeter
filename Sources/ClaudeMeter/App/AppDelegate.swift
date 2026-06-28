@@ -23,10 +23,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installEditMenu()
         if settings.notificationsEnabled { notifications.requestAuthorization() }
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Fixed width (content centered) so switching modes / changing the countdown never
+        // resizes the item — that would shift the button and misalign the open popover.
+        statusItem = NSStatusBar.system.statusItem(withLength: MenuBarLabel.recommendedSlotWidth())
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
+            button.imagePosition = .imageOnly
         }
 
         popover.behavior = .transient
@@ -97,10 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleThemeChange() { updateLabel() }
 
     private func updateLabel() {
-        // Don't resize the status item while the popover is open — a width change shifts the
-        // button and misaligns the anchored popover. The dropdown is live regardless; the bar
-        // catches up in `popoverDidClose`.
-        guard let button = statusItem.button, !popover.isShown else { return }
+        guard let button = statusItem.button else { return }
         let mode = settings.displayMode
         let signedIn = auth.isSignedIn
         let snapshot = store.snapshot
@@ -164,6 +164,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
-        updateLabel()   // apply any mode/countdown change now that resizing is safe
     }
 }
