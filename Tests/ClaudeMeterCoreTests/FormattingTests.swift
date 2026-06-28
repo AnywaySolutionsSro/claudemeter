@@ -33,4 +33,12 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(UsageBucket(utilization: 140, resetsAt: nil).utilization, 100)
         XCTAssertEqual(UsageBucket(utilization: -5, resetsAt: nil).percentRemaining, 100)
     }
+
+    func testTokenCount() {
+        XCTAssertEqual(Formatting.tokenCount(999), "999")
+        XCTAssertEqual(Formatting.tokenCount(1_500), "1.5K")
+        XCTAssertEqual(Formatting.tokenCount(28_046), "28K")
+        XCTAssertEqual(Formatting.tokenCount(1_250_000), "1.2M") // %.1f rounds half-to-even
+        XCTAssertEqual(Formatting.tokenCount(1_300_000), "1.3M")
+    }
 }

@@ -19,4 +19,19 @@ public enum Formatting {
         if minutes > 0 { return "\(minutes)m" }
         return "\(total)s"
     }
+
+    /// Compact human-readable token count: `999`, `1.5K`, `28K`, `1.3M`.
+    public static func tokenCount(_ tokens: Int) -> String {
+        let n = Double(tokens)
+        switch tokens {
+        case ..<1_000:
+            return "\(tokens)"
+        case ..<1_000_000:
+            let k = n / 1_000
+            return k < 10 ? String(format: "%.1fK", k) : String(format: "%.0fK", k)
+        default:
+            let m = n / 1_000_000
+            return m < 10 ? String(format: "%.1fM", m) : String(format: "%.0fM", m)
+        }
+    }
 }
