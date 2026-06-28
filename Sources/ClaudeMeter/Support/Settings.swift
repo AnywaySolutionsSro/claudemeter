@@ -3,7 +3,7 @@ import SwiftUI
 
 /// How the menu-bar item presents usage.
 enum DisplayMode: String, CaseIterable, Identifiable {
-    case percentage
+    case classic
     case burnRate
     case mood
     case fuelGauge
@@ -13,12 +13,18 @@ enum DisplayMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .percentage: return "Percentage"
+        case .classic: return "Classic"          // percentage + reset countdown
         case .burnRate: return "Burn rate"
         case .mood: return "Mood face"
         case .fuelGauge: return "Fuel gauge"
         case .pet: return "Pet"
         }
+    }
+
+    /// Map persisted values, including the legacy `"percentage"` key, to a mode.
+    static func fromStored(_ raw: String?) -> DisplayMode {
+        if raw == "percentage" { return .classic }
+        return DisplayMode(rawValue: raw ?? "") ?? .classic
     }
 }
 
@@ -39,7 +45,7 @@ final class Settings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.displayMode = DisplayMode(rawValue: defaults.string(forKey: Keys.displayMode) ?? "") ?? .percentage
+        self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
     }

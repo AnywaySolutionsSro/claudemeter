@@ -33,10 +33,12 @@ orange under 25 % and red under 10 %.
 
 ## Personality & extras
 
-- **Display modes** (switch in the dropdown): `Percentage` · `Burn rate` (🔥 ETA-to-limit) ·
-  `Mood face` (😎→💀) · `Fuel gauge` (battery) · `Pet` (a cat that sleeps when you're out).
-- **Burn rate & ETA** — estimates how fast you're spending and when you'll hit the limit, plus
-  *"2.1× your usual pace"* vs. your history.
+- **Display modes** (switch in the dropdown): `Classic` (% + reset countdown) · `Burn rate`
+  (🔥 ETA, shown only when you'd hit the limit before reset) · `Mood face` (😎→💀) ·
+  `Fuel gauge` (an E–F dial with a needle) · `Pet` (a cat that sleeps when you're out).
+- **Burn rate & ETA** — a smoothed least-squares estimate of how fast you're spending
+  (% per hour — the API exposes utilization %, not token counts), plus *"2.1× your usual pace"*
+  vs. your history.
 - **Sparkline** of the current session window, and *"maxed N windows this week"*.
 - **Notifications** — nudges at 80 / 90 / 100 % used, and a **"Tank refilled 🎉"** on reset.
 - **Cooldown view** when empty, with a one-click **"Remind me when it resets."**

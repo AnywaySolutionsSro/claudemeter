@@ -62,12 +62,10 @@ struct MenuContentView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
                 if let burn = store.burnEstimate, burn.isBurning {
-                    Text("🔥 Burning \(Int(burn.percentPerHour.rounded()))%/h")
+                    Text("🔥 Spending ~\(Int(burn.percentPerHour.rounded()))%/hr")
                         .font(.system(size: 11, weight: .medium))
-                    if let eta = burn.etaToLimit {
-                        Text("· ~\(Formatting.countdown(eta)) to limit")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    }
+                    Text(burnDetail(burn))
+                        .font(.system(size: 11)).foregroundColor(.secondary)
                 } else {
                     Text("💤 Idle — not spending right now")
                         .font(.system(size: 11)).foregroundColor(.secondary)
@@ -182,6 +180,15 @@ struct MenuContentView: View {
     }
 
     // MARK: - Derived
+
+    private func burnDetail(_ burn: BurnEstimate) -> String {
+        guard let eta = burn.etaToLimit else { return "" }
+        let reset = store.snapshot?.primary?.timeUntilReset(now: now)
+        if let reset, eta < reset {
+            return "· hits limit in ~\(Formatting.countdown(eta))"
+        }
+        return "· won't max out before reset"
+    }
 
     private var sparklineValues: [Double] {
         guard let resetsAt = store.snapshot?.fiveHour?.resetsAt else { return [] }

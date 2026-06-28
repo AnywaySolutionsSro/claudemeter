@@ -27,14 +27,17 @@ enum MenuBarLabel {
         let textColor = color(forRemaining: remaining)
         let borderColor: NSColor = remaining < 10 ? .systemRed : claudeOrange
 
+        let reset = bucket.timeUntilReset(now: now)
+
         switch mode {
-        case .percentage:
+        case .classic:
             var text = Formatting.percent(remaining)
-            if let reset = bucket.timeUntilReset(now: now) { text += " · " + Formatting.countdown(reset) }
+            if let reset { text += " · " + Formatting.countdown(reset) }
             return pill(text: text, textColor: textColor, borderColor: borderColor)
 
         case .burnRate:
-            if let burn, burn.isBurning, let eta = burn.etaToLimit {
+            // Only show an ETA when the limit would actually be hit before the window resets.
+            if let burn, burn.isBurning, let eta = burn.etaToLimit, let reset, eta < reset {
                 return pill(text: "🔥 " + Formatting.countdown(eta), textColor: textColor, borderColor: borderColor)
             }
             return pill(text: Formatting.percent(remaining), textColor: textColor, borderColor: borderColor)
@@ -48,7 +51,7 @@ enum MenuBarLabel {
             return pill(text: "\(pet) \(Formatting.percent(remaining))", textColor: textColor, borderColor: borderColor)
 
         case .fuelGauge:
-            return battery(remaining: remaining)
+            return fuelGauge(remaining: remaining)
         }
     }
 
@@ -87,33 +90,57 @@ enum MenuBarLabel {
         }
     }
 
-    private static func battery(remaining: Double) -> NSImage {
-        let bodyWidth: CGFloat = 30, height: CGFloat = 13, nub: CGFloat = 2.5
-        let width = bodyWidth + nub + 2
+    /// A car-style fuel gauge: a 120° dial with E…F, tick marks, and a needle pointing at the
+    /// remaining level (echoes the speedometer app icon).
+    private static func fuelGauge(remaining: Double) -> NSImage {
+        let width: CGFloat = 40, height: CGFloat = 18
+        let pivot = NSPoint(x: width / 2, y: 4)
+        let radius: CGFloat = 12.5
+        let startAngle: CGFloat = 150   // E, upper-left
+        let endAngle: CGFloat = 30      // F, upper-right
+        let level = CGFloat(min(100, max(0, remaining)))
+        let needleColor: NSColor = remaining < 10 ? .systemRed : (remaining < 25 ? .systemOrange : .systemGreen)
 
-        let fillColor: NSColor = remaining < 10 ? .systemRed : (remaining < 25 ? .systemOrange : .systemGreen)
+        func point(angle: CGFloat, radius r: CGFloat) -> NSPoint {
+            let rad = angle * .pi / 180
+            return NSPoint(x: pivot.x + cos(rad) * r, y: pivot.y + sin(rad) * r)
+        }
 
         return draw(width: width, height: height) {
-            let body = NSRect(x: 1, y: 1, width: bodyWidth, height: height - 2)
-            let outline = NSBezierPath(roundedRect: body, xRadius: 2.5, yRadius: 2.5)
-            outline.lineWidth = 1
-            NSColor.labelColor.setStroke()
-            outline.stroke()
+            let track = NSBezierPath()
+            track.appendArc(withCenter: pivot, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+            track.lineWidth = 1.3
+            NSColor.labelColor.withAlphaComponent(0.5).setStroke()
+            track.stroke()
 
-            // Terminal nub.
-            let nubRect = NSRect(x: bodyWidth + 1, y: height / 2 - 2.5, width: nub, height: 5)
-            let nubPath = NSBezierPath(roundedRect: nubRect, xRadius: 1, yRadius: 1)
+            NSColor.labelColor.withAlphaComponent(0.6).setStroke()
+            for angle in [startAngle, 90, endAngle] {
+                let tick = NSBezierPath()
+                tick.move(to: point(angle: angle, radius: radius - 2.5))
+                tick.line(to: point(angle: angle, radius: radius))
+                tick.lineWidth = 1
+                tick.stroke()
+            }
+
+            let needleAngle = startAngle - level / 100 * (startAngle - endAngle)
+            let needle = NSBezierPath()
+            needle.move(to: pivot)
+            needle.line(to: point(angle: needleAngle, radius: radius - 1.5))
+            needle.lineWidth = 1.6
+            needle.lineCapStyle = .round
+            needleColor.setStroke()
+            needle.stroke()
+
+            let hub = NSBezierPath(ovalIn: NSRect(x: pivot.x - 1.7, y: pivot.y - 1.7, width: 3.4, height: 3.4))
             NSColor.labelColor.setFill()
-            nubPath.fill()
+            hub.fill()
 
-            // Fill proportional to remaining.
-            let inset: CGFloat = 2.5
-            let maxFill = bodyWidth - inset * 2
-            let fillWidth = max(0, maxFill * CGFloat(remaining / 100))
-            let fill = NSRect(x: inset + 0.5, y: inset, width: fillWidth, height: height - inset * 2)
-            let fillPath = NSBezierPath(roundedRect: fill, xRadius: 1.5, yRadius: 1.5)
-            fillColor.setFill()
-            fillPath.fill()
+            let labelAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 6.5, weight: .semibold),
+                .foregroundColor: NSColor.labelColor.withAlphaComponent(0.7),
+            ]
+            ("E" as NSString).draw(at: NSPoint(x: 1, y: 0), withAttributes: labelAttrs)
+            ("F" as NSString).draw(at: NSPoint(x: width - 6.5, y: 0), withAttributes: labelAttrs)
         }
     }
 

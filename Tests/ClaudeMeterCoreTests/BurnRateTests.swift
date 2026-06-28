@@ -50,4 +50,20 @@ final class BurnRateTests: XCTestCase {
     func testNeedsTwoSpacedSamples() {
         XCTAssertNil(BurnRate.estimate(samples: [sample(0, 10)], now: Date()))
     }
+
+    func testRejectsTooShortASpan() {
+        // Two samples only 2 minutes apart — below the minimum span, too noisy to trust.
+        let samples = [sample(0, 10), sample(2, 14)]
+        let now = Date(timeIntervalSince1970: 1_000_000 + 2 * 60)
+        XCTAssertNil(BurnRate.estimate(samples: samples, now: now))
+    }
+
+    func testSmoothsNoisyTrend() {
+        // A ~40%/h trend with per-sample noise should still regress near 40, not swing wildly.
+        let samples = [sample(0, 0), sample(15, 12), sample(30, 18), sample(45, 33), sample(60, 40)]
+        let now = Date(timeIntervalSince1970: 1_000_000 + 60 * 60)
+        let rate = BurnRate.estimate(samples: samples, now: now)?.percentPerHour ?? 0
+        XCTAssertGreaterThan(rate, 30)
+        XCTAssertLessThan(rate, 50)
+    }
 }
