@@ -97,7 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func handleThemeChange() { updateLabel() }
 
     private func updateLabel() {
-        guard let button = statusItem.button else { return }
+        // Don't resize the status item while the popover is open — a width change shifts the
+        // button and misaligns the anchored popover. The dropdown is live regardless; the bar
+        // catches up in `popoverDidClose`.
+        guard let button = statusItem.button, !popover.isShown else { return }
         let mode = settings.displayMode
         let signedIn = auth.isSignedIn
         let snapshot = store.snapshot
@@ -161,5 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
+        updateLabel()   // apply any mode/countdown change now that resizing is safe
     }
 }
