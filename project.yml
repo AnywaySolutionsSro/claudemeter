@@ -1,0 +1,67 @@
+# XcodeGen manifest for the app + widget extension build.
+#
+# The plain SwiftPM flow (`swift build`, `swift test`, `./build.sh`) still builds
+# the menu-bar app on its own. This Xcode project additionally builds the
+# WidgetKit extension, which SwiftPM cannot package. Regenerate with:
+#
+#   xcodegen generate
+#
+# then build with Xcode or:
+#
+#   xcodebuild -project ClaudeMeter.xcodeproj -scheme ClaudeMeter -configuration Release build
+name: ClaudeMeter
+options:
+  bundleIdPrefix: com.jakubzak
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: 72K9YQF24J
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  # Pure core, compiled straight from the SwiftPM source folder and statically
+  # linked into both the app and the widget.
+  ClaudeMeterCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/ClaudeMeterCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jakubzak.claudemeter.core
+
+  ClaudeMeter:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/ClaudeMeter
+    dependencies:
+      - target: ClaudeMeterCore
+      - target: ClaudeMeterWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jakubzak.claudemeter
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: ClaudeMeter.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+
+  ClaudeMeterWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget
+    dependencies:
+      - target: ClaudeMeterCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jakubzak.claudemeter.ClaudeMeterWidget
+        INFOPLIST_FILE: Widget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: ClaudeMeterWidget.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
