@@ -31,6 +31,17 @@ import Testing
         #expect(snap.generatedAt == now)
     }
 
+    @Test func runningOnlyKeepsOnlyRunningButCountsAllForTotals() {
+        let snap = SessionSnapshot.make(from: [
+            session("a", total: 10, running: .running),
+            session("b", total: 30, running: .idle),
+            session("c", total: 20, running: .running),
+        ], now: now, limit: 5, runningOnly: true)
+        #expect(snap.sessions.map(\.id) == ["c", "a"])   // only running, by total desc
+        #expect(snap.totalTokens == 60)                  // still across all
+        #expect(snap.runningCount == 2)
+    }
+
     @Test func roundTripsThroughCodable() throws {
         let snap = SessionSnapshot.make(from: [session("a", total: 10, running: .idle)], now: now)
         let data = try JSONEncoder().encode(snap)

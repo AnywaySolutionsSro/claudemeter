@@ -6,8 +6,14 @@ import ClaudeMeterCore
 struct SessionsView: View {
     @ObservedObject var monitor: SessionMonitor
     @State private var now = Date()
+    @AppStorage("sessionsActiveOnly") private var activeOnly = false
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// Sessions to display, optionally filtered to currently-running ones.
+    private var visibleSessions: [SessionUsage] {
+        activeOnly ? monitor.sessions.filter { $0.running == .running } : monitor.sessions
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,7 +21,7 @@ struct SessionsView: View {
             Divider()
             content
         }
-        .frame(minWidth: 380, minHeight: 360)
+        .frame(minWidth: 380, minHeight: 420)
         .onReceive(ticker) { now = $0 }
     }
 
@@ -27,6 +33,11 @@ struct SessionsView: View {
                 Text(summary).font(.system(size: 10)).foregroundColor(.secondary)
             }
             Spacer()
+            Toggle("Active only", isOn: $activeOnly)
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.system(size: 10))
+                .help("Show only sessions that are currently running")
             Button { Task { await monitor.refresh() } } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -37,12 +48,15 @@ struct SessionsView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if monitor.sessions.isEmpty {
+        if visibleSessions.isEmpty {
             VStack(spacing: 6) {
                 Spacer()
                 Image(systemName: "moon.zzz").font(.system(size: 24)).foregroundColor(.secondary)
-                Text("No sessions found").font(.system(size: 12)).foregroundColor(.secondary)
-                Text("Start a Claude Code session and it will appear here.")
+                Text(activeOnly ? "No active sessions" : "No sessions found")
+                    .font(.system(size: 12)).foregroundColor(.secondary)
+                Text(activeOnly
+                     ? "Running Claude Code sessions show up here live."
+                     : "Start a Claude Code session and it will appear here.")
                     .font(.system(size: 10)).foregroundColor(.secondary)
                 Spacer()
             }
@@ -50,7 +64,7 @@ struct SessionsView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(monitor.sessions) { session in
+                    ForEach(visibleSessions) { session in
                         SessionRow(session: session, now: now)
                             .padding(.horizontal, 12)
                         Divider().padding(.leading, 30)
@@ -63,8 +77,8 @@ struct SessionsView: View {
 
     private var summary: String {
         let running = monitor.sessions.filter { $0.running == .running }.count
-        let total = monitor.snapshot?.totalTokens ?? monitor.sessions.reduce(0) { $0 + $1.totalTokens }
+        let shownTotal = visibleSessions.reduce(0) { $0 + $1.totalTokens }
         let updated = monitor.lastUpdated.map { " · updated \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
-        return "\(running) running · \(Formatting.tokenCount(total)) tokens\(updated)"
+        return "\(running) running · \(Formatting.tokenCount(shownTotal)) tokens\(updated)"
     }
 }

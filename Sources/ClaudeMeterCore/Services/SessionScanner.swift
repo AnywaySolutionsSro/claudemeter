@@ -80,7 +80,8 @@ public actor SessionScanner {
             sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning, now: now
         )
         let sorted = resolved.sorted { $0.totalTokens > $1.totalTokens }
-        let snapshot = SessionSnapshot.make(from: resolved, now: now, limit: snapshotLimit)
+        // The published snapshot feeds the widget, which shows only active sessions.
+        let snapshot = SessionSnapshot.make(from: resolved, now: now, limit: snapshotLimit, runningOnly: true)
         return ScanResult(sessions: sorted, snapshot: snapshot)
     }
 }

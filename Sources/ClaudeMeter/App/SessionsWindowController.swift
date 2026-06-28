@@ -22,7 +22,7 @@ final class SessionsWindowController: NSObject {
             let window = NSWindow(contentViewController: hosting)
             window.title = "Claude Sessions"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 420, height: 480))
+            window.setContentSize(NSSize(width: 440, height: 640))
             window.isReleasedWhenClosed = false
             window.center()
             self.window = window

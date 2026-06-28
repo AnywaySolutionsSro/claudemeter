@@ -25,6 +25,22 @@ if CommandLine.arguments.contains("--dump-sessions") {
     exit(0)
 }
 
+// Diagnostic: report where the widget snapshot resolves and whether writing works.
+if CommandLine.arguments.contains("--snapshot-test") {
+    let group = SessionMonitor.groupSnapshotURL()
+    FileHandle.standardError.write("group snapshot URL: \(group?.path ?? "nil (no entitlement/container)")\n".data(using: .utf8)!)
+    FileHandle.standardError.write("local snapshot URL: \(SessionMonitor.localSnapshotURL().path)\n".data(using: .utf8)!)
+    let snapshot = SessionSnapshot.make(from: [], now: Date())
+    let store = SnapshotStore()
+    if let group {
+        do { try store.write(snapshot, to: group); FileHandle.standardError.write("group write: OK\n".data(using: .utf8)!) }
+        catch { FileHandle.standardError.write("group write FAILED: \(error)\n".data(using: .utf8)!) }
+    }
+    do { try store.write(snapshot, to: SessionMonitor.localSnapshotURL()); FileHandle.standardError.write("local write: OK\n".data(using: .utf8)!) }
+    catch { FileHandle.standardError.write("local write FAILED: \(error)\n".data(using: .utf8)!) }
+    exit(0)
+}
+
 // Menu-bar–only agent: no Dock icon, no main window, no Cmd-Tab entry.
 // Top-level code is nonisolated, but it executes on the main thread, so we assume main-actor
 // isolation to construct the @MainActor delegate. `run()` blocks here, keeping `delegate` alive.

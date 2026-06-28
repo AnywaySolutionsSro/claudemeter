@@ -14,8 +14,19 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         self.runningCount = runningCount
     }
 
-    public static func make(from sessions: [SessionUsage], now: Date, limit: Int = 5) -> SessionSnapshot {
-        let ranked = sessions.sorted { $0.totalTokens > $1.totalTokens }
+    /// Build a snapshot of the top sessions by total tokens.
+    ///
+    /// - Parameter runningOnly: when `true`, the kept `sessions` are limited to
+    ///   currently-running ones (used by the widget). `totalTokens` and
+    ///   `runningCount` are always computed across *all* input sessions.
+    public static func make(
+        from sessions: [SessionUsage],
+        now: Date,
+        limit: Int = 5,
+        runningOnly: Bool = false
+    ) -> SessionSnapshot {
+        let pool = runningOnly ? sessions.filter { $0.running == .running } : sessions
+        let ranked = pool.sorted { $0.totalTokens > $1.totalTokens }
         return SessionSnapshot(
             generatedAt: now,
             sessions: Array(ranked.prefix(limit)),

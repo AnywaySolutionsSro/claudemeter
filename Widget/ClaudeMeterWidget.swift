@@ -48,7 +48,8 @@ struct ClaudeMeterWidgetEntryView: View {
         Group {
             switch family {
             case .systemSmall: smallView
-            default: mediumView
+            case .systemLarge: listView(limit: 8)
+            default: listView(limit: 3)
             }
         }
         .padding(10)
@@ -82,7 +83,7 @@ struct ClaudeMeterWidgetEntryView: View {
         }
     }
 
-    @ViewBuilder private var mediumView: some View {
+    @ViewBuilder private func listView(limit: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 header
@@ -94,25 +95,26 @@ struct ClaudeMeterWidgetEntryView: View {
             }
             Divider()
             if let sessions = entry.snapshot?.sessions, !sessions.isEmpty {
-                ForEach(sessions.prefix(3)) { s in
+                ForEach(sessions.prefix(limit)) { s in
                     HStack(spacing: 6) {
-                        Circle().fill(s.running == .running ? Color.green : Color.secondary.opacity(0.35))
-                            .frame(width: 6, height: 6)
-                        Text(s.projectName).font(.system(size: 11)).lineLimit(1)
+                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                        Text(s.projectName).font(.system(size: 12)).lineLimit(1)
                         Spacer()
                         Text(Formatting.tokenCount(s.totalTokens))
-                            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                            .font(.system(size: 12, weight: .semibold)).monospacedDigit()
                     }
                 }
                 Spacer(minLength: 0)
             } else {
+                Spacer(minLength: 0)
                 emptyLabel
+                Spacer(minLength: 0)
             }
         }
     }
 
     private var emptyLabel: some View {
-        Text("No sessions yet").font(.system(size: 11)).foregroundColor(.secondary)
+        Text("No active sessions").font(.system(size: 11)).foregroundColor(.secondary)
     }
 }
 
@@ -123,7 +125,7 @@ struct ClaudeMeterWidget: Widget {
         }
         .configurationDisplayName("Claude Sessions")
         .description("Live token usage across your Claude Code sessions.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
