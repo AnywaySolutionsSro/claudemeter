@@ -40,6 +40,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/ClaudeMeter
+      - path: Resources/AppIcon.icns
+        buildPhase: resources
     dependencies:
       - target: ClaudeMeterCore
       - target: ClaudeMeterWidget
