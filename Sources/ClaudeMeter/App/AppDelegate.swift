@@ -54,6 +54,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         hotKey.register()
 
         if auth.isSignedIn { store.start() }
+
+        // Keep scanning local sessions in the background so the widget snapshot
+        // stays fresh even when the Sessions window is closed.
+        sessionMonitor.start()
+
         updateLabel()
         DispatchQueue.main.async { [weak self] in self?.updateLabel() }
 
