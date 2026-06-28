@@ -7,7 +7,9 @@ import Foundation
 /// but the API emits microseconds (6 digits). Since sub-second precision is irrelevant for a
 /// reset countdown, we strip the fractional component entirely before parsing.
 enum ISODate {
-    private static let formatter: ISO8601DateFormatter = {
+    // ISO8601DateFormatter is a class with mutable config, but we only read from it
+    // (`date(from:)`), which is safe to share. nonisolated(unsafe) opts out of the check.
+    nonisolated(unsafe) private static let formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter

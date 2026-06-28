@@ -42,7 +42,9 @@ public protocol TranscriptDiscovering: Sendable {
 ///
 /// In both cases, files under a `/subagents/` path component are ignored, and a
 /// missing root simply contributes nothing (never crashes).
-public struct TranscriptSource: TranscriptDiscovering {
+// FileManager is not `Sendable`, but we only use it for read-only enumeration and
+// never mutate shared state, so opting out of the check is safe here.
+public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     private let cliRoot: URL
     private let desktopRoot: URL
     private let fileManager: FileManager
