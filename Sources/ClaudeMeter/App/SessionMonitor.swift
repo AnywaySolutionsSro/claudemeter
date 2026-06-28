@@ -16,8 +16,21 @@ final class SessionMonitor: ObservableObject {
 
     private let scanner: SessionScanner
     private let interval: TimeInterval
+    private let snapshotStore = SnapshotStore()
     private var timer: Timer?
     private var isScanning = false
+
+    /// Where the snapshot is published for the widget: the shared App Group
+    /// container when available, else a local Application Support fallback.
+    static func sharedSnapshotURL() -> URL {
+        let fm = FileManager.default
+        if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: SnapshotStore.appGroupID) {
+            return group.appendingPathComponent("snapshot.json")
+        }
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClaudeMeter", isDirectory: true)
+        return base.appendingPathComponent("snapshot.json")
+    }
 
     init(scanner: SessionScanner = SessionMonitor.makeDefaultScanner(),
          interval: TimeInterval = 4) {
@@ -58,5 +71,8 @@ final class SessionMonitor: ObservableObject {
         sessions = result.sessions
         snapshot = result.snapshot
         lastUpdated = result.snapshot.generatedAt
+
+        // Publish for the widget (best-effort; ignore write failures).
+        try? snapshotStore.write(result.snapshot, to: Self.sharedSnapshotURL())
     }
 }
