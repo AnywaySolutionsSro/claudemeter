@@ -10,6 +10,18 @@ private let widgetLog = Logger(subsystem: "com.jakubzak.claudemeter.widget", cat
 struct SnapshotEntry: TimelineEntry {
     let date: Date
     let snapshot: SessionSnapshot?
+
+    /// Representative content for the gallery preview / first paint.
+    static var sample: SnapshotEntry {
+        let now = Date()
+        let demo = [("liberspiro", 12_000_000), ("movixtar", 2_700_000), ("mbx", 1_800_000)]
+            .map { name, tok in
+                SessionUsage(id: name, origin: .cli, projectPath: "/code/\(name)", models: ["claude-opus-4-8"],
+                             tokens: TokenBreakdown(input: tok), messageCount: 1,
+                             firstActivity: now, lastActivity: now, burnRate: 0, running: .running)
+            }
+        return SnapshotEntry(date: now, snapshot: SessionSnapshot.make(from: demo, now: now, runningOnly: true))
+    }
 }
 
 /// Reads the snapshot the main app publishes to the shared App Group container.
@@ -17,7 +29,7 @@ struct Provider: TimelineProvider {
     private let store = SnapshotStore()
 
     func placeholder(in context: Context) -> SnapshotEntry {
-        SnapshotEntry(date: Date(), snapshot: nil)
+        .sample
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SnapshotEntry) -> Void) {

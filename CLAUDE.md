@@ -24,6 +24,28 @@ Data flow: `AccountStore` (token in own Keychain item) → `UsageClient` (`GET /
 → `UsageResponseDecoder` → `UsageSnapshot` → `UsageStore` (`@Published`) → `MenuBarLabel`
 (NSImage pill) + `MenuContentView` (dropdown).
 
+### Live Sessions feature (local token usage per Claude Code session)
+
+A second subsystem reads local Claude Code transcripts and shows per-session token usage:
+
+- **Core** (`ClaudeMeterCore`, pure/TDD): `TranscriptParser` (lenient JSONL → usage records),
+  `SessionAggregator` (fold → `SessionUsage`; headline total = input+output+cacheCreation,
+  cache-reads tracked separately), `RunningResolver` (which sessions are live), `SessionScanner`
+  (actor orchestrating discover→parse→resolve→snapshot), `TranscriptSource` (scan roots),
+  `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`, `SessionSnapshot`.
+- **App**: `SessionMonitor` (@MainActor, scans every 10s, publishes), Sessions window
+  (`SessionsView` — all sessions + "Active only" toggle), Settings window (`SettingsView`),
+  `DesktopAppProbe`.
+- **Widget** (`Widget/`, WidgetKit extension): reads the snapshot and shows active sessions.
+
+Scan roots: `~/.claude/projects` (CLI) **and** `~/Library/Application Support/Claude/
+local-agent-mode-sessions/**/.claude/projects` (desktop agent/Cowork). Plain desktop chat is
+server-side and not trackable.
+
+Two builds: **`./build.sh`** = SwiftPM menu-bar app (no widget). **`./build-xcode.sh`** =
+XcodeGen project (`project.yml`) building app + widget extension, signed with the dev team.
+Diagnostics: `ClaudeMeter --dump-sessions`, `ClaudeMeter --snapshot-test`.
+
 ## Commands
 
 ```bash
@@ -70,6 +92,22 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
   aggressively.
 - **OAuth loopback redirect** (`http://localhost:<port>/callback`) is what enables the one-click
   login (`LoopbackCallbackServer`). The manual paste flow uses the hosted callback instead.
+
+- **Claude Code CLI processes are matched by executable PATH, not name.** The CLI runs
+  versioned binaries (`~/.local/share/claude/versions/<v>`), so `proc_name` returns the version
+  string (e.g. `2.1.195`), never `claude`. `LibprocProcessProbe` matches `proc_pidpath` containing
+  `/claude/versions/` or `/claude-code/` (excluding `ClaudeMeter` itself).
+- **A sandboxed widget CANNOT read what the non-sandboxed app writes into the App Group
+  container** (`NSCocoaError 257 / EPERM`) — true for both raw files and `UserDefaults(suiteName:)`.
+  The app can't be sandboxed (it needs libproc + `~/.claude` access), so the snapshot is delivered
+  into the **widget's own container** (`~/Library/Containers/<widgetID>/Data/Documents/snapshot.json`),
+  which the widget always reads. See `SessionMonitor.widgetInboxURL()`.
+- **Widget supported sizes are cached by `chronod`.** After changing `.supportedFamilies`, a plain
+  reinstall won't show new sizes — re-register the appex (`pluginkit -r` then `-a`), `killall
+  chronod`, and remove/re-add the widget.
+- **The widget only has data while the app is running** (the app is the scanner). It refreshes on
+  WidgetKit's timeline (~5 min) plus immediate `WidgetCenter.reloadAllTimelines()` when the
+  published snapshot changes.
 
 ## How the endpoints were obtained
 
