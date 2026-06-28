@@ -4,6 +4,9 @@ import ClaudeMeterCore
 
 /// The dropdown shown when the menu-bar item is clicked.
 struct MenuContentView: View {
+    /// Invoked when the user opens the Live Sessions window.
+    var onOpenSessions: () -> Void = {}
+
     @EnvironmentObject var store: UsageStore
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
@@ -35,6 +38,11 @@ struct MenuContentView: View {
             Text("ClaudeMeter").font(.system(size: 13, weight: .bold))
             Spacer()
             if store.isLoading { ProgressView().controlSize(.small) }
+            Button(action: onOpenSessions) {
+                Image(systemName: "list.bullet.rectangle")
+            }
+            .buttonStyle(.borderless)
+            .help("Live token usage per session")
         }
     }
 

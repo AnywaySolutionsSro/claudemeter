@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
+    private let sessionMonitor = SessionMonitor()
+    private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor)
 
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
@@ -128,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func openPopover() {
         guard let button = statusItem.button else { return }
 
-        let content = MenuContentView()
+        let content = MenuContentView(onOpenSessions: { [weak self] in self?.openSessions() })
             .environmentObject(store)
             .environmentObject(auth)
             .environmentObject(settings)
@@ -152,6 +154,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func closePopover() {
         if popover.isShown { popover.performClose(nil) }
         removeOutsideClickMonitor()
+    }
+
+    /// Open the Live Sessions window (dismissing the popover first).
+    func openSessions() {
+        closePopover()
+        sessionsWindow.show()
     }
 
     private func removeOutsideClickMonitor() {
