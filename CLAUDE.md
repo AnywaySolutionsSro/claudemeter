@@ -108,6 +108,16 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
 - **The widget only has data while the app is running** (the app is the scanner). It refreshes on
   WidgetKit's timeline (~5 min) plus immediate `WidgetCenter.reloadAllTimelines()` when the
   published snapshot changes.
+- **Stuck on the placeholder skeleton = duplicate appex registrations.** `xcodebuild` emits
+  `ClaudeMeterWidget.appex` as a standalone build product under
+  `DerivedData/.../Build/Products/{Release,Debug}/` *in addition to* the copy embedded in
+  `ClaudeMeter.app`. LaunchServices/chronod discover both and flip between them; when it launches a
+  stale candidate the timeline provider is never called and the widget freezes on its redacted
+  placeholder (the snapshot file is fine — check `pluginkit -mAvvv -i <widgetID>` and `pgrep -lf
+  ClaudeMeterWidget.appex` to see *which path* is running). `build-xcode.sh` now deletes the
+  standalone DerivedData copies and re-registers `/Applications` after install. Manual recovery:
+  `rm -rf` the DerivedData `ClaudeMeterWidget.appex` build products, `pluginkit -a` the
+  `/Applications` copy, `killall chronod`.
 
 ## How the endpoints were obtained
 

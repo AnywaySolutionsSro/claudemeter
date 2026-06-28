@@ -30,6 +30,18 @@ sleep 1
 rm -rf /Applications/ClaudeMeter.app
 cp -R "${APP}" /Applications/ClaudeMeter.app
 
+# The widget appex is also emitted as a standalone build product under
+# DerivedData. LaunchServices/chronod discover those copies and flip-flop
+# between them and the installed one, which leaves the widget wedged on its
+# placeholder (timeline provider never invoked). Remove the standalone copies
+# so /Applications is the single registration source, then kick chronod.
+echo "==> Consolidating widget registration (/Applications only)"
+PRODUCTS_DIR="$(dirname "${APP}")/.."
+find "${PRODUCTS_DIR}" -maxdepth 2 -name 'ClaudeMeterWidget.appex' -not -path '*/ClaudeMeter.app/*' \
+    -exec rm -rf {} + 2>/dev/null || true
+pluginkit -a /Applications/ClaudeMeter.app/Contents/PlugIns/ClaudeMeterWidget.appex 2>/dev/null || true
+killall chronod 2>/dev/null || true
+
 echo "==> Launching"
 open /Applications/ClaudeMeter.app
 echo "Done. Add the widget from the desktop widget gallery (right-click desktop -> Edit Widgets -> Claude Sessions)."
