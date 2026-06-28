@@ -6,12 +6,13 @@ import ClaudeMeterCore
 struct MenuContentView: View {
     /// Invoked when the user opens the Live Sessions window.
     var onOpenSessions: () -> Void = {}
+    /// Invoked when the user opens the Settings window.
+    var onOpenSettings: () -> Void = {}
 
     @EnvironmentObject var store: UsageStore
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
     @State private var now = Date()
-    @State private var showSettings = false
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -43,6 +44,11 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Live token usage per session")
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
         }
     }
 
@@ -124,20 +130,6 @@ struct MenuContentView: View {
             }
 
             HStack {
-                Picker("Display", selection: $settings.displayMode) {
-                    ForEach(DisplayMode.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .font(.system(size: 11))
-                Spacer()
-                Button(showSettings ? "Hide settings" : "Settings") { showSettings.toggle() }
-                    .font(.system(size: 11))
-            }
-
-            if showSettings { settingsSection }
-
-            HStack {
                 if let updated = store.lastUpdated {
                     Text("Updated \(updated.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: 10)).foregroundColor(.secondary)
@@ -154,26 +146,6 @@ struct MenuContentView: View {
                 Button("Quit") { NSApplication.shared.terminate(nil) }.font(.system(size: 11))
             }
         }
-    }
-
-    @ViewBuilder private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Start at login", isOn: launchAtLoginBinding)
-                .font(.system(size: 12)).toggleStyle(.checkbox)
-            Toggle("Usage notifications", isOn: $settings.notificationsEnabled)
-                .font(.system(size: 12)).toggleStyle(.checkbox)
-                .onChange(of: settings.notificationsEnabled) { enabled in
-                    if enabled { NotificationManager().requestAuthorization() }
-                }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Run Shortcut when low (≤10%)").font(.system(size: 10)).foregroundColor(.secondary)
-                TextField("Shortcut name", text: $settings.lowUsageShortcut)
-                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
-            }
-            Text("Toggle window: ⌥⌘U").font(.system(size: 9)).foregroundColor(.secondary)
-        }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
     }
 
     private var quickLinksMenu: some View {
@@ -208,10 +180,6 @@ struct MenuContentView: View {
 
     private var maxedThisWeek: Int {
         UsageStats.maxedWindows(samples: store.history, since: now.addingTimeInterval(-7 * 24 * 3600))
-    }
-
-    private var launchAtLoginBinding: Binding<Bool> {
-        Binding(get: { LoginItem.isEnabled }, set: { LoginItem.setEnabled($0) })
     }
 
     // MARK: - Signed out / login

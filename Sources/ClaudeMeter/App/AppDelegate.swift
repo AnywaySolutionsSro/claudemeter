@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var auth = AuthModel(account: account)
     private let sessionMonitor = SessionMonitor()
     private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor)
+    private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
 
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
@@ -130,7 +131,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func openPopover() {
         guard let button = statusItem.button else { return }
 
-        let content = MenuContentView(onOpenSessions: { [weak self] in self?.openSessions() })
+        let content = MenuContentView(
+            onOpenSessions: { [weak self] in self?.openSessions() },
+            onOpenSettings: { [weak self] in self?.openSettings() }
+        )
             .environmentObject(store)
             .environmentObject(auth)
             .environmentObject(settings)
@@ -160,6 +164,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func openSessions() {
         closePopover()
         sessionsWindow.show()
+    }
+
+    /// Open the Settings window (dismissing the popover first).
+    func openSettings() {
+        closePopover()
+        settingsWindow.show()
     }
 
     private func removeOutsideClickMonitor() {
