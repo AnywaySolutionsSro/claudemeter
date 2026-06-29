@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 import OSLog
 import ClaudeMeterCore
 
@@ -113,45 +114,58 @@ struct ClaudeMeterWidgetEntryView: View {
 
     // MARK: - Session bar
 
+    /// Side length of the interactive arm/disarm control — a finger-sized tap target.
+    private let controlSize: CGFloat = 34
+
     @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
         let isArmed = armedIDs.contains(s.id)
         let canArm = armableIDs.contains(s.id)
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
-                if isArmed {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 10)).foregroundStyle(.orange)
+        HStack(spacing: 10) {
+            // Left column: name + token count + (now shorter) progress bar.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(s.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(Formatting.tokenCount(s.totalTokens))
+                        .font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(.secondary)
                 }
-                Text(s.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
-                Spacer(minLength: 4)
-                Text(Formatting.tokenCount(s.totalTokens))
-                    .font(.system(size: 12, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(.secondary)
-                if family != .systemSmall {
-                    if isArmed {
-                        Button(intent: DisarmSessionIntent(sessionID: s.id)) {
-                            Image(systemName: "bolt.slash.fill").font(.system(size: 10))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.orange)
-                        .help("Disarm auto-resume")
-                    } else if canArm {
-                        Button(intent: ArmSessionIntent(sessionID: s.id)) {
-                            Image(systemName: "bolt").font(.system(size: 10))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .help("Arm overnight auto-resume")
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.secondary.opacity(0.12))
+                        Capsule().fill(activeGradient)
+                            .frame(width: max(8, geo.size.width * CGFloat(s.totalTokens) / CGFloat(maxTokens)))
                     }
                 }
+                .frame(height: 7)
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.secondary.opacity(0.12))
-                    Capsule().fill(activeGradient)
-                        .frame(width: max(8, geo.size.width * CGFloat(s.totalTokens) / CGFloat(maxTokens)))
-                }
+            // Right: proper-sized arm/disarm control (or a same-size spacer to keep bars aligned).
+            if isArmed {
+                armControl(DisarmSessionIntent(sessionID: s.id), systemImage: "bolt.slash.fill", armed: true)
+                    .help("Disarm auto-resume")
+            } else if canArm {
+                armControl(ArmSessionIntent(sessionID: s.id), systemImage: "bolt.fill", armed: false)
+                    .help("Arm overnight auto-resume")
+            } else {
+                Color.clear.frame(width: controlSize, height: controlSize)
             }
-            .frame(height: 7)
         }
+    }
+
+    /// A finger-sized rounded button that runs `intent` on tap. Orange/filled when
+    /// armed (disarm), subtle when armable (arm).
+    @ViewBuilder private func armControl<I: AppIntent>(_ intent: I, systemImage: String, armed: Bool) -> some View {
+        Button(intent: intent) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: controlSize, height: controlSize)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(armed ? Color.orange.opacity(0.22) : Color.secondary.opacity(0.15))
+                )
+                .foregroundStyle(armed ? Color.orange : Color.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Layouts
