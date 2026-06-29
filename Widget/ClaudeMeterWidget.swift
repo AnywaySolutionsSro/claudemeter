@@ -114,8 +114,15 @@ struct ClaudeMeterWidgetEntryView: View {
 
     // MARK: - Session bar
 
-    /// Side length of the interactive arm/disarm control — a finger-sized tap target.
-    private let controlSize: CGFloat = 34
+    /// Dimensions of the interactive arm/disarm toggle pill.
+    private let toggleWidth: CGFloat = 46
+    private let toggleHeight: CGFloat = 26
+
+    /// "Charged" amber track shown when a session is armed.
+    private let armedTrack = LinearGradient(
+        colors: [Color.orange, Color(red: 1.0, green: 0.78, blue: 0.25)],
+        startPoint: .leading, endPoint: .trailing
+    )
 
     @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
         let isArmed = armedIDs.contains(s.id)
@@ -139,31 +146,39 @@ struct ClaudeMeterWidgetEntryView: View {
                 }
                 .frame(height: 7)
             }
-            // Right: proper-sized arm/disarm control (or a same-size spacer to keep bars aligned).
+            // Right: an on/off toggle. ON (armed) = lit amber track + knob right;
+            // OFF (armable) = muted track + knob left. Same metaphor as the app's switch.
             if isArmed {
-                armControl(DisarmSessionIntent(sessionID: s.id), systemImage: "bolt.slash.fill", armed: true)
-                    .help("Disarm auto-resume")
+                armToggle(DisarmSessionIntent(sessionID: s.id), armed: true)
+                    .help("Armed — tap to disarm")
             } else if canArm {
-                armControl(ArmSessionIntent(sessionID: s.id), systemImage: "bolt.fill", armed: false)
-                    .help("Arm overnight auto-resume")
+                armToggle(ArmSessionIntent(sessionID: s.id), armed: false)
+                    .help("Tap to arm overnight auto-resume")
             } else {
-                Color.clear.frame(width: controlSize, height: controlSize)
+                Color.clear.frame(width: toggleWidth, height: toggleHeight)
             }
         }
     }
 
-    /// A finger-sized rounded button that runs `intent` on tap. Orange/filled when
-    /// armed (disarm), subtle when armable (arm).
-    @ViewBuilder private func armControl<I: AppIntent>(_ intent: I, systemImage: String, armed: Bool) -> some View {
+    /// A toggle-style pill (with a bolt on the knob) that runs `intent` on tap.
+    /// Reads as on/off at a glance — no crossed-out icon to misread.
+    @ViewBuilder private func armToggle<I: AppIntent>(_ intent: I, armed: Bool) -> some View {
         Button(intent: intent) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .semibold))
-                .frame(width: controlSize, height: controlSize)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(armed ? Color.orange.opacity(0.22) : Color.secondary.opacity(0.15))
-                )
-                .foregroundStyle(armed ? Color.orange : Color.secondary)
+            ZStack(alignment: armed ? .trailing : .leading) {
+                Capsule()
+                    .fill(armed ? AnyShapeStyle(armedTrack) : AnyShapeStyle(Color.secondary.opacity(0.22)))
+                Circle()
+                    .fill(.white)
+                    .frame(width: toggleHeight - 6, height: toggleHeight - 6)
+                    .overlay(
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(armed ? Color.orange : Color.secondary)
+                    )
+                    .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+                    .padding(.horizontal, 3)
+            }
+            .frame(width: toggleWidth, height: toggleHeight)
         }
         .buttonStyle(.plain)
     }
