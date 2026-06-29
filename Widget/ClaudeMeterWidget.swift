@@ -11,6 +11,9 @@ private let widgetLog = Logger(subsystem: "com.jakubzak.claudemeter.widget", cat
 struct SnapshotEntry: TimelineEntry {
     let date: Date
     let snapshot: SessionSnapshot?
+    /// Armed set the widget should DISPLAY: the app's authoritative armed set with
+    /// any not-yet-applied widget taps folded in, so a tap reflects immediately.
+    let effectiveArmed: Set<String>
 
     /// Representative content for the gallery preview / first paint.
     static var sample: SnapshotEntry {
@@ -21,7 +24,8 @@ struct SnapshotEntry: TimelineEntry {
                              tokens: TokenBreakdown(input: tok), messageCount: 1,
                              firstActivity: now, lastActivity: now, burnRate: 0, running: .running)
             }
-        return SnapshotEntry(date: now, snapshot: SessionSnapshot.make(from: demo, now: now, runningOnly: true))
+        return SnapshotEntry(date: now, snapshot: SessionSnapshot.make(from: demo, now: now, runningOnly: true),
+                             effectiveArmed: [])
     }
 }
 
@@ -45,12 +49,23 @@ struct Provider: TimelineProvider {
     }
 
     private func loadEntry() -> SnapshotEntry {
-        // Read from our own container Documents, where the app delivers the snapshot.
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("snapshot.json")
-        let snapshot = store.read(from: url)
-        widgetLog.log("loaded \(snapshot?.sessions.count ?? -1) sessions from \(url.path, privacy: .public)")
-        return SnapshotEntry(date: Date(), snapshot: snapshot)
+        // Read from our own container Documents, where the app delivers the snapshot
+        // and where our tap commands are queued.
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let snapshot = store.read(from: documents.appendingPathComponent("snapshot.json"))
+
+        // Optimistic display: fold pending (not-yet-applied) taps onto the
+        // app's authoritative armed set so the toggle flips the instant it's tapped.
+        var armed = Set(snapshot?.armedSessionIDs ?? [])
+        let pending = ArmedSessionsStore().peekCommands(at: documents.appendingPathComponent("widget-commands.json"))
+        for command in pending {
+            switch command.action {
+            case .arm: armed.insert(command.sessionID)
+            case .disarm: armed.remove(command.sessionID)
+            }
+        }
+        widgetLog.log("loaded \(snapshot?.sessions.count ?? -1) sessions, \(pending.count) pending taps")
+        return SnapshotEntry(date: Date(), snapshot: snapshot, effectiveArmed: armed)
     }
 }
 
@@ -65,7 +80,7 @@ struct ClaudeMeterWidgetEntryView: View {
 
     private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
-    private var armedIDs: Set<String> { Set(entry.snapshot?.armedSessionIDs ?? []) }
+    private var armedIDs: Set<String> { entry.effectiveArmed }
     private var armableIDs: Set<String> { Set(entry.snapshot?.armableSessionIDs ?? []) }
 
     var body: some View {
@@ -89,10 +104,10 @@ struct ClaudeMeterWidgetEntryView: View {
                 .foregroundStyle(activeGradient)
             Text("Claude Sessions").font(.system(size: 12, weight: .bold))
             Spacer()
-            if let armed = entry.snapshot?.armedSessionIDs, !armed.isEmpty {
+            if !armedIDs.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "bolt.fill").font(.system(size: 9))
-                    Text("\(armed.count)").font(.system(size: 10, weight: .bold)).monospacedDigit()
+                    Text("\(armedIDs.count)").font(.system(size: 10, weight: .bold)).monospacedDigit()
                 }
                 .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(Capsule().fill(Color.orange.opacity(0.18)))
@@ -118,10 +133,10 @@ struct ClaudeMeterWidgetEntryView: View {
     private let toggleWidth: CGFloat = 46
     private let toggleHeight: CGFloat = 26
 
-    /// "Charged" amber track shown when a session is armed.
-    private let armedTrack = LinearGradient(
+    /// "Charged" amber knob fill shown when a session is armed.
+    private let armedAccent = LinearGradient(
         colors: [Color.orange, Color(red: 1.0, green: 0.78, blue: 0.25)],
-        startPoint: .leading, endPoint: .trailing
+        startPoint: .top, endPoint: .bottom
     )
 
     @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
@@ -160,22 +175,28 @@ struct ClaudeMeterWidgetEntryView: View {
         }
     }
 
-    /// A toggle-style pill (with a bolt on the knob) that runs `intent` on tap.
-    /// Reads as on/off at a glance — no crossed-out icon to misread.
+    /// A toggle-style pill that runs `intent` on tap. The track stays a consistent
+    /// dark capsule (low luminance) so the light knob is visible in every widget
+    /// rendering mode — including the desktop's monochrome tint over windows. State
+    /// reads from knob POSITION (left=off / right=on) plus the amber+bolt knob when
+    /// armed, neither of which the monochrome flattening can erase.
     @ViewBuilder private func armToggle<I: AppIntent>(_ intent: I, armed: Bool) -> some View {
         Button(intent: intent) {
             ZStack(alignment: armed ? .trailing : .leading) {
                 Capsule()
-                    .fill(armed ? AnyShapeStyle(armedTrack) : AnyShapeStyle(Color.secondary.opacity(0.22)))
+                    .fill(Color.black.opacity(0.32))
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
                 Circle()
-                    .fill(.white)
+                    .fill(armed ? AnyShapeStyle(armedAccent) : AnyShapeStyle(Color.white))
                     .frame(width: toggleHeight - 6, height: toggleHeight - 6)
-                    .overlay(
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(armed ? Color.orange : Color.secondary)
-                    )
-                    .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+                    .overlay {
+                        if armed {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
                     .padding(.horizontal, 3)
             }
             .frame(width: toggleWidth, height: toggleHeight)

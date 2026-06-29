@@ -45,6 +45,12 @@ public struct ArmedSessionsStore: Sendable {
         return batch.commands
     }
 
+    /// Reads pending commands WITHOUT removing them. Used by the widget to render
+    /// the user's tap optimistically before the app drains and applies it.
+    public func peekCommands(at url: URL) -> [WidgetCommand] {
+        readBatch(at: url).commands
+    }
+
     private func readBatch(at url: URL) -> WidgetCommandBatch {
         guard let data = try? Data(contentsOf: url),
               let batch = try? JSONDecoder().decode(WidgetCommandBatch.self, from: data)
