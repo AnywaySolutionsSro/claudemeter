@@ -59,8 +59,8 @@ final class AutoResumeCoordinator {
         let refilled = UsageStats.didRefill(
             previousUtilization: lastUtilization, currentUtilization: current)
         if !refilled {
-            // Once the window is being used again, allow the next crossing to fire.
-            if let last = lastUtilization, current > last { firedThisCrossing.removeAll() }
+            // A new session meaningfully raised utilization (not measurement noise) -> allow the next crossing to fire again.
+            if let last = lastUtilization, current >= last + 10 { firedThisCrossing.removeAll() }
             return
         }
 
