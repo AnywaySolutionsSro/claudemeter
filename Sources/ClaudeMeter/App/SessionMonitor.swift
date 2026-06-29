@@ -3,6 +3,12 @@ import SwiftUI
 import WidgetKit
 import ClaudeMeterCore
 
+/// Inputs the AppDelegate forwards to the AutoResumeCoordinator after each scan.
+struct UsageContextInputs {
+    let sessions: [SessionUsage]
+    let processes: [LiveProcess]
+}
+
 /// Observable view-model that periodically scans local Claude Code transcripts
 /// and publishes per-session token usage with live-status, for the Sessions
 /// window (and, later, the widget snapshot).
@@ -14,15 +20,23 @@ final class SessionMonitor: ObservableObject {
     @Published private(set) var sessions: [SessionUsage] = []
     @Published private(set) var snapshot: SessionSnapshot?
     @Published private(set) var lastUpdated: Date?
+    @Published private(set) var latestProcesses: [LiveProcess] = []
+
+    /// Set by AppDelegate so the published snapshot can mark armed sessions and
+    /// the post-scan hook can drive auto-resume.
+    var armedIDsProvider: (() -> [String])?
+    var onScan: ((UsageContextInputs) -> Void)?
 
     private let scanner: SessionScanner
     private let interval: TimeInterval
     private let snapshotStore = SnapshotStore()
+    private let directProbe = LibprocProcessProbe()
+    private let terminalDetectorForArmable = TerminalDetector()
     private var timer: Timer?
     private var isScanning = false
 
     /// Bundle id of the widget extension.
-    static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
+    nonisolated static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
 
     /// The widget's own sandbox container Documents path. A non-sandboxed app can
     /// write here, and the sandboxed widget can always read its own container —
@@ -47,7 +61,9 @@ final class SessionMonitor: ObservableObject {
     private var lastSignature: [String]?
     func publish(_ snapshot: SessionSnapshot) {
         let signature = snapshot.sessions.map { "\($0.id):\($0.totalTokens):\($0.running.rawValue)" }
-            + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)"]
+            + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)",
+               "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
+               "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
         guard signature != lastSignature else { return }
         lastSignature = signature
 
@@ -89,6 +105,21 @@ final class SessionMonitor: ObservableObject {
         timer = nil
     }
 
+    /// Session IDs that may be armed: running, mapped to exactly one live process,
+    /// whose owning terminal is iTerm2.
+    func armableSessionIDs(sessions: [SessionUsage], processes: [LiveProcess]) -> [String] {
+        let index = SessionProcessIndex(processes: processes)
+        return sessions.compactMap { session in
+            guard session.running == .running, let proc = index.process(forCwd: session.projectPath)
+            else { return nil }
+            let kind = terminalDetectorForArmable.detect(
+                startPID: proc.pid,
+                executablePathForPID: { LibprocProcessProbe.executablePathForPID($0) },
+                parentPIDForPID: { LibprocProcessProbe.parentPIDForPID($0) })
+            return kind.isDrivable ? session.id : nil
+        }
+    }
+
     /// Run one scan now and publish the results. Skips if a scan is in flight.
     func refresh() async {
         guard !isScanning else { return }
@@ -96,11 +127,39 @@ final class SessionMonitor: ObservableObject {
         defer { isScanning = false }
 
         let result = await scanner.scan(now: Date())
-        sessions = result.sessions
-        snapshot = result.snapshot
-        lastUpdated = result.snapshot.generatedAt
+        let processes = directProbe.liveClaudeProcesses()
+        let armedIDs = armedIDsProvider?() ?? []
 
-        // Publish for the widget + local copy (best-effort).
-        publish(result.snapshot)
+        sessions = result.sessions
+        latestProcesses = processes
+        let armable = armableSessionIDs(sessions: result.sessions, processes: processes)
+        let snap = SessionSnapshot.make(
+            from: result.sessions, now: result.snapshot.generatedAt,
+            limit: 12, runningOnly: true, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+        snapshot = snap
+        lastUpdated = snap.generatedAt
+        publish(snap)
+
+        onScan?(UsageContextInputs(sessions: result.sessions, processes: processes))
+    }
+
+    /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.
+    nonisolated static func tailLines(forSessionID id: String, maxLines: Int = 40) -> [String] {
+        let roots = [TranscriptSource.defaultCLIRoot, TranscriptSource.defaultDesktopRoot]
+        for root in roots {
+            if let url = findTranscript(id: id, under: root) {
+                guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+                let lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+                return Array(lines.suffix(maxLines))
+            }
+        }
+        return []
+    }
+
+    private nonisolated static func findTranscript(id: String, under root: URL) -> URL? {
+        let fm = FileManager.default
+        guard let e = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
+        for case let url as URL in e where url.lastPathComponent == "\(id).jsonl" { return url }
+        return nil
     }
 }

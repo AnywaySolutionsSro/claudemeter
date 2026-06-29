@@ -40,6 +40,11 @@ final class NotificationManager {
         deliver(title: "Tank refilled 🎉", body: "Your session window reset — back to full.", id: "refill-\(UUID().uuidString)")
     }
 
+    /// Generic one-shot notification for auto-resume status messages.
+    func notify(_ title: String, _ body: String) {
+        deliver(title: title, body: body, id: UUID().uuidString)
+    }
+
     /// Schedule a one-shot "it reset" notification for a future date.
     func scheduleResetReminder(at date: Date) {
         let interval = date.timeIntervalSinceNow

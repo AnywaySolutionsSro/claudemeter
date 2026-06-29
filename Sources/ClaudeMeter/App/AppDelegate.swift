@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import ClaudeMeterCore
 
 /// Owns the status-bar item and popover. See inline notes on the near-zero-idle design.
 @MainActor
@@ -14,6 +15,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let sessionMonitor = SessionMonitor()
     private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor)
     private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
+    private let armedSessions = ArmedSessions()
+    private let sleepInhibitor = SleepInhibitor()
+    private lazy var autoResume = AutoResumeCoordinator(
+        armed: armedSessions,
+        settings: settings,
+        notify: { [weak self] message in self?.notifications.notify("ClaudeMeter", message) }
+    )
 
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
@@ -58,6 +66,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Keep scanning local sessions in the background so the widget snapshot
         // stays fresh even when the Sessions window is closed.
         sessionMonitor.start()
+
+        // Feed armed IDs into published snapshots and run auto-resume after each scan.
+        sessionMonitor.armedIDsProvider = { [weak self] in Array(self?.armedSessions.armed ?? []) }
+        sessionMonitor.onScan = { [weak self] inputs in
+            guard let self else { return }
+            // Apply any arm/disarm requests issued from the widget. Arm requests
+            // are re-validated against the current armable set.
+            let armable = Set(self.sessionMonitor.armableSessionIDs(
+                sessions: inputs.sessions, processes: inputs.processes))
+            if self.armedSessions.drainWidgetCommands(isArmable: { armable.contains($0) }) {
+                Task { await self.sessionMonitor.refresh() }
+            }
+            // Keep the Mac awake while anything is armed.
+            self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
+            // Drive auto-resume.
+            self.autoResume.handleSnapshot(
+                usage: self.store.snapshot,
+                sessions: inputs.sessions,
+                processes: inputs.processes,
+                transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
+                paths: { LibprocProcessProbe.executablePathForPID($0) },
+                parents: { LibprocProcessProbe.parentPIDForPID($0) }
+            )
+        }
+        // React to arming changes immediately (sleep assertion + republish).
+        armedSessions.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                guard let self else { return }
+                self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
+                Task { await self.sessionMonitor.refresh() }
+            }
+            .store(in: &cancellables)
 
         updateLabel()
         DispatchQueue.main.async { [weak self] in self?.updateLabel() }
