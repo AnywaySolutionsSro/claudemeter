@@ -37,6 +37,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Continue text").font(.caption).foregroundStyle(.secondary)
                     TextField("continue", text: $settings.autoResumeContinueText)
+                        .textFieldStyle(.roundedBorder)
                 }
                 Text("Arms are chosen per session in the Sessions window. Only iTerm2 sessions that were cut off by the usage limit are nudged. Controlling iTerm2 requires Automation permission (System Settings → Privacy & Security → Automation).")
                     .font(.caption).foregroundStyle(.secondary)
