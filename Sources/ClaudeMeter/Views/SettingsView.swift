@@ -32,6 +32,16 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Overnight Auto-Resume") {
+                Toggle("Auto-resume armed sessions on quota refresh", isOn: $settings.autoResumeEnabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Continue text").font(.caption).foregroundStyle(.secondary)
+                    TextField("continue", text: $settings.autoResumeContinueText)
+                }
+                Text("Arms are chosen per session in the Sessions window. Only iTerm2 sessions that were cut off by the usage limit are nudged. Controlling iTerm2 requires Automation permission (System Settings → Privacy & Security → Automation).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Account") {
                 if auth.isSignedIn {
                     HStack {
@@ -50,7 +60,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380, height: 420)
+        .frame(width: 380, height: 560)
     }
 
     private var launchAtLoginBinding: Binding<Bool> {

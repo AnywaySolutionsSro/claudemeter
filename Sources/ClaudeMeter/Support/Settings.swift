@@ -40,6 +40,18 @@ final class Settings: ObservableObject {
     @Published var lowUsageShortcut: String {
         didSet { defaults.set(lowUsageShortcut, forKey: Keys.lowUsageShortcut) }
     }
+    @Published var autoResumeEnabled: Bool {
+        didSet { defaults.set(autoResumeEnabled, forKey: Keys.autoResumeEnabled) }
+    }
+    @Published var autoResumeContinueText: String {
+        didSet { defaults.set(autoResumeContinueText, forKey: Keys.autoResumeContinueText) }
+    }
+
+    /// Continue text to type, trimmed; defaults to "continue" when blank.
+    var normalizedContinueText: String {
+        let trimmed = autoResumeContinueText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "continue" : trimmed
+    }
 
     private let defaults: UserDefaults
 
@@ -48,11 +60,15 @@ final class Settings: ObservableObject {
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
+        self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? false
+        self.autoResumeContinueText = defaults.string(forKey: Keys.autoResumeContinueText) ?? "continue"
     }
 
     private enum Keys {
         static let displayMode = "displayMode"
         static let notificationsEnabled = "notificationsEnabled"
         static let lowUsageShortcut = "lowUsageShortcut"
+        static let autoResumeEnabled = "autoResumeEnabled"
+        static let autoResumeContinueText = "autoResumeContinueText"
     }
 }
