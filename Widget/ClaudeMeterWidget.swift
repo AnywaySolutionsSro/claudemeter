@@ -64,6 +64,8 @@ struct ClaudeMeterWidgetEntryView: View {
 
     private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
+    private var armedIDs: Set<String> { Set(entry.snapshot?.armedSessionIDs ?? []) }
+    private var armableIDs: Set<String> { Set(entry.snapshot?.armableSessionIDs ?? []) }
 
     var body: some View {
         Group {
@@ -86,6 +88,15 @@ struct ClaudeMeterWidgetEntryView: View {
                 .foregroundStyle(activeGradient)
             Text("Claude Sessions").font(.system(size: 12, weight: .bold))
             Spacer()
+            if let armed = entry.snapshot?.armedSessionIDs, !armed.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "bolt.fill").font(.system(size: 9))
+                    Text("\(armed.count)").font(.system(size: 10, weight: .bold)).monospacedDigit()
+                }
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Capsule().fill(Color.orange.opacity(0.18)))
+                .foregroundStyle(.orange)
+            }
             livePill
         }
     }
@@ -103,13 +114,34 @@ struct ClaudeMeterWidgetEntryView: View {
     // MARK: - Session bar
 
     @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
+        let isArmed = armedIDs.contains(s.id)
+        let canArm = armableIDs.contains(s.id)
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
+                if isArmed {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 10)).foregroundStyle(.orange)
+                }
                 Text(s.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 4)
                 Text(Formatting.tokenCount(s.totalTokens))
                     .font(.system(size: 12, weight: .bold)).monospacedDigit()
                     .foregroundStyle(.secondary)
+                if family != .systemSmall {
+                    if isArmed {
+                        Button(intent: DisarmSessionIntent(sessionID: s.id)) {
+                            Image(systemName: "bolt.slash.fill").font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.orange)
+                        .help("Disarm auto-resume")
+                    } else if canArm {
+                        Button(intent: ArmSessionIntent(sessionID: s.id)) {
+                            Image(systemName: "bolt").font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .help("Arm overnight auto-resume")
+                    }
+                }
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
