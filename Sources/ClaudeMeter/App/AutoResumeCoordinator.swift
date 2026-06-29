@@ -100,7 +100,8 @@ final class AutoResumeCoordinator {
             let eligibility = detector.classify(tailLines: transcriptTail(session.id), isRunning: false)
             guard eligibility.shouldFire else { continue }
 
-            let target = ResumeTarget(sessionID: session.id, tty: tty, continueText: continueText)
+            let target = ResumeTarget(sessionID: session.id, tty: tty, continueText: continueText,
+                                       expectedPID: proc.pid, expectedCwd: proc.cwd)
             firedThisCrossing.insert(session.id)
             scheduleResume(target, after: delay, projectName: session.projectName)
             delay += staggerSeconds
@@ -110,6 +111,13 @@ final class AutoResumeCoordinator {
     private func scheduleResume(_ target: ResumeTarget, after delay: Double, projectName: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
+            // tty-reuse defense (spec): re-verify the tty still maps to the same unique live claude process.
+            let live = LibprocProcessProbe().liveClaudeProcesses()
+            let onTTY = live.filter { $0.tty == target.tty }
+            guard onTTY.count == 1, onTTY[0].pid == target.expectedPID, onTTY[0].cwd == target.expectedCwd else {
+                self.notify("Skipped \(projectName): terminal changed before resume; not typing.")
+                return
+            }
             do {
                 try self.driver.resume(target)
                 self.log.log("resumed \(projectName, privacy: .public)")

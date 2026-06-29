@@ -7,6 +7,10 @@ struct ResumeTarget: Equatable {
     let tty: String
     /// Text to send (default "continue"); the driver appends a newline.
     let continueText: String
+    /// PID of the claude process that owned this tty at decision time (tty-reuse defense).
+    let expectedPID: Int32
+    /// Working directory of the claude process at decision time (tty-reuse defense).
+    let expectedCwd: String
 }
 
 enum ResumeError: Error, Equatable {
