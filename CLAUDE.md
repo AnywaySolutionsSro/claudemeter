@@ -108,16 +108,41 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
 - **The widget only has data while the app is running** (the app is the scanner). It refreshes on
   WidgetKit's timeline (~5 min) plus immediate `WidgetCenter.reloadAllTimelines()` when the
   published snapshot changes.
-- **Stuck on the placeholder skeleton = duplicate appex registrations.** `xcodebuild` emits
-  `ClaudeMeterWidget.appex` as a standalone build product under
-  `DerivedData/.../Build/Products/{Release,Debug}/` *in addition to* the copy embedded in
-  `ClaudeMeter.app`. LaunchServices/chronod discover both and flip between them; when it launches a
-  stale candidate the timeline provider is never called and the widget freezes on its redacted
-  placeholder (the snapshot file is fine — check `pluginkit -mAvvv -i <widgetID>` and `pgrep -lf
-  ClaudeMeterWidget.appex` to see *which path* is running). `build-xcode.sh` now deletes the
-  standalone DerivedData copies and re-registers `/Applications` after install. Manual recovery:
-  `rm -rf` the DerivedData `ClaudeMeterWidget.appex` build products, `pluginkit -a` the
-  `/Applications` copy, `killall chronod`.
+- **Blank chip icon next to ClaudeMeter in the widget gallery sidebar = unresolved macOS 26
+  (Tahoe) cosmetic bug; do NOT keep chasing it.** The widget previews and placed widgets render
+  their icon fine — only the gallery's left-sidebar app chip is blank. A long investigation
+  (2026-06-29) ruled out every data/cache cause: the appex now carries its own `AppIcon`
+  (asset catalog + `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` on the `ClaudeMeterWidget` target
+  in `project.yml` — keep that, it's correct), the app AND appex icons both resolve perfectly via
+  `NSWorkspace.icon(forFile:)` (full 16→1024 rep set), the registration is a single `/Applications`
+  entry, and the system IconServices store was purged (`sudo rm -rf
+  /Library/Caches/com.apple.iconservices.store`) with chronod fully re-registered (`pluginkit -r`
+  then `-a`, `killall chronod`). The chip stayed blank through all of it. **Removing `LSUIElement`
+  (to clear the LaunchServices agent flag) does NOT fix it and makes a Dock icon appear** — tried
+  and reverted; the runtime `.accessory` policy doesn't reliably suppress the Dock icon once
+  `LSUIElement` is gone. Conclusion: accept the blank chip. If you must retry, the only untried lead
+  is shipping the icon in the new Tahoe Icon Composer (`.icon`) format — low confidence.
+  Verify the icon is actually embedded with `PlistBuddy -c "Print :CFBundleIconName"` on the appex
+  Info.plist (should print `AppIcon`) and `assetutil --info <appex>/Contents/Resources/Assets.car`.
+- **Missing from the widget gallery / stuck on the placeholder skeleton = duplicate appex
+  registrations.** `xcodebuild` leaves the widget bundle ID registered from *two* shadow locations
+  besides `/Applications`: (1) a **standalone** `ClaudeMeterWidget.appex` build product under
+  `DerivedData/.../Build/Products/{Release,Debug}/`, and (2) the appex **embedded inside every
+  stale `ClaudeMeter.app`** that xcodebuild leaves in `DerivedData` and `.build/xcodedd`.
+  LaunchServices/chronod discover all of them for the one bundle ID and flip between them; when they
+  pick a stale path the timeline provider is never called and the widget either freezes on its
+  redacted placeholder or never appears in the gallery at all (the snapshot file is fine).
+  Diagnose with `lsregister -dump | grep ClaudeMeterWidget.appex` (lists *every* registered path —
+  there should be exactly one, in `/Applications`), plus `pluginkit -mAvvv -i <widgetID>` and `pgrep
+  -lf ClaudeMeterWidget.appex` to see which path is running. `build-xcode.sh` now (a) deletes the
+  standalone copies, (b) `lsregister -u`'s every stale `ClaudeMeter.app` in DerivedData/`.build`
+  (this is what clears the *embedded* registrations — deleting only the standalone appex is not
+  enough), and (c) `lsregister -f /Applications/ClaudeMeter.app` + `killall chronod`. Manual
+  recovery (lsregister lives at `/System/Library/Frameworks/CoreServices.framework/Frameworks/
+  LaunchServices.framework/Support/lsregister`):
+  `lsregister -u <each stale ClaudeMeter.app>` → `lsregister -f /Applications/ClaudeMeter.app` →
+  `killall chronod`. NB: launching the appex binary by hand to "test" it is useless — it always
+  prints `An XPC Service cannot be run directly` regardless of health.
 
 ## How the endpoints were obtained
 

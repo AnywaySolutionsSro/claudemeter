@@ -22,7 +22,12 @@
 	<string>2</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
-	<!-- Menu-bar agent: no Dock icon, no main window. -->
+	<!-- Menu-bar agent: no Dock icon, no main window.
+	     NB: removing LSUIElement (relying only on the runtime .accessory policy) does
+	     NOT make the macOS 26 widget gallery render the app's sidebar chip icon — it
+	     stays blank either way — and it causes a Dock icon to appear at launch. So we
+	     keep LSUIElement and accept the blank gallery chip (cosmetic; placed widgets
+	     and their in-widget icons render fine). See CLAUDE.md gotchas. -->
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSPrincipalClass</key>

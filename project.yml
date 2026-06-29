@@ -58,6 +58,11 @@ targets:
     platform: macOS
     sources:
       - path: Widget
+      # The widget extension needs its OWN AppIcon: the macOS widget gallery
+      # sources the per-widget group icon from the appex, not the containing
+      # app. Without this the gallery shows a blank/generic icon even though the
+      # app icon resolves fine in Spotlight. Reuses the app's icon set.
+      - path: Resources/Assets.xcassets
     dependencies:
       - target: ClaudeMeterCore
     settings:
@@ -67,3 +72,4 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: ClaudeMeterWidget.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

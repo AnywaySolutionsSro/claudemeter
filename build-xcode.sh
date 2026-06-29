@@ -30,15 +30,32 @@ sleep 1
 rm -rf /Applications/ClaudeMeter.app
 cp -R "${APP}" /Applications/ClaudeMeter.app
 
-# The widget appex is also emitted as a standalone build product under
-# DerivedData. LaunchServices/chronod discover those copies and flip-flop
-# between them and the installed one, which leaves the widget wedged on its
-# placeholder (timeline provider never invoked). Remove the standalone copies
-# so /Applications is the single registration source, then kick chronod.
+# The widget appex is emitted two ways that both shadow the installed copy:
+#   1. as a *standalone* build product (ClaudeMeterWidget.appex next to the app), and
+#   2. *embedded* inside every ClaudeMeter.app that xcodebuild leaves in DerivedData
+#      (Debug + Release) and .build/xcodedd.
+# LaunchServices/chronod discover ALL of these copies for the one widget bundle ID
+# and flip-flop between them; when they pick a stale path the timeline provider is
+# never invoked and the widget wedges on its placeholder / vanishes from the gallery.
+# Fix: delete the standalone copies AND lsregister -u every stale app bundle, then
+# re-assert /Applications as the single registration source, and kick chronod.
 echo "==> Consolidating widget registration (/Applications only)"
+LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 PRODUCTS_DIR="$(dirname "${APP}")/.."
+
+# 1. Remove standalone appex build products.
 find "${PRODUCTS_DIR}" -maxdepth 2 -name 'ClaudeMeterWidget.appex' -not -path '*/ClaudeMeter.app/*' \
     -exec rm -rf {} + 2>/dev/null || true
+
+# 2. Unregister every ClaudeMeter.app outside /Applications (their embedded appexes
+#    otherwise remain registered and shadow the canonical copy).
+while IFS= read -r staleApp; do
+    [ -n "${staleApp}" ] && "${LSREG}" -u "${staleApp}" 2>/dev/null || true
+done < <(find ~/Library/Developer/Xcode/DerivedData "${ROOT}/.build" \
+    -maxdepth 6 -name 'ClaudeMeter.app' 2>/dev/null)
+
+# 3. Re-assert the installed copy as the one true registration, then restart chronod.
+"${LSREG}" -f /Applications/ClaudeMeter.app 2>/dev/null || true
 pluginkit -a /Applications/ClaudeMeter.app/Contents/PlugIns/ClaudeMeterWidget.appex 2>/dev/null || true
 killall chronod 2>/dev/null || true
 
