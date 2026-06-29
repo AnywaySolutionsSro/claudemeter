@@ -8,7 +8,16 @@ import Testing
 
     private struct FakeProbe: ProcessProbing {
         let counts: [String: Int]
-        func liveClaudeCwdCounts() -> [String: Int] { counts }
+        func liveClaudeProcesses() -> [LiveProcess] {
+            var pid: Int32 = 100
+            return counts.flatMap { (cwd, n) -> [LiveProcess] in
+                (0..<n).map { _ in
+                    let p = LiveProcess(pid: pid, cwd: cwd, tty: nil, ppid: 1)
+                    pid += 1
+                    return p
+                }
+            }
+        }
     }
 
     private struct FakeDesktop: DesktopAppDetecting {
