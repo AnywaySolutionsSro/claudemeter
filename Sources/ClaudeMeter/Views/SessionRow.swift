@@ -6,6 +6,9 @@ import ClaudeMeterCore
 struct SessionRow: View {
     let session: SessionUsage
     let now: Date
+    var terminalKind: TerminalKind = .unknown
+    var isArmed: Bool = false
+    var onArmChange: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -36,6 +39,18 @@ struct SessionRow: View {
                     .foregroundColor(.secondary)
                     .monospacedDigit()
             }
+
+            let canArm = terminalKind.isDrivable && session.running == .running
+            Toggle("", isOn: Binding(get: { isArmed }, set: { onArmChange($0) }))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.mini)
+                .disabled(!canArm)
+                .help(canArm
+                      ? "Auto-resume this session when quota refreshes"
+                      : (session.running != .running
+                         ? "Only live sessions can be armed"
+                         : "Supports iTerm2 only for now (\(terminalKind.displayName))"))
         }
         .padding(.vertical, 3)
     }

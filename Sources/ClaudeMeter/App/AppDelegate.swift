@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
     private let sessionMonitor = SessionMonitor()
-    private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor)
+    private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor, armed: armedSessions)
     private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
     private let armedSessions = ArmedSessions()
     private let sleepInhibitor = SleepInhibitor()

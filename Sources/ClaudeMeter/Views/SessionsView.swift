@@ -5,6 +5,7 @@ import ClaudeMeterCore
 /// tokens, then a scrollable list of sessions ranked by total tokens.
 struct SessionsView: View {
     @ObservedObject var monitor: SessionMonitor
+    @ObservedObject var armed: ArmedSessions
     @State private var now = Date()
     @AppStorage("sessionsActiveOnly") private var activeOnly = false
 
@@ -13,6 +14,19 @@ struct SessionsView: View {
     /// Sessions to display, optionally filtered to currently-running ones.
     private var visibleSessions: [SessionUsage] {
         activeOnly ? monitor.sessions.filter { $0.running == .running } : monitor.sessions
+    }
+
+    private var terminalKinds: [String: TerminalKind] {
+        let detector = TerminalDetector()
+        let index = SessionProcessIndex(processes: monitor.latestProcesses)
+        var map: [String: TerminalKind] = [:]
+        for session in monitor.sessions {
+            map[session.id] = index.terminalKind(
+                forCwd: session.projectPath, detector: detector,
+                paths: { LibprocProcessProbe.executablePathForPID($0) },
+                parents: { LibprocProcessProbe.parentPIDForPID($0) })
+        }
+        return map
     }
 
     var body: some View {
@@ -33,6 +47,15 @@ struct SessionsView: View {
                 Text(summary).font(.system(size: 10)).foregroundColor(.secondary)
             }
             Spacer()
+            if armed.count > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "bolt.fill").font(.system(size: 10))
+                    Text("\(armed.count) armed").font(.system(size: 11, weight: .semibold))
+                }
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(Color.orange.opacity(0.18)))
+                .foregroundStyle(.orange)
+            }
             Toggle("Active only", isOn: $activeOnly)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
@@ -65,7 +88,11 @@ struct SessionsView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleSessions) { session in
-                        SessionRow(session: session, now: now)
+                        SessionRow(
+                            session: session, now: now,
+                            terminalKind: terminalKinds[session.id] ?? .unknown,
+                            isArmed: armed.isArmed(session.id),
+                            onArmChange: { armed.setArmed(session.id, $0) })
                             .padding(.horizontal, 12)
                         Divider().padding(.leading, 30)
                     }

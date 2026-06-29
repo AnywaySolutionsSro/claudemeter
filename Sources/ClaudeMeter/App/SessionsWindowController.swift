@@ -7,10 +7,12 @@ import SwiftUI
 @MainActor
 final class SessionsWindowController: NSObject {
     private let monitor: SessionMonitor
+    private let armed: ArmedSessions
     private var window: NSWindow?
 
-    init(monitor: SessionMonitor) {
+    init(monitor: SessionMonitor, armed: ArmedSessions) {
         self.monitor = monitor
+        self.armed = armed
         super.init()
     }
 
@@ -18,7 +20,7 @@ final class SessionsWindowController: NSObject {
     /// list is current the moment it appears.
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SessionsView(monitor: monitor))
+            let hosting = NSHostingController(rootView: SessionsView(monitor: monitor, armed: armed))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Claude Sessions"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
