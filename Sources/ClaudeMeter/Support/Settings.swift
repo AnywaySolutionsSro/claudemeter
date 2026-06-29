@@ -60,7 +60,11 @@ final class Settings: ObservableObject {
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
-        self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? false
+        // Master switch defaults ON: arming a session (in Sessions / widget) is the
+        // opt-in, so the feature must be live out of the box for armed sessions to
+        // ever fire. This is only a global kill-switch — nothing fires unless at
+        // least one session is explicitly armed.
+        self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? true
         self.autoResumeContinueText = defaults.string(forKey: Keys.autoResumeContinueText) ?? "continue"
     }
 

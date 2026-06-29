@@ -69,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Feed armed IDs into published snapshots and run auto-resume after each scan.
         sessionMonitor.armedIDsProvider = { [weak self] in Array(self?.armedSessions.armed ?? []) }
+        // Carry account usage windows (Session / Weekly / …) into the widget snapshot.
+        sessionMonitor.usageProvider = { [weak self] in self?.store.snapshot }
         sessionMonitor.onScan = { [weak self] inputs in
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
@@ -98,6 +100,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
                 Task { await self.sessionMonitor.refresh() }
             }
+            .store(in: &cancellables)
+        // Republish the widget snapshot when account usage refreshes, so the gauges
+        // track the latest Session/Weekly percentages between session scans.
+        store.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in Task { await self?.sessionMonitor.refresh() } }
             .store(in: &cancellables)
 
         updateLabel()

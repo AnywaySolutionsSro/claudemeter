@@ -24,8 +24,16 @@ struct SnapshotEntry: TimelineEntry {
                              tokens: TokenBreakdown(input: tok), messageCount: 1,
                              firstActivity: now, lastActivity: now, burnRate: 0, running: .running)
             }
-        return SnapshotEntry(date: now, snapshot: SessionSnapshot.make(from: demo, now: now, runningOnly: true),
-                             effectiveArmed: [])
+        let base = SessionSnapshot.make(from: demo, now: now, runningOnly: true)
+        let gauges = [
+            UsageGauge(label: "Session", percentLeft: 78, resetsAt: now.addingTimeInterval(4 * 3600 + 9 * 60)),
+            UsageGauge(label: "Weekly", percentLeft: 37, resetsAt: now.addingTimeInterval(106 * 3600)),
+            UsageGauge(label: "Sonnet", percentLeft: 77, resetsAt: now.addingTimeInterval(106 * 3600)),
+        ]
+        let snap = SessionSnapshot(
+            generatedAt: base.generatedAt, sessions: base.sessions, totalTokens: base.totalTokens,
+            runningCount: base.runningCount, usageGauges: gauges)
+        return SnapshotEntry(date: now, snapshot: snap, effectiveArmed: [])
     }
 }
 
@@ -74,6 +82,76 @@ private let activeGradient = LinearGradient(
     startPoint: .leading, endPoint: .trailing
 )
 
+// MARK: - Reusable circular gauge
+
+/// A circular "% left" ring for one account window, with the percentage in the
+/// centre and (optionally) a short label + reset countdown beneath. Sized by the
+/// caller so it works at small-widget scale and in the compact gauge row alike.
+struct GaugeRingView: View {
+    let gauge: UsageGauge
+    var size: CGFloat
+    var showLabel: Bool = true
+    var showReset: Bool = true
+
+    var body: some View {
+        let fraction = max(0.0001, min(1, gauge.percentLeft / 100))
+        VStack(spacing: size * 0.06) {
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.18), lineWidth: size * 0.11)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(Self.style(gauge.percentLeft),
+                            style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: -1) {
+                    Text("\(Int(gauge.percentLeft.rounded()))")
+                        .font(.system(size: size * 0.30, weight: .bold)).monospacedDigit()
+                    Text("% left").font(.system(size: max(7, size * 0.12), weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: size, height: size)
+            if showLabel {
+                Text(gauge.label)
+                    .font(.system(size: min(15, max(10, size * 0.15)), weight: .semibold)).lineLimit(1)
+            }
+            if showReset, let reset = gauge.resetsAt {
+                Text(Self.resetShort(reset))
+                    .font(.system(size: min(12, max(8.5, size * 0.12))))
+                    .foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+    }
+
+    /// Green when plenty left, amber as it tightens, red when nearly spent.
+    static func style(_ left: Double) -> LinearGradient {
+        let colors: [Color]
+        switch left {
+        case ..<15: colors = [Color.red, Color.orange]
+        case ..<40: colors = [Color.orange, Color(red: 1.0, green: 0.82, blue: 0.3)]
+        default:    colors = [Color.green, Color(red: 0.2, green: 0.85, blue: 0.6)]
+        }
+        return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Compact "4h9m" / "12m" countdown until a window resets.
+    static func resetShort(_ date: Date) -> String {
+        let secs = Int(max(0, date.timeIntervalSinceNow))
+        let h = secs / 3600, m = (secs % 3600) / 60
+        return h > 0 ? "\(h)h\(m)m" : "\(m)m"
+    }
+}
+
+private var noGaugeData: some View {
+    VStack(spacing: 6) {
+        Image(systemName: "gauge.with.dots.needle.67percent")
+            .font(.system(size: 22)).foregroundStyle(.secondary)
+        Text("No usage data").font(.system(size: 11)).foregroundStyle(.secondary)
+    }
+}
+
+// MARK: - Main widget (medium = gauges only; large / XL = gauges + sessions)
+
 struct ClaudeMeterWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
@@ -82,20 +160,20 @@ struct ClaudeMeterWidgetEntryView: View {
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
     private var armedIDs: Set<String> { entry.effectiveArmed }
     private var armableIDs: Set<String> { Set(entry.snapshot?.armableSessionIDs ?? []) }
+    private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
 
     var body: some View {
         Group {
             switch family {
-            case .systemSmall: smallView
-            case .systemLarge: listView(limit: 8)
-            default: listView(limit: 3)
+            case .systemLarge: sessionsListView   // active sessions only
+            default: gaugesOnlyView               // systemMedium: gauges only
             }
         }
         .padding(12)
         .containerBackground(.background, for: .widget)
     }
 
-    // MARK: - Header
+    // MARK: Header
 
     private var header: some View {
         HStack(spacing: 6) {
@@ -127,7 +205,7 @@ struct ClaudeMeterWidgetEntryView: View {
         .background(Capsule().fill(Color.green.opacity(0.15)))
     }
 
-    // MARK: - Session bar
+    // MARK: Session bar
 
     /// Dimensions of the interactive arm/disarm toggle pill.
     private let toggleWidth: CGFloat = 46
@@ -177,9 +255,7 @@ struct ClaudeMeterWidgetEntryView: View {
 
     /// A toggle-style pill that runs `intent` on tap. The track stays a consistent
     /// dark capsule (low luminance) so the light knob is visible in every widget
-    /// rendering mode — including the desktop's monochrome tint over windows. State
-    /// reads from knob POSITION (left=off / right=on) plus the amber+bolt knob when
-    /// armed, neither of which the monochrome flattening can erase.
+    /// rendering mode — including the desktop's monochrome tint over windows.
     @ViewBuilder private func armToggle<I: AppIntent>(_ intent: I, armed: Bool) -> some View {
         Button(intent: intent) {
             ZStack(alignment: armed ? .trailing : .leading) {
@@ -204,33 +280,24 @@ struct ClaudeMeterWidgetEntryView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Layouts
+    // MARK: Layouts
 
-    @ViewBuilder private var smallView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: "gauge.with.dots.needle.67percent")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(activeGradient)
-                Text("\(entry.snapshot?.runningCount ?? 0) active")
-                    .font(.system(size: 12, weight: .bold))
-                Spacer()
+    /// Medium widget: just the gauges, evenly spread and vertically centred.
+    @ViewBuilder private var gaugesOnlyView: some View {
+        if gauges.isEmpty {
+            HStack { Spacer(); noGaugeData; Spacer() }.frame(maxHeight: .infinity)
+        } else {
+            HStack(alignment: .center, spacing: 0) {
+                ForEach(gauges) { gauge in
+                    GaugeRingView(gauge: gauge, size: 58).frame(maxWidth: .infinity)
+                }
             }
-            Spacer(minLength: 0)
-            if let top = sessions.first {
-                Text(Formatting.tokenCount(top.totalTokens))
-                    .font(.system(size: 26, weight: .bold)).monospacedDigit()
-                    .foregroundStyle(activeGradient)
-                Text(top.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
-                GeometryReader { geo in
-                    Capsule().fill(activeGradient).frame(width: geo.size.width, height: 5)
-                }.frame(height: 5)
-            } else {
-                emptyLabel
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    @ViewBuilder private func listView(limit: Int) -> some View {
+    /// Large widget: just the active-session list (arm/disarm toggles), no gauges.
+    @ViewBuilder private var sessionsListView: some View {
         VStack(alignment: .leading, spacing: 9) {
             header
             if sessions.isEmpty {
@@ -238,7 +305,7 @@ struct ClaudeMeterWidgetEntryView: View {
                 HStack { Spacer(); emptyLabel; Spacer() }
                 Spacer(minLength: 0)
             } else {
-                ForEach(sessions.prefix(limit)) { sessionBar($0) }
+                ForEach(sessions.prefix(7)) { sessionBar($0) }
                 Spacer(minLength: 0)
             }
         }
@@ -252,14 +319,80 @@ struct ClaudeMeterWidgetEntryView: View {
     }
 }
 
+// MARK: - Single-gauge small widget (one per account window)
+
+/// Small widget showing exactly one gauge, picked by its position in the
+/// snapshot's gauge list (0 = Session, 1 = Weekly, 2 = the weekly model window).
+struct SingleGaugeView: View {
+    let entry: SnapshotEntry
+    let slot: Int
+
+    private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
+
+    var body: some View {
+        Group {
+            if slot < gauges.count {
+                VStack {
+                    Spacer(minLength: 0)
+                    GaugeRingView(gauge: gauges[slot], size: 96)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                noGaugeData
+            }
+        }
+        .padding(12)
+        .containerBackground(.background, for: .widget)
+    }
+}
+
+/// Each `Widget` conformer needs its own `init()`, so the three single-gauge
+/// widgets are distinct types (sharing `SingleGaugeView`) rather than one
+/// parameterized struct — that also gives each a stable `kind` and gallery name.
+struct SessionGaugeWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "ClaudeGaugeSession", provider: Provider()) { entry in
+            SingleGaugeView(entry: entry, slot: 0)
+        }
+        .configurationDisplayName("Claude · Session (5h)")
+        .description("The 5-hour session window as a circular gauge.")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+struct WeeklyGaugeWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "ClaudeGaugeWeekly", provider: Provider()) { entry in
+            SingleGaugeView(entry: entry, slot: 1)
+        }
+        .configurationDisplayName("Claude · Weekly")
+        .description("The weekly usage window as a circular gauge.")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+struct ModelGaugeWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "ClaudeGaugeModel", provider: Provider()) { entry in
+            SingleGaugeView(entry: entry, slot: 2)
+        }
+        .configurationDisplayName("Claude · Weekly model")
+        .description("The weekly per-model window (Opus / Sonnet) as a circular gauge.")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+// MARK: - Bundle
+
 struct ClaudeMeterWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "ClaudeMeterWidget", provider: Provider()) { entry in
             ClaudeMeterWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Claude Sessions")
-        .description("Live token usage across your Claude Code sessions.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .description("Medium shows account usage gauges; Large shows live Claude Code sessions.")
+        .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
 
@@ -267,5 +400,8 @@ struct ClaudeMeterWidget: Widget {
 struct ClaudeMeterWidgetBundle: WidgetBundle {
     var body: some Widget {
         ClaudeMeterWidget()
+        SessionGaugeWidget()
+        WeeklyGaugeWidget()
+        ModelGaugeWidget()
     }
 }

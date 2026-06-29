@@ -50,8 +50,14 @@ final class AutoResumeCoordinator {
         paths: @escaping (Int32) -> String?,
         parents: @escaping (Int32) -> Int32
     ) {
-        guard settings.autoResumeEnabled else { return }
-        guard let bucket = usage?.fiveHour else { return }
+        guard settings.autoResumeEnabled else {
+            log.debug("skip: master switch off")
+            return
+        }
+        guard let bucket = usage?.fiveHour else {
+            log.debug("skip: no 5h usage bucket (not signed in / no data yet)")
+            return
+        }
         let current = bucket.utilization
         defer { lastUtilization = current }
 
@@ -64,6 +70,8 @@ final class AutoResumeCoordinator {
             return
         }
 
+        let armedCount = sessions.filter { armed.isArmed($0.id) }.count
+        log.info("refill detected (\(self.lastUtilization ?? -1, format: .fixed(precision: 1)) -> \(current, format: .fixed(precision: 1))%); evaluating \(armedCount, format: .decimal) armed session(s)")
         firedThisCrossing.removeAll()
         let index = SessionProcessIndex(processes: processes)
         let continueText = settings.normalizedContinueText
@@ -72,18 +80,22 @@ final class AutoResumeCoordinator {
         for session in sessions where armed.isArmed(session.id) {
             guard !firedThisCrossing.contains(session.id) else { continue }
 
+            let name = session.projectName
             // Map session -> unique live process by cwd.
             guard let proc = index.process(forCwd: session.projectPath) else {
-                notify("Skipped \(session.projectName): no unique live terminal found.")
+                log.info("\(name, privacy: .public): skip — no unique live terminal for cwd")
+                notify("Skipped \(name): no unique live terminal found.")
                 continue
             }
             guard let tty = proc.tty else {
-                notify("Skipped \(session.projectName): no controlling tty.")
+                log.info("\(name, privacy: .public): skip — no controlling tty")
+                notify("Skipped \(name): no controlling tty.")
                 continue
             }
             // Security: reject any value that is not a real tty device path.
             guard tty.hasPrefix("/dev/tty") else {
-                notify("Skipped \(session.projectName): unexpected tty \(tty).")
+                log.info("\(name, privacy: .public): skip — unexpected tty \(tty, privacy: .public)")
+                notify("Skipped \(name): unexpected tty \(tty).")
                 continue
             }
             // Must be iTerm2.
@@ -91,19 +103,24 @@ final class AutoResumeCoordinator {
                                                executablePathForPID: paths,
                                                parentPIDForPID: parents)
             guard kind.isDrivable else {
-                notify("Skipped \(session.projectName): \(kind.displayName) not supported yet.")
+                log.info("\(name, privacy: .public): skip — terminal \(kind.displayName, privacy: .public) not drivable")
+                notify("Skipped \(name): \(kind.displayName) not supported yet.")
                 continue
             }
             // Eligibility gate over the transcript tail. The live process means
             // "alive", but we pass isRunning=false because resolver-running is
             // about token activity; the tail tells us if a turn is in flight.
             let eligibility = detector.classify(tailLines: transcriptTail(session.id), isRunning: false)
-            guard eligibility.shouldFire else { continue }
+            guard eligibility.shouldFire else {
+                log.info("\(name, privacy: .public): skip — not eligible (\(String(describing: eligibility), privacy: .public))")
+                continue
+            }
 
             let target = ResumeTarget(sessionID: session.id, tty: tty, continueText: continueText,
                                        expectedPID: proc.pid, expectedCwd: proc.cwd)
             firedThisCrossing.insert(session.id)
-            scheduleResume(target, after: delay, projectName: session.projectName)
+            log.info("\(name, privacy: .public): eligible — scheduling resume on \(tty, privacy: .public) in \(delay, format: .fixed(precision: 1))s")
+            scheduleResume(target, after: delay, projectName: name)
             delay += staggerSeconds
         }
     }
@@ -115,6 +132,7 @@ final class AutoResumeCoordinator {
             let live = LibprocProcessProbe().liveClaudeProcesses()
             let onTTY = live.filter { $0.tty == target.tty }
             guard onTTY.count == 1, onTTY[0].pid == target.expectedPID, onTTY[0].cwd == target.expectedCwd else {
+                self.log.info("\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense)")
                 self.notify("Skipped \(projectName): terminal changed before resume; not typing.")
                 return
             }
@@ -122,6 +140,9 @@ final class AutoResumeCoordinator {
                 try self.driver.resume(target)
                 self.log.log("resumed \(projectName, privacy: .public)")
             } catch {
+                // Most likely cause on the first ever fire: macOS Automation (TCC)
+                // permission not yet granted to control iTerm2.
+                self.log.error("\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)")
                 self.notify("Couldn't resume \(projectName): \(String(describing: error))")
             }
         }

@@ -8,15 +8,19 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
     public let runningCount: Int
     public let armedSessionIDs: [String]
     public let armableSessionIDs: [String]
+    /// Account rate-limit windows (Session / Weekly / …) for the widget's circular gauges.
+    public let usageGauges: [UsageGauge]
 
     public init(generatedAt: Date, sessions: [SessionUsage], totalTokens: Int,
-                runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = []) {
+                runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = [],
+                usageGauges: [UsageGauge] = []) {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalTokens = totalTokens
         self.runningCount = runningCount
         self.armedSessionIDs = armedSessionIDs
         self.armableSessionIDs = armableSessionIDs
+        self.usageGauges = usageGauges
     }
 
     // Custom decode so snapshots written before these fields existed still load.
@@ -28,10 +32,11 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         runningCount = try c.decode(Int.self, forKey: .runningCount)
         armedSessionIDs = try c.decodeIfPresent([String].self, forKey: .armedSessionIDs) ?? []
         armableSessionIDs = try c.decodeIfPresent([String].self, forKey: .armableSessionIDs) ?? []
+        usageGauges = try c.decodeIfPresent([UsageGauge].self, forKey: .usageGauges) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
-        case generatedAt, sessions, totalTokens, runningCount, armedSessionIDs, armableSessionIDs
+        case generatedAt, sessions, totalTokens, runningCount, armedSessionIDs, armableSessionIDs, usageGauges
     }
 
     /// Build a snapshot of the top sessions by total tokens.

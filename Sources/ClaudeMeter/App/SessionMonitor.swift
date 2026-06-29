@@ -26,6 +26,8 @@ final class SessionMonitor: ObservableObject {
     /// the post-scan hook can drive auto-resume.
     var armedIDsProvider: (() -> [String])?
     var onScan: ((UsageContextInputs) -> Void)?
+    /// Set by AppDelegate so the widget snapshot can carry account usage gauges.
+    var usageProvider: (() -> UsageSnapshot?)?
 
     private let scanner: SessionScanner
     private let interval: TimeInterval
@@ -64,6 +66,7 @@ final class SessionMonitor: ObservableObject {
             + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)",
                "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
                "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
+            + snapshot.usageGauges.map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
         guard signature != lastSignature else { return }
         lastSignature = signature
 
@@ -140,10 +143,12 @@ final class SessionMonitor: ObservableObject {
             limit: 12, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable)
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = result.sessions.filter { $0.running == .running }.count
+        let gauges = usageProvider?()?.gauges ?? []
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
-            runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+            runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
+            usageGauges: gauges)
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)
 

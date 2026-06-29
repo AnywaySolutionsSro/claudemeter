@@ -57,4 +57,41 @@ struct ITermDriver: TerminalResumeDriver {
         default: throw ResumeError.sessionNotFound
         }
     }
+
+    /// Outcome of a one-time Automation (TCC) authorization attempt.
+    enum AuthorizationResult: Equatable {
+        case granted
+        case denied(String)
+        case notRunning
+    }
+
+    /// Sends a harmless Apple Event to iTerm2 (`get version`) purely to surface the
+    /// macOS "ClaudeMeter wants to control iTerm2" prompt on demand. macOS will not
+    /// list ClaudeMeter under System Settings → Automation until it has attempted an
+    /// Apple Event at least once, so this is the only way to pre-authorize control
+    /// before a real quota reset. No text is typed and no focus is stolen.
+    func authorize() -> AuthorizationResult {
+        let source = """
+        tell application "System Events"
+            if not (exists process "iTerm2") then return "NOT_RUNNING"
+        end tell
+        tell application "iTerm2"
+            get version
+        end tell
+        return "OK"
+        """
+        var errorInfo: NSDictionary?
+        guard let script = NSAppleScript(source: source) else {
+            return .denied("could not compile AppleScript")
+        }
+        let output = script.executeAndReturnError(&errorInfo)
+        if let errorInfo {
+            let message = (errorInfo[NSAppleScript.errorMessage] as? String) ?? "\(errorInfo)"
+            log.error("iTerm authorization error: \(message, privacy: .public)")
+            return .denied(message)
+        }
+        if output.stringValue == "NOT_RUNNING" { return .notRunning }
+        log.log("iTerm2 control authorized")
+        return .granted
+    }
 }
