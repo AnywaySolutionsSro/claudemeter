@@ -116,13 +116,19 @@ public struct LibprocProcessProbe: ProcessProbing {
         return cwd.isEmpty ? nil : cwd
     }
 
-    /// Parent PID via `PROC_PIDTBSDINFO` -> `pbi_ppid`; 0 if unreadable.
+    /// Parent PID via `PROC_PIDT_SHORTBSDINFO` -> `pbsi_ppid`; 0 if unreadable.
+    ///
+    /// Uses the *short* bsd-info variant deliberately: the full `PROC_PIDTBSDINFO`
+    /// is privilege-restricted and returns nothing for processes owned by another
+    /// user, which breaks the terminal parent-walk at the root-owned `login`
+    /// process that sits between the user's shell and iTerm2. `PROC_PIDT_SHORTBSDINFO`
+    /// is readable cross-user, so the walk can climb past `login` to the terminal.
     private static func parentPID(_ pid: pid_t) -> Int32 {
-        var info = proc_bsdinfo()
-        let code = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info,
-                                Int32(MemoryLayout<proc_bsdinfo>.size))
+        var info = proc_bsdshortinfo()
+        let code = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info,
+                                Int32(MemoryLayout<proc_bsdshortinfo>.size))
         guard code > 0 else { return 0 }
-        return Int32(bitPattern: info.pbi_ppid)
+        return Int32(bitPattern: info.pbsi_ppid)
     }
 
     /// Controlling tty device path (e.g. `/dev/ttys003`) via `PROC_PIDTBSDINFO`
