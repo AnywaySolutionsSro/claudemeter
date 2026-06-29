@@ -132,13 +132,20 @@ final class SessionMonitor: ObservableObject {
 
         sessions = result.sessions
         latestProcesses = processes
+        let armedSet = Set(armedIDs)
         let armable = armableSessionIDs(sessions: result.sessions, processes: processes)
+        let widgetSessions = result.sessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
-            from: result.sessions, now: result.snapshot.generatedAt,
-            limit: 12, runningOnly: true, armedSessionIDs: armedIDs, armableSessionIDs: armable)
-        snapshot = snap
-        lastUpdated = snap.generatedAt
-        publish(snap)
+            from: widgetSessions, now: result.snapshot.generatedAt,
+            limit: 12, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+        // Preserve the true running count across ALL sessions, not just the filtered set.
+        let trueRunning = result.sessions.filter { $0.running == .running }.count
+        snapshot = SessionSnapshot(
+            generatedAt: snap.generatedAt, sessions: snap.sessions,
+            totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
+            runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+        lastUpdated = snapshot!.generatedAt
+        publish(snapshot!)
 
         onScan?(UsageContextInputs(sessions: result.sessions, processes: processes))
     }
