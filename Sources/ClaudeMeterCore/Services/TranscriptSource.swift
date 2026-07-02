@@ -25,12 +25,28 @@ public struct TranscriptRef: Sendable, Equatable, Identifiable {
     }
 }
 
+/// Complete lines read from a transcript starting at a byte offset, plus the
+/// offset of the first byte after the last consumed newline (the resume point).
+public struct TranscriptChunk: Equatable, Sendable {
+    public let lines: [String]
+    public let endOffset: Int64
+
+    public init(lines: [String], endOffset: Int64) {
+        self.lines = lines
+        self.endOffset = endOffset
+    }
+}
+
 /// Discovers transcript files and reads their raw lines.
 public protocol TranscriptDiscovering: Sendable {
     /// All discovered transcripts: CLI refs first, then desktop refs.
     func discover() -> [TranscriptRef]
     /// Raw lines of a transcript; `[]` on any read failure.
     func lines(of ref: TranscriptRef) -> [String]
+    /// Complete lines appended at/after `fromByteOffset` (a partial trailing line
+    /// is left unconsumed). `nil` on read failure or when the offset is past the
+    /// end of the file (truncation/rewrite — the caller restarts from 0).
+    func chunk(of ref: TranscriptRef, fromByteOffset: Int64) -> TranscriptChunk?
 }
 
 /// Filesystem discovery of Claude Code transcript files from two scan roots:
@@ -80,6 +96,27 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     public func lines(of ref: TranscriptRef) -> [String] {
         guard let data = try? Data(contentsOf: ref.url) else { return [] }
         return Self.splitLines(data)
+    }
+
+    public func chunk(of ref: TranscriptRef, fromByteOffset offset: Int64) -> TranscriptChunk? {
+        guard offset >= 0, let handle = try? FileHandle(forReadingFrom: ref.url) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd(), offset <= size else { return nil }
+        guard offset < size else { return TranscriptChunk(lines: [], endOffset: offset) }
+        guard (try? handle.seek(toOffset: UInt64(offset))) != nil,
+              let data = try? handle.readToEnd()
+        else { return nil }
+
+        // Consume only up to the final newline; a partial trailing line (a write
+        // in flight) stays unread until it is completed by a later append.
+        guard let lastNewline = data.lastIndex(of: UInt8(ascii: "\n")) else {
+            return TranscriptChunk(lines: [], endOffset: offset)
+        }
+        let complete = data[data.startIndex...lastNewline]
+        return TranscriptChunk(
+            lines: Self.splitLines(Data(complete)),
+            endOffset: offset + Int64(complete.count)
+        )
     }
 
     /// Split JSONL bytes on `\n` (tolerating `\r\n`), decoding each line as UTF-8.

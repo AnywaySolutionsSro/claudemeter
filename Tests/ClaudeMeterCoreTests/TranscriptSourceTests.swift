@@ -95,6 +95,51 @@ import Testing
         #expect(source.lines(of: ref) == ["line1", "line2", "line3"])
     }
 
+    @Test func chunkReadsOnlyCompleteLinesAndReportsEndOffset() throws {
+        defer { cleanup() }
+        let cliRoot = root.appendingPathComponent("cli4", isDirectory: true)
+        let file = cliRoot.appendingPathComponent("proj").appendingPathComponent("s.jsonl")
+        try write("aa\nbb\npartial", to: file)
+
+        let source = TranscriptSource(cliRoot: cliRoot,
+                                      desktopRoot: root.appendingPathComponent("missing"), fileManager: fm)
+        let ref = try #require(source.discover().first)
+        let chunk = try #require(source.chunk(of: ref, fromByteOffset: 0))
+        // Only lines terminated by \n are consumed; the partial tail stays unread.
+        #expect(chunk.lines == ["aa", "bb"])
+        #expect(chunk.endOffset == 6)
+    }
+
+    @Test func chunkFromOffsetReadsOnlyAppendedLines() throws {
+        defer { cleanup() }
+        let cliRoot = root.appendingPathComponent("cli5", isDirectory: true)
+        let file = cliRoot.appendingPathComponent("proj").appendingPathComponent("s.jsonl")
+        try write("aa\nbb\ncc\n", to: file)
+
+        let source = TranscriptSource(cliRoot: cliRoot,
+                                      desktopRoot: root.appendingPathComponent("missing"), fileManager: fm)
+        let ref = try #require(source.discover().first)
+        let chunk = try #require(source.chunk(of: ref, fromByteOffset: 3))
+        #expect(chunk.lines == ["bb", "cc"])
+        #expect(chunk.endOffset == 9)
+        // Nothing new past the end -> empty chunk, offset unchanged.
+        let empty = try #require(source.chunk(of: ref, fromByteOffset: 9))
+        #expect(empty.lines.isEmpty)
+        #expect(empty.endOffset == 9)
+    }
+
+    @Test func chunkBeyondFileSizeSignalsTruncation() throws {
+        defer { cleanup() }
+        let cliRoot = root.appendingPathComponent("cli6", isDirectory: true)
+        let file = cliRoot.appendingPathComponent("proj").appendingPathComponent("s.jsonl")
+        try write("aa\n", to: file)
+
+        let source = TranscriptSource(cliRoot: cliRoot,
+                                      desktopRoot: root.appendingPathComponent("missing"), fileManager: fm)
+        let ref = try #require(source.discover().first)
+        #expect(source.chunk(of: ref, fromByteOffset: 100) == nil)
+    }
+
     @Test func linesKeepsEmptyIntermediateLines() throws {
         defer { cleanup() }
         let cliRoot = root.appendingPathComponent("cli3", isDirectory: true)

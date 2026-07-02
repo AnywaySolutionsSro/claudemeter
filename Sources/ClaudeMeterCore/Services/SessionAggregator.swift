@@ -8,6 +8,8 @@ public struct SessionAggregator: Sendable {
         self.burnWindow = burnWindow
     }
 
+    /// One-shot convenience over `SessionAccumulator` (which owns the fold logic,
+    /// message.id dedup included): fold every record, snapshot the usage.
     public func aggregate(
         _ parsed: ParsedTranscript,
         id: String,
@@ -16,43 +18,10 @@ public struct SessionAggregator: Sendable {
         title: String?,
         now: Date
     ) -> SessionUsage? {
-        // One API message is written as several JSONL entries (one per content
-        // block), each repeating the same message.id and identical usage. Keep only
-        // the first record per id so each message counts once; records without an
-        // id (older transcripts) always count.
-        var seenIDs = Set<String>()
-        let records = parsed.records.filter { record in
-            guard let id = record.messageID else { return true }
-            return seenIDs.insert(id).inserted
+        var accumulator = SessionAccumulator(burnWindow: burnWindow)
+        for record in parsed.records {
+            accumulator.fold(record)
         }
-        guard !records.isEmpty else { return nil }
-
-        let tokens = records.reduce(TokenBreakdown.zero) { $0 + $1.tokens }
-        let models = Set(records.compactMap(\.model)).sorted()
-        let timestamps = records.map(\.timestamp)
-        let first = timestamps.min() ?? now
-        let last = timestamps.max() ?? now
-
-        let resolvedPath = projectPath.isEmpty ? (records.first?.cwd ?? "") : projectPath
-
-        let windowStart = now.addingTimeInterval(-burnWindow)
-        let windowTokens = records
-            .filter { $0.timestamp > windowStart }
-            .reduce(0) { $0 + $1.tokens.total }
-        let minutes = burnWindow / 60
-        let burnRate = minutes > 0 ? Double(windowTokens) / minutes : 0
-
-        return SessionUsage(
-            id: id,
-            origin: origin,
-            projectPath: resolvedPath,
-            title: title,
-            models: models,
-            tokens: tokens,
-            messageCount: records.count,
-            firstActivity: first,
-            lastActivity: last,
-            burnRate: burnRate
-        )
+        return accumulator.usage(id: id, projectPath: projectPath, origin: origin, title: title, now: now)
     }
 }

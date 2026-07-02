@@ -25,10 +25,13 @@ import Testing
         func isClaudeDesktopRunning() -> Bool { running }
     }
 
+    /// Byte offsets are opaque to the scanner, so this fake uses line indices as
+    /// offsets: chunk(from: n) returns the lines after index n.
     private final class FakeDiscoverer: TranscriptDiscovering, @unchecked Sendable {
-        let refs: [TranscriptRef]
-        let linesByID: [String: [String]]
+        var refs: [TranscriptRef]
+        var linesByID: [String: [String]]
         private(set) var lineCalls: [String: Int] = [:]
+        private(set) var chunkCalls: [String: [Int64]] = [:]
         init(refs: [TranscriptRef], linesByID: [String: [String]]) {
             self.refs = refs
             self.linesByID = linesByID
@@ -37,6 +40,13 @@ import Testing
         func lines(of ref: TranscriptRef) -> [String] {
             lineCalls[ref.id, default: 0] += 1
             return linesByID[ref.id] ?? []
+        }
+        func chunk(of ref: TranscriptRef, fromByteOffset offset: Int64) -> TranscriptChunk? {
+            chunkCalls[ref.id, default: []].append(offset)
+            let all = linesByID[ref.id] ?? []
+            guard offset <= Int64(all.count) else { return nil }  // truncation
+            return TranscriptChunk(lines: Array(all.dropFirst(Int(offset))),
+                                   endOffset: Int64(all.count))
         }
     }
 
@@ -82,9 +92,46 @@ import Testing
         let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
                                      desktopDetector: FakeDesktop(running: false))
         _ = await scanner.scan(now: now)
+        let second = await scanner.scan(now: now)
+        // Second scan must NOT re-read the unchanged file — but still report it.
+        #expect(disco.chunkCalls["s1"] == [0])
+        #expect(second.sessions.first?.totalTokens == 100)
+    }
+
+    @Test func changedFileIsResumedFromCachedOffsetNotReRead() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("s1", modified: 5_000)],
+            linesByID: ["s1": [line(cwd: "/p1", output: 100)]]
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
+                                     desktopDetector: FakeDesktop(running: false))
         _ = await scanner.scan(now: now)
-        // Second scan must NOT re-read the unchanged file.
-        #expect(disco.lineCalls["s1"] == 1)
+
+        // The session appends one line; only that line may be read.
+        disco.linesByID["s1"] = [line(cwd: "/p1", output: 100), line(cwd: "/p1", output: 40)]
+        disco.refs = [ref("s1", modified: 6_000)]
+        let result = await scanner.scan(now: now)
+
+        #expect(result.sessions.first?.totalTokens == 140)
+        #expect(disco.chunkCalls["s1"] == [0, 1])  // resumed from offset 1, never re-read line 0
+    }
+
+    @Test func truncatedFileFallsBackToFullReparse() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("s1", modified: 5_000)],
+            linesByID: ["s1": [line(cwd: "/p1", output: 100), line(cwd: "/p1", output: 40)]]
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
+                                     desktopDetector: FakeDesktop(running: false))
+        _ = await scanner.scan(now: now)
+
+        // File shrank (rewrite): resuming from offset 2 fails -> reparse from 0.
+        disco.linesByID["s1"] = [line(cwd: "/p1", output: 7)]
+        disco.refs = [ref("s1", modified: 6_000)]
+        let result = await scanner.scan(now: now)
+
+        #expect(result.sessions.first?.totalTokens == 7)
+        #expect(disco.chunkCalls["s1"] == [0, 2, 0])
     }
 
     @Test func emptyDiscoveryYieldsEmptyResult() async {
