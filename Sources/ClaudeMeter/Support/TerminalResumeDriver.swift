@@ -15,6 +15,7 @@ struct ResumeTarget: Equatable {
 
 enum ResumeError: Error, Equatable {
     case missingTTY
+    case invalidTTY(String)
     case terminalNotRunning
     case sessionNotFound
     case scriptFailed(String)

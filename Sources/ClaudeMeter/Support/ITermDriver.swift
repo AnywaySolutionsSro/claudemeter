@@ -10,11 +10,20 @@ struct ITermDriver: TerminalResumeDriver {
 
     func resume(_ target: ResumeTarget) throws {
         guard !target.tty.isEmpty else { throw ResumeError.missingTTY }
+        // Defense in depth: the planner validates this too, but the driver is the
+        // trust boundary before AppleScript interpolation — re-assert it here.
+        guard target.tty.hasPrefix("/dev/tty"),
+              target.tty.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "/" })
+        else { throw ResumeError.invalidTTY(target.tty) }
 
         // AppleScript: only proceed if iTerm2 is already running; find the
         // session with the matching tty and write the text. Set a boolean we can
         // read back to distinguish "session not found" from success.
+        // Control characters (incl. newlines) are stripped before escaping: a
+        // newline would break the AppleScript literal, and `write text` supplies
+        // the trailing Enter itself.
         let escapedText = target.continueText
+            .components(separatedBy: .controlCharacters).joined(separator: " ")
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         let source = """
