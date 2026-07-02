@@ -53,4 +53,10 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         copy.running = state
         return copy
     }
+
+    public func withProjectPath(_ path: String) -> SessionUsage {
+        SessionUsage(id: id, origin: origin, projectPath: path, title: title, models: models,
+                     tokens: tokens, messageCount: messageCount, firstActivity: firstActivity,
+                     lastActivity: lastActivity, burnRate: burnRate, running: running)
+    }
 }

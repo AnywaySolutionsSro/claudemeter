@@ -165,6 +165,39 @@ import Testing
         #expect(result.sessions.isEmpty)
     }
 
+    // The transcript records a cwd as typed (possibly through symlinks); the
+    // probe reads the kernel-resolved cwd. Both sides must match canonically or
+    // a symlinked project shows permanently idle.
+    @Test func sessionCwdIsCanonicalizedForProcessMatching() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("s1")],
+            linesByID: ["s1": [line(cwd: "/tmp/p1", output: 10)]]
+        )
+        let scanner = SessionScanner(
+            discoverer: disco, processProbe: FakeProbe(counts: ["/private/tmp/p1": 1]),
+            desktopDetector: FakeDesktop(running: false),
+            canonicalize: { $0 == "/tmp/p1" ? "/private/tmp/p1" : $0 })
+        let result = await scanner.scan(now: now)
+        #expect(result.sessions.first?.projectPath == "/private/tmp/p1")
+        #expect(result.sessions.first?.running == .running)
+    }
+
+    @Test func runningRankUsesFileMtimeNotAssistantTimestamp() async {
+        // Both sessions share a cwd with ONE live process. "stale" has the newer
+        // assistant timestamp; "fresh" has the newer file mtime and must win.
+        let staleLine = #"{"type":"assistant","timestamp":"2026-06-28T17:00:00Z","cwd":"/p1","message":{"model":"m","usage":{"output_tokens":5}}}"#
+        let freshLine = #"{"type":"assistant","timestamp":"2026-06-28T16:00:00Z","cwd":"/p1","message":{"model":"m","usage":{"output_tokens":5}}}"#
+        let disco = FakeDiscoverer(
+            refs: [ref("stale", modified: 1_000), ref("fresh", modified: 2_000)],
+            linesByID: ["stale": [staleLine], "fresh": [freshLine]]
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: ["/p1": 1]),
+                                     desktopDetector: FakeDesktop(running: false))
+        let result = await scanner.scan(now: now)
+        #expect(result.sessions.first { $0.id == "fresh" }?.running == .running)
+        #expect(result.sessions.first { $0.id == "stale" }?.running == .idle)
+    }
+
     @Test func emptyDiscoveryYieldsEmptyResult() async {
         let disco = FakeDiscoverer(refs: [], linesByID: [:])
         let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),

@@ -33,6 +33,7 @@ public actor SessionScanner {
     private let resolver: RunningResolver
     private let snapshotLimit: Int
     private let burnWindow: TimeInterval
+    private let canonicalize: @Sendable (String) -> String
     /// Keyed by file path (session ids could collide across scan roots).
     private var cache: [String: CacheEntry] = [:]
 
@@ -43,7 +44,8 @@ public actor SessionScanner {
         parser: TranscriptParser = TranscriptParser(),
         resolver: RunningResolver = RunningResolver(),
         snapshotLimit: Int = 5,
-        burnWindow: TimeInterval = 300
+        burnWindow: TimeInterval = 300,
+        canonicalize: @escaping @Sendable (String) -> String = SessionScanner.realPath
     ) {
         self.discoverer = discoverer
         self.processProbe = processProbe
@@ -52,6 +54,16 @@ public actor SessionScanner {
         self.resolver = resolver
         self.snapshotLimit = snapshotLimit
         self.burnWindow = burnWindow
+        self.canonicalize = canonicalize
+    }
+
+    /// Kernel-truth canonicalization (matches libproc's resolved cwds, including
+    /// the `/tmp` -> `/private/tmp` prefix that Foundation's symlink resolution
+    /// deliberately strips). Unresolvable paths (deleted dirs) pass through.
+    public static let realPath: @Sendable (String) -> String = { path in
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        guard realpath(path, &buffer) != nil else { return path }
+        return String(cString: buffer)
     }
 
     public func scan(now: Date) -> ScanResult {
@@ -79,25 +91,35 @@ public actor SessionScanner {
         }
         cache = nextCache
 
+        // Session activity signal for liveness = the transcript file's mtime
+        // (moves on user messages too, unlike the last assistant record), taking
+        // the newest of the parent file and its subagent files.
+        var activityAt: [String: Date] = [:]
+        for ref in refs {
+            let sessionID = ref.parentID ?? ref.id
+            activityAt[sessionID] = max(activityAt[sessionID] ?? .distantPast, ref.modifiedAt)
+        }
+
         // Usage is re-snapshot each scan so the burn rate decays with `now` even
         // for files that haven't changed. Subagent usage folds into its parent
         // session (the parent transcript's cwd wins for process matching).
-        // projectPath "" => derive the real cwd from the records, which is what
-        // the process probe matches against.
+        // projectPath "" => derive the real cwd from the records, then
+        // canonicalize it to kernel truth so it matches the probe's cwds.
         var usages: [SessionUsage] = []
         for (ref, accumulator) in parents {
             let merged = subagentsByParent[ref.id].map { accumulator.merged(with: $0) } ?? accumulator
             if let usage = merged.usage(
                 id: ref.id, projectPath: "", origin: ref.origin, title: ref.title, now: now
             ) {
-                usages.append(usage)
+                usages.append(usage.withProjectPath(canonicalize(usage.projectPath)))
             }
         }
 
         let liveCounts = processProbe.liveClaudeCwdCounts()
         let desktopRunning = desktopDetector.isClaudeDesktopRunning()
         let resolved = resolver.resolve(
-            sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning, now: now
+            sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning,
+            activityAt: activityAt, now: now
         )
         let sorted = resolved.sorted { $0.totalTokens > $1.totalTokens }
         // The published snapshot feeds the widget, which shows only active sessions.

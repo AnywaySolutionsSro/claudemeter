@@ -8,12 +8,21 @@ public struct RunningResolver: Sendable {
         self.desktopRecency = desktopRecency
     }
 
+    /// `activityAt` maps session id -> transcript file mtime. The file mtime is a
+    /// stronger activity signal than the last assistant record (it also moves on
+    /// user messages and attachments); sessions without an entry fall back to
+    /// `lastActivity`.
     public func resolve(
         sessions: [SessionUsage],
         liveCwdCounts: [String: Int],
         desktopAppRunning: Bool,
+        activityAt: [String: Date] = [:],
         now: Date
     ) -> [SessionUsage] {
+        func activity(_ session: SessionUsage) -> Date {
+            activityAt[session.id] ?? session.lastActivity
+        }
+
         // CLI: per project path, the K newest sessions are running (K = live process count).
         let cli = sessions.filter { $0.origin == .cli }
         var runningCLIIDs: Set<String> = []
@@ -21,7 +30,7 @@ public struct RunningResolver: Sendable {
         for (path, group) in groups {
             let k = liveCwdCounts[path] ?? 0
             guard k > 0 else { continue }
-            let newest = group.sorted { $0.lastActivity > $1.lastActivity }.prefix(k)
+            let newest = group.sorted { activity($0) > activity($1) }.prefix(k)
             runningCLIIDs.formUnion(newest.map(\.id))
         }
 
@@ -31,7 +40,7 @@ public struct RunningResolver: Sendable {
             case .cli:
                 return session.withRunning(runningCLIIDs.contains(session.id) ? .running : .idle)
             case .desktop:
-                let live = desktopAppRunning && session.lastActivity >= staleCutoff
+                let live = desktopAppRunning && activity(session) >= staleCutoff
                 return session.withRunning(live ? .running : .idle)
             }
         }
