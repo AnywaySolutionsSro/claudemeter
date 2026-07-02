@@ -26,7 +26,7 @@ import Testing
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
 
-    @Test func cliDiscoversTopLevelTranscriptsAndIgnoresSubagents() throws {
+    @Test func cliDiscoversTopLevelTranscriptsAndSubagentsWithParentID() throws {
         defer { cleanup() }
         let cliRoot = root.appendingPathComponent("cli", isDirectory: true)
         let desktopRoot = root.appendingPathComponent("missing-desktop", isDirectory: true)
@@ -35,8 +35,9 @@ import Testing
         let projB = cliRoot.appendingPathComponent("proj-b", isDirectory: true)
         try write("{}", to: projA.appendingPathComponent("sess-1.jsonl"))
         try write("{}", to: projB.appendingPathComponent("sess-2.jsonl"))
-        // Should be ignored: lives under a /subagents/ component.
-        try write("{}", to: projA.appendingPathComponent("subagents/agent-x.jsonl"))
+        // Subagent transcript: discovered, attributed to its parent session
+        // (the directory above /subagents/).
+        try write("{}", to: projA.appendingPathComponent("sess-1/subagents/agent-x.jsonl"))
         // Should be ignored: not a .jsonl file.
         try write("not json", to: projA.appendingPathComponent("notes.txt"))
 
@@ -44,8 +45,12 @@ import Testing
         let refs = source.discover()
 
         #expect(refs.allSatisfy { $0.origin == .cli })
-        #expect(Set(refs.map(\.id)) == ["sess-1", "sess-2"])
-        #expect(!refs.map(\.id).contains("agent-x"))
+        #expect(Set(refs.map(\.id)) == ["sess-1", "sess-2", "agent-x"])
+
+        let parents = refs.filter { $0.parentID == nil }
+        #expect(Set(parents.map(\.id)) == ["sess-1", "sess-2"])
+        let subagent = try #require(refs.first { $0.id == "agent-x" })
+        #expect(subagent.parentID == "sess-1")
     }
 
     @Test func desktopDiscoversNestedClaudeProjectsAndIgnoresOthers() throws {
@@ -63,15 +68,18 @@ import Testing
         try write("{}", to: nested.appendingPathComponent("\(uuid).jsonl"))
         // Should be ignored: not under a /.claude/projects/ path.
         try write("{}", to: desktopRoot.appendingPathComponent("loose/other.jsonl"))
-        // Should be ignored: under /subagents/.
-        let subagent = nested.appendingPathComponent("subagents", isDirectory: true)
+        // Subagent transcript: discovered with its parent session id.
+        let subagent = nested.appendingPathComponent("\(uuid)/subagents", isDirectory: true)
         try write("{}", to: subagent.appendingPathComponent("agent-y.jsonl"))
 
         let source = TranscriptSource(cliRoot: cliRoot, desktopRoot: desktopRoot, fileManager: fm)
         let refs = source.discover()
 
-        #expect(refs.count == 1)
-        let ref = try #require(refs.first)
+        #expect(refs.count == 2)
+        let sub = try #require(refs.first { $0.id == "agent-y" })
+        #expect(sub.parentID == uuid)
+        #expect(sub.origin == .desktop)
+        let ref = try #require(refs.first { $0.id == uuid })
         #expect(ref.origin == .desktop)
         #expect(ref.id == uuid)
     }

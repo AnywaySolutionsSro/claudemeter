@@ -15,13 +15,18 @@ public struct TranscriptRef: Sendable, Equatable, Identifiable {
     public let title: String?
     /// File content modification date.
     public let modifiedAt: Date
+    /// For a subagent transcript (`…/<sessionId>/subagents/agent-*.jsonl`), the
+    /// parent session id its usage belongs to; `nil` for top-level transcripts.
+    public let parentID: String?
 
-    public init(id: String, url: URL, origin: SessionOrigin, title: String?, modifiedAt: Date) {
+    public init(id: String, url: URL, origin: SessionOrigin, title: String?, modifiedAt: Date,
+                parentID: String? = nil) {
         self.id = id
         self.url = url
         self.origin = origin
         self.title = title
         self.modifiedAt = modifiedAt
+        self.parentID = parentID
     }
 }
 
@@ -140,7 +145,8 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     // MARK: - CLI
 
     /// For each immediate subdirectory of `cliRoot`, collect `*.jsonl` files
-    /// directly inside it, skipping anything under a `/subagents/` component.
+    /// directly inside it, plus subagent transcripts one level deeper at
+    /// `<sessionDir>/subagents/*.jsonl` (attributed to that session).
     private func discoverCLI() -> [TranscriptRef] {
         guard let projectDirs = try? fileManager.contentsOfDirectory(
             at: cliRoot,
@@ -154,15 +160,36 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
             guard isDirectory(projectDir) else { return [] }
             guard let entries = try? fileManager.contentsOfDirectory(
                 at: projectDir,
-                includingPropertiesForKeys: [.contentModificationDateKey],
+                includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ) else {
                 return []
             }
-            return entries.compactMap { url in
-                guard isTranscriptFile(url), !containsSubagents(url) else { return nil }
-                return makeRef(url: url, origin: .cli)
+            var refs: [TranscriptRef] = []
+            for url in entries {
+                if isTranscriptFile(url) {
+                    refs.append(makeRef(url: url, origin: .cli))
+                } else if isDirectory(url) {
+                    refs.append(contentsOf: subagentRefs(inSessionDir: url, origin: .cli))
+                }
             }
+            return refs
+        }
+    }
+
+    /// `<sessionDir>/subagents/*.jsonl`, attributed to the session dir's name.
+    private func subagentRefs(inSessionDir sessionDir: URL, origin: SessionOrigin) -> [TranscriptRef] {
+        let subagentsDir = sessionDir.appendingPathComponent("subagents", isDirectory: true)
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: subagentsDir,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        return files.compactMap { url in
+            guard isTranscriptFile(url) else { return nil }
+            return makeRef(url: url, origin: origin, parentID: sessionDir.lastPathComponent)
         }
     }
 
@@ -184,13 +211,18 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         var refs: [TranscriptRef] = []
         for case let url as URL in enumerator {
             guard isTranscriptFile(url) else { continue }
-            let path = url.path
-            guard path.contains("/.claude/projects/"), !path.contains("/subagents/") else {
-                continue
-            }
-            refs.append(makeRef(url: url, origin: .desktop))
+            guard url.path.contains("/.claude/projects/") else { continue }
+            refs.append(makeRef(url: url, origin: .desktop, parentID: subagentParentID(of: url)))
         }
         return refs
+    }
+
+    /// For `…/<sessionId>/subagents/agent-x.jsonl`, the `<sessionId>` component;
+    /// nil when the path has no `subagents` component.
+    private func subagentParentID(of url: URL) -> String? {
+        let components = url.pathComponents
+        guard let index = components.lastIndex(of: "subagents"), index > 0 else { return nil }
+        return components[index - 1]
     }
 
     // MARK: - Helpers
@@ -203,14 +235,11 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         url.pathExtension == "jsonl"
     }
 
-    private func containsSubagents(_ url: URL) -> Bool {
-        url.pathComponents.contains("subagents")
-    }
-
-    private func makeRef(url: URL, origin: SessionOrigin) -> TranscriptRef {
+    private func makeRef(url: URL, origin: SessionOrigin, parentID: String? = nil) -> TranscriptRef {
         let id = url.deletingPathExtension().lastPathComponent
         let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? Date(timeIntervalSince1970: 0)
-        return TranscriptRef(id: id, url: url, origin: origin, title: nil, modifiedAt: modifiedAt)
+        return TranscriptRef(id: id, url: url, origin: origin, title: nil, modifiedAt: modifiedAt,
+                             parentID: parentID)
     }
 }

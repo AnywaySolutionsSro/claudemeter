@@ -57,7 +57,8 @@ public actor SessionScanner {
     public func scan(now: Date) -> ScanResult {
         let refs = discoverer.discover()
         var nextCache: [String: CacheEntry] = [:]
-        var usages: [SessionUsage] = []
+        var parents: [(ref: TranscriptRef, accumulator: SessionAccumulator)] = []
+        var subagentsByParent: [String: SessionAccumulator] = [:]
 
         for ref in refs {
             let key = ref.url.path
@@ -69,17 +70,29 @@ public actor SessionScanner {
             }
             guard let entry else { continue }
             nextCache[key] = entry
-            // Usage is re-snapshot each scan so the burn rate decays with `now`
-            // even for files that haven't changed.
-            // projectPath "" => derive the real cwd from the records, which is
-            // what the process probe matches against.
-            if let usage = entry.accumulator.usage(
+            if let parentID = ref.parentID {
+                let merged = subagentsByParent[parentID].map { $0.merged(with: entry.accumulator) }
+                subagentsByParent[parentID] = merged ?? entry.accumulator
+            } else {
+                parents.append((ref, entry.accumulator))
+            }
+        }
+        cache = nextCache
+
+        // Usage is re-snapshot each scan so the burn rate decays with `now` even
+        // for files that haven't changed. Subagent usage folds into its parent
+        // session (the parent transcript's cwd wins for process matching).
+        // projectPath "" => derive the real cwd from the records, which is what
+        // the process probe matches against.
+        var usages: [SessionUsage] = []
+        for (ref, accumulator) in parents {
+            let merged = subagentsByParent[ref.id].map { accumulator.merged(with: $0) } ?? accumulator
+            if let usage = merged.usage(
                 id: ref.id, projectPath: "", origin: ref.origin, title: ref.title, now: now
             ) {
                 usages.append(usage)
             }
         }
-        cache = nextCache
 
         let liveCounts = processProbe.liveClaudeCwdCounts()
         let desktopRunning = desktopDetector.isClaudeDesktopRunning()

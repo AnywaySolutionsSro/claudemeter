@@ -50,9 +50,11 @@ import Testing
         }
     }
 
-    private func ref(_ id: String, origin: SessionOrigin = .cli, modified: TimeInterval = 1_000) -> TranscriptRef {
+    private func ref(_ id: String, origin: SessionOrigin = .cli, modified: TimeInterval = 1_000,
+                     parentID: String? = nil) -> TranscriptRef {
         TranscriptRef(id: id, url: URL(fileURLWithPath: "/tmp/\(id).jsonl"),
-                      origin: origin, title: nil, modifiedAt: Date(timeIntervalSince1970: modified))
+                      origin: origin, title: nil, modifiedAt: Date(timeIntervalSince1970: modified),
+                      parentID: parentID)
     }
 
     private func line(cwd: String, output: Int) -> String {
@@ -132,6 +134,35 @@ import Testing
 
         #expect(result.sessions.first?.totalTokens == 7)
         #expect(disco.chunkCalls["s1"] == [0, 2, 0])
+    }
+
+    @Test func subagentUsageFoldsIntoParentSession() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("s1"), ref("agent-1", parentID: "s1")],
+            linesByID: [
+                "s1": [line(cwd: "/p1", output: 100)],
+                "agent-1": [line(cwd: "/p1-worktree", output: 40)],
+            ]
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
+                                     desktopDetector: FakeDesktop(running: false))
+        let result = await scanner.scan(now: now)
+        // One session: the subagent's tokens belong to its parent.
+        #expect(result.sessions.map(\.id) == ["s1"])
+        #expect(result.sessions.first?.totalTokens == 140)
+        // The parent transcript's cwd wins for process matching.
+        #expect(result.sessions.first?.projectPath == "/p1")
+    }
+
+    @Test func subagentWithoutParentTranscriptIsIgnored() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("agent-orphan", parentID: "gone")],
+            linesByID: ["agent-orphan": [line(cwd: "/p1", output: 40)]]
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
+                                     desktopDetector: FakeDesktop(running: false))
+        let result = await scanner.scan(now: now)
+        #expect(result.sessions.isEmpty)
     }
 
     @Test func emptyDiscoveryYieldsEmptyResult() async {
