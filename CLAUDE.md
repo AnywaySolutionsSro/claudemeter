@@ -28,13 +28,20 @@ Data flow: `AccountStore` (token in own Keychain item) → `UsageClient` (`GET /
 
 A second subsystem reads local Claude Code transcripts and shows per-session token usage:
 
-- **Core** (`ClaudeMeterCore`, pure/TDD): `TranscriptParser` (lenient JSONL → usage records),
-  `SessionAggregator` (fold → `SessionUsage`; headline total = input+output+cacheCreation,
-  cache-reads tracked separately; **deduped by `message.id`** — Claude Code writes one JSONL
-  entry per content block, each repeating the same id and identical usage, so counting every
-  entry inflates totals 2–4x), `RunningResolver` (which sessions are live), `SessionScanner`
-  (actor orchestrating discover→parse→resolve→snapshot), `TranscriptSource` (scan roots),
-  `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`, `SessionSnapshot`.
+- **Core** (`ClaudeMeterCore`, pure/TDD, **Swift 6 strict mode**): `TranscriptParser` (lenient
+  JSONL → usage records; `<synthetic>` placeholder entries skipped), `SessionAccumulator`
+  (incrementally foldable aggregate; headline total = input+output+cacheCreation, cache-reads
+  tracked separately; **deduped by `message.id`** — Claude Code writes one JSONL entry per
+  content block, each repeating the same id and identical usage, so counting every entry
+  inflates totals 2–4x), `RunningResolver` (which sessions are live — ranks by transcript file
+  **mtime**, not the last assistant record), `SessionScanner` (actor orchestrating
+  discover→parse→resolve→snapshot; **incremental**: caches (mtime, byteOffset, accumulator) per
+  file and folds only appended lines, restarting on truncation; canonicalizes session cwds with
+  `realpath(3)` to match libproc's kernel-resolved cwds; probes the process table once per scan
+  and computes the armable set itself), `TranscriptSource` (scan roots; **subagent transcripts
+  under `<sessionId>/subagents/` are discovered with a `parentID`** and their usage folds into
+  the parent session), `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`,
+  `SessionSnapshot`.
 - **App**: `SessionMonitor` (@MainActor, scans every 10s, publishes), Sessions window
   (`SessionsView` — all sessions + "Active only" toggle), Settings window (`SettingsView`),
   `DesktopAppProbe`.
