@@ -78,10 +78,20 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     }
 
     public func lines(of ref: TranscriptRef) -> [String] {
-        guard let text = try? String(contentsOf: ref.url, encoding: .utf8) else {
-            return []
-        }
-        var lines = text.components(separatedBy: .newlines)
+        guard let data = try? Data(contentsOf: ref.url) else { return [] }
+        return Self.splitLines(data)
+    }
+
+    /// Split JSONL bytes on `\n` (tolerating `\r\n`), decoding each line as UTF-8.
+    /// Byte splitting avoids the CharacterSet scan and the 2-3x transient String
+    /// peak of `components(separatedBy: .newlines)` on multi-MB transcripts.
+    static func splitLines(_ data: Data) -> [String] {
+        var lines = data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false)
+            .map { slice -> String in
+                var slice = slice
+                if slice.last == UInt8(ascii: "\r") { slice = slice.dropLast() }
+                return String(decoding: slice, as: UTF8.self)
+            }
         // Drop a single trailing empty line (the common case of a file ending
         // in a newline), but keep genuinely empty intermediate lines.
         if lines.last == "" {

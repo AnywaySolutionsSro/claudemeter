@@ -94,4 +94,16 @@ import Testing
         let ref = try #require(source.discover().first)
         #expect(source.lines(of: ref) == ["line1", "line2", "line3"])
     }
+
+    @Test func linesKeepsEmptyIntermediateLines() throws {
+        defer { cleanup() }
+        let cliRoot = root.appendingPathComponent("cli3", isDirectory: true)
+        let desktopRoot = root.appendingPathComponent("missing", isDirectory: true)
+        let file = cliRoot.appendingPathComponent("proj").appendingPathComponent("s.jsonl")
+        try write("a\n\nb\n", to: file)
+
+        let source = TranscriptSource(cliRoot: cliRoot, desktopRoot: desktopRoot, fileManager: fm)
+        let ref = try #require(source.discover().first)
+        #expect(source.lines(of: ref) == ["a", "", "b"])
+    }
 }

@@ -46,6 +46,19 @@ import Testing
         #expect(r.tokens == TokenBreakdown(input: 0, output: 5, cacheCreation: 0, cacheRead: 0))
     }
 
+    // `<synthetic>` entries are error placeholders (e.g. the usage-limit cutoff),
+    // not real API usage: never a record, never "malformed" — they'd otherwise
+    // pollute the models list, lastActivity, and the malformed-line telemetry.
+    @Test func syntheticEntriesAreSkippedNotMalformed() {
+        let noUsage = #"{"type":"assistant","isApiErrorMessage":true,"message":{"model":"<synthetic>","content":[{"type":"text","text":"You've hit your limit"}]}}"#
+        let zeroUsage = #"{"type":"assistant","message":{"id":"msg_s","model":"<synthetic>","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}"#
+        #expect(parser.parseLine(noUsage) == nil)
+        #expect(parser.parseLine(zeroUsage) == nil)
+        let parsed = parser.parse([noUsage, zeroUsage])
+        #expect(parsed.records.isEmpty)
+        #expect(parsed.malformedLineCount == 0)
+    }
+
     @Test func parseCollectsRecordsAndCountsMalformed() {
         let lines = [
             assistantLine,

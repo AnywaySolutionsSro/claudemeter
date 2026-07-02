@@ -37,14 +37,47 @@ public struct ParsedTranscript: Equatable, Sendable {
 public struct TranscriptParser: Sendable {
     public init() {}
 
+    /// What one assistant line turned out to be, from a single JSON parse.
+    private enum LineOutcome {
+        case record(AssistantUsageRecord)
+        /// Assistant line that should have carried usage but didn't decode.
+        case malformed
+        /// Deliberately not usage (non-assistant, blank, or a `<synthetic>` placeholder).
+        case skipped
+    }
+
     public func parseLine(_ line: String) -> AssistantUsageRecord? {
+        if case .record(let record) = classify(line) { return record }
+        return nil
+    }
+
+    public func parse(_ lines: [String]) -> ParsedTranscript {
+        var records: [AssistantUsageRecord] = []
+        var malformed = 0
+        for line in lines {
+            switch classify(line) {
+            case .record(let record): records.append(record)
+            case .malformed: malformed += 1
+            case .skipped: break
+            }
+        }
+        return ParsedTranscript(records: records, malformedLineCount: malformed)
+    }
+
+    private func classify(_ line: String) -> LineOutcome {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              root["type"] as? String == "assistant",
-              let message = root["message"] as? [String: Any],
-              let usage = message["usage"] as? [String: Any]
-        else { return nil }
+              root["type"] as? String == "assistant"
+        else { return .skipped }
+
+        let message = root["message"] as? [String: Any]
+        // `<synthetic>` entries are error placeholders (usage-limit cutoffs etc.),
+        // not real API usage: never a record, never malformed.
+        if message?["model"] as? String == "<synthetic>" { return .skipped }
+        guard let message, let usage = message["usage"] as? [String: Any] else {
+            return .malformed
+        }
 
         func int(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
 
@@ -56,31 +89,12 @@ public struct TranscriptParser: Sendable {
         )
 
         let timestamp = (root["timestamp"] as? String).flatMap(ISODate.parse) ?? Date(timeIntervalSince1970: 0)
-        return AssistantUsageRecord(
+        return .record(AssistantUsageRecord(
             timestamp: timestamp,
             model: message["model"] as? String,
             cwd: root["cwd"] as? String,
             tokens: tokens,
             messageID: message["id"] as? String
-        )
-    }
-
-    public func parse(_ lines: [String]) -> ParsedTranscript {
-        var records: [AssistantUsageRecord] = []
-        var malformed = 0
-        for line in lines {
-            if let record = parseLine(line) {
-                records.append(record)
-                continue
-            }
-            // Count lines that were clearly meant to be assistant usage but failed.
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let data = trimmed.data(using: .utf8),
-               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               root["type"] as? String == "assistant" {
-                malformed += 1
-            }
-        }
-        return ParsedTranscript(records: records, malformedLineCount: malformed)
+        ))
     }
 }
