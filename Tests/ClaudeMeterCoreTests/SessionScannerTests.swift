@@ -8,7 +8,9 @@ import Testing
 
     private struct FakeProbe: ProcessProbing {
         let counts: [String: Int]
+        var procs: [LiveProcess]?
         func liveClaudeProcesses() -> [LiveProcess] {
+            if let procs { return procs }
             var pid: Int32 = 100
             return counts.flatMap { (cwd, n) -> [LiveProcess] in
                 (0..<n).map { _ in
@@ -196,6 +198,44 @@ import Testing
         let result = await scanner.scan(now: now)
         #expect(result.sessions.first { $0.id == "fresh" }?.running == .running)
         #expect(result.sessions.first { $0.id == "stale" }?.running == .idle)
+    }
+
+    // The scan result carries the probed processes and the armable set so the
+    // app layer never probes the pid table (or walks parent chains) on the main
+    // actor a second time.
+    @Test func resultCarriesProcessesAndArmableSessions() async {
+        let iTermProc = LiveProcess(pid: 10, cwd: "/p1", tty: "/dev/ttys001", ppid: 1)
+        let disco = FakeDiscoverer(
+            refs: [ref("s1")],
+            linesByID: ["s1": [line(cwd: "/p1", output: 10)]]
+        )
+        let scanner = SessionScanner(
+            discoverer: disco,
+            processProbe: FakeProbe(counts: [:], procs: [iTermProc]),
+            desktopDetector: FakeDesktop(running: false),
+            executablePathForPID: { _ in "/Applications/iTerm.app/Contents/MacOS/iTerm2" },
+            parentPIDForPID: { _ in 1 })
+        let result = await scanner.scan(now: now)
+        #expect(result.processes == [iTermProc])
+        #expect(result.sessions.first?.running == .running)
+        #expect(result.armableSessionIDs == ["s1"])
+    }
+
+    @Test func nonITermSessionsAreNotArmable() async {
+        let terminalProc = LiveProcess(pid: 10, cwd: "/p1", tty: "/dev/ttys001", ppid: 1)
+        let disco = FakeDiscoverer(
+            refs: [ref("s1")],
+            linesByID: ["s1": [line(cwd: "/p1", output: 10)]]
+        )
+        let scanner = SessionScanner(
+            discoverer: disco,
+            processProbe: FakeProbe(counts: [:], procs: [terminalProc]),
+            desktopDetector: FakeDesktop(running: false),
+            executablePathForPID: { _ in "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+            parentPIDForPID: { _ in 1 })
+        let result = await scanner.scan(now: now)
+        #expect(result.sessions.first?.running == .running)
+        #expect(result.armableSessionIDs.isEmpty)
     }
 
     @Test func emptyDiscoveryYieldsEmptyResult() async {

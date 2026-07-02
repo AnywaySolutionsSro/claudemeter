@@ -7,6 +7,7 @@ import ClaudeMeterCore
 struct UsageContextInputs {
     let sessions: [SessionUsage]
     let processes: [LiveProcess]
+    let armableIDs: [String]
 }
 
 /// Observable view-model that periodically scans local Claude Code transcripts
@@ -32,8 +33,6 @@ final class SessionMonitor: ObservableObject {
     private let scanner: SessionScanner
     private let interval: TimeInterval
     private let snapshotStore = SnapshotStore()
-    private let directProbe = LibprocProcessProbe()
-    private let terminalDetectorForArmable = TerminalDetector()
     private var timer: Timer?
     private var isScanning = false
 
@@ -108,35 +107,22 @@ final class SessionMonitor: ObservableObject {
         timer = nil
     }
 
-    /// Session IDs that may be armed: running, mapped to exactly one live process,
-    /// whose owning terminal is iTerm2.
-    func armableSessionIDs(sessions: [SessionUsage], processes: [LiveProcess]) -> [String] {
-        let index = SessionProcessIndex(processes: processes)
-        return sessions.compactMap { session in
-            guard session.running == .running, let proc = index.process(forCwd: session.projectPath)
-            else { return nil }
-            let kind = terminalDetectorForArmable.detect(
-                startPID: proc.pid,
-                executablePathForPID: { LibprocProcessProbe.executablePathForPID($0) },
-                parentPIDForPID: { LibprocProcessProbe.parentPIDForPID($0) })
-            return kind.isDrivable ? session.id : nil
-        }
-    }
-
     /// Run one scan now and publish the results. Skips if a scan is in flight.
+    /// Processes and the armable set come out of the scan itself (probed once,
+    /// off the main actor).
     func refresh() async {
         guard !isScanning else { return }
         isScanning = true
         defer { isScanning = false }
 
         let result = await scanner.scan(now: Date())
-        let processes = directProbe.liveClaudeProcesses()
+        let processes = result.processes
         let armedIDs = armedIDsProvider?() ?? []
 
         sessions = result.sessions
         latestProcesses = processes
         let armedSet = Set(armedIDs)
-        let armable = armableSessionIDs(sessions: result.sessions, processes: processes)
+        let armable = result.armableSessionIDs
         let widgetSessions = result.sessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
             from: widgetSessions, now: result.snapshot.generatedAt,
@@ -152,7 +138,8 @@ final class SessionMonitor: ObservableObject {
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)
 
-        onScan?(UsageContextInputs(sessions: result.sessions, processes: processes))
+        onScan?(UsageContextInputs(sessions: result.sessions, processes: processes,
+                                   armableIDs: armable))
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.

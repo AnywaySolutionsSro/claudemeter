@@ -75,8 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
             // are re-validated against the current armable set.
-            let armable = Set(self.sessionMonitor.armableSessionIDs(
-                sessions: inputs.sessions, processes: inputs.processes))
+            let armable = Set(inputs.armableIDs)
             if self.armedSessions.drainWidgetCommands(isArmable: { armable.contains($0) }) {
                 Task { await self.sessionMonitor.refresh() }
             }
@@ -103,9 +102,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .store(in: &cancellables)
         // Republish the widget snapshot when account usage refreshes, so the gauges
         // track the latest Session/Weekly percentages between session scans.
-        store.objectWillChange
+        // $snapshot (deduplicated), NOT objectWillChange: one poll mutates many
+        // @Published properties and would schedule that many redundant rescans.
+        store.$snapshot
+            .removeDuplicates()
+            .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] in Task { await self?.sessionMonitor.refresh() } }
+            .sink { [weak self] _ in Task { await self?.sessionMonitor.refresh() } }
             .store(in: &cancellables)
 
         updateLabel()

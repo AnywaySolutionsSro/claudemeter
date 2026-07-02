@@ -1,14 +1,22 @@
 import Foundation
 
-/// The product of one scan: every session (sorted by total tokens, descending)
-/// plus the compact snapshot for the widget.
+/// The product of one scan: every session (sorted by total tokens, descending),
+/// the compact snapshot for the widget, the live processes found by the probe,
+/// and which sessions may be armed (running + unique process + drivable
+/// terminal) — all computed off the main actor so the app layer never probes
+/// the pid table or walks parent chains again.
 public struct ScanResult: Sendable, Equatable {
     public let sessions: [SessionUsage]
     public let snapshot: SessionSnapshot
+    public let processes: [LiveProcess]
+    public let armableSessionIDs: [String]
 
-    public init(sessions: [SessionUsage], snapshot: SessionSnapshot) {
+    public init(sessions: [SessionUsage], snapshot: SessionSnapshot,
+                processes: [LiveProcess] = [], armableSessionIDs: [String] = []) {
         self.sessions = sessions
         self.snapshot = snapshot
+        self.processes = processes
+        self.armableSessionIDs = armableSessionIDs
     }
 }
 
@@ -34,6 +42,9 @@ public actor SessionScanner {
     private let snapshotLimit: Int
     private let burnWindow: TimeInterval
     private let canonicalize: @Sendable (String) -> String
+    private let executablePathForPID: @Sendable (Int32) -> String?
+    private let parentPIDForPID: @Sendable (Int32) -> Int32
+    private let terminalDetector = TerminalDetector()
     /// Keyed by file path (session ids could collide across scan roots).
     private var cache: [String: CacheEntry] = [:]
 
@@ -45,7 +56,9 @@ public actor SessionScanner {
         resolver: RunningResolver = RunningResolver(),
         snapshotLimit: Int = 5,
         burnWindow: TimeInterval = 300,
-        canonicalize: @escaping @Sendable (String) -> String = SessionScanner.realPath
+        canonicalize: @escaping @Sendable (String) -> String = SessionScanner.realPath,
+        executablePathForPID: @escaping @Sendable (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) },
+        parentPIDForPID: @escaping @Sendable (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
     ) {
         self.discoverer = discoverer
         self.processProbe = processProbe
@@ -55,6 +68,8 @@ public actor SessionScanner {
         self.snapshotLimit = snapshotLimit
         self.burnWindow = burnWindow
         self.canonicalize = canonicalize
+        self.executablePathForPID = executablePathForPID
+        self.parentPIDForPID = parentPIDForPID
     }
 
     /// Kernel-truth canonicalization (matches libproc's resolved cwds, including
@@ -115,7 +130,8 @@ public actor SessionScanner {
             }
         }
 
-        let liveCounts = processProbe.liveClaudeCwdCounts()
+        let processes = processProbe.liveClaudeProcesses()
+        let liveCounts = LibprocProcessProbe.tally(processes: processes)
         let desktopRunning = desktopDetector.isClaudeDesktopRunning()
         let resolved = resolver.resolve(
             sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning,
@@ -124,7 +140,24 @@ public actor SessionScanner {
         let sorted = resolved.sorted { $0.totalTokens > $1.totalTokens }
         // The published snapshot feeds the widget, which shows only active sessions.
         let snapshot = SessionSnapshot.make(from: resolved, now: now, limit: snapshotLimit, runningOnly: true)
-        return ScanResult(sessions: sorted, snapshot: snapshot)
+        return ScanResult(sessions: sorted, snapshot: snapshot,
+                          processes: processes,
+                          armableSessionIDs: armableIDs(sessions: resolved, processes: processes))
+    }
+
+    /// Sessions that may be armed for auto-resume: running, mapped to exactly one
+    /// live process by cwd, whose owning terminal is drivable (iTerm2).
+    private func armableIDs(sessions: [SessionUsage], processes: [LiveProcess]) -> [String] {
+        let byCwd = Dictionary(grouping: processes, by: { $0.cwd })
+        return sessions.compactMap { session in
+            guard session.running == .running,
+                  let matches = byCwd[session.projectPath], matches.count == 1
+            else { return nil }
+            let kind = terminalDetector.detect(startPID: matches[0].pid,
+                                               executablePathForPID: executablePathForPID,
+                                               parentPIDForPID: parentPIDForPID)
+            return kind.isDrivable ? session.id : nil
+        }
     }
 
     /// Fold a changed file's new lines into its accumulator, resuming from the
