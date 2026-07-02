@@ -10,8 +10,11 @@ let package = Package(
     ],
     targets: [
         // Pure, dependency-free, fully unit-testable core: models + parsing + formatting.
+        // Swift 6 mode: the core is Sendable-clean, so strict concurrency is enforced
+        // by the compiler rather than by convention.
         .target(
-            name: "ClaudeMeterCore"
+            name: "ClaudeMeterCore",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // The menu-bar app shell: AppKit status item + SwiftUI popover + networking + Keychain.
         .executableTarget(
@@ -20,10 +23,12 @@ let package = Package(
         ),
         .testTarget(
             name: "ClaudeMeterCoreTests",
-            dependencies: ["ClaudeMeterCore"]
+            dependencies: ["ClaudeMeterCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ],
-    // Target the latest macOS, but keep the Swift 5 language mode: the existing app
-    // code isn't audited for Swift 6 strict concurrency yet (a separate cleanup).
+    // Target the latest macOS. The app shell stays in Swift 5 language mode (not
+    // yet audited for strict concurrency — a separate cleanup); the core target
+    // overrides this to Swift 6 above.
     swiftLanguageModes: [.v5]
 )

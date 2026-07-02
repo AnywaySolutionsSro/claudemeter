@@ -34,6 +34,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jakubzak.claudemeter.core
+        # Match Package.swift: the core is Swift-6-strict; app/widget stay on 5.0.
+        SWIFT_VERSION: "6.0"
 
   ClaudeMeter:
     type: application
