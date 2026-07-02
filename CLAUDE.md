@@ -30,7 +30,9 @@ A second subsystem reads local Claude Code transcripts and shows per-session tok
 
 - **Core** (`ClaudeMeterCore`, pure/TDD): `TranscriptParser` (lenient JSONL → usage records),
   `SessionAggregator` (fold → `SessionUsage`; headline total = input+output+cacheCreation,
-  cache-reads tracked separately), `RunningResolver` (which sessions are live), `SessionScanner`
+  cache-reads tracked separately; **deduped by `message.id`** — Claude Code writes one JSONL
+  entry per content block, each repeating the same id and identical usage, so counting every
+  entry inflates totals 2–4x), `RunningResolver` (which sessions are live), `SessionScanner`
   (actor orchestrating discover→parse→resolve→snapshot), `TranscriptSource` (scan roots),
   `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`, `SessionSnapshot`.
 - **App**: `SessionMonitor` (@MainActor, scans every 10s, publishes), Sessions window

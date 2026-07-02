@@ -6,7 +6,7 @@ import Testing
     private let parser = TranscriptParser()
 
     private let assistantLine = #"""
-    {"type":"assistant","timestamp":"2026-06-28T17:49:06.352Z","cwd":"/Users/x/code","message":{"model":"claude-opus-4-8","usage":{"input_tokens":28046,"cache_creation_input_tokens":19109,"cache_read_input_tokens":15840,"output_tokens":414}}}
+    {"type":"assistant","timestamp":"2026-06-28T17:49:06.352Z","cwd":"/Users/x/code","message":{"id":"msg_01ABC","model":"claude-opus-4-8","usage":{"input_tokens":28046,"cache_creation_input_tokens":19109,"cache_read_input_tokens":15840,"output_tokens":414}}}
     """#
 
     @Test func parsesAssistantUsage() throws {
@@ -15,6 +15,13 @@ import Testing
         #expect(r.cwd == "/Users/x/code")
         #expect(r.tokens == TokenBreakdown(input: 28046, output: 414, cacheCreation: 19109, cacheRead: 15840))
         #expect(r.timestamp == ISODate.parse("2026-06-28T17:49:06.352Z"))
+        #expect(r.messageID == "msg_01ABC")
+    }
+
+    @Test func missingMessageIDIsNil() throws {
+        let line = #"{"type":"assistant","message":{"usage":{"output_tokens":5}}}"#
+        let r = try #require(parser.parseLine(line))
+        #expect(r.messageID == nil)
     }
 
     @Test func ignoresNonAssistantLines() {

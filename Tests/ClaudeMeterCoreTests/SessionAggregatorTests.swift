@@ -5,8 +5,10 @@ import Testing
 @Suite struct SessionAggregatorTests {
     private let now = Date(timeIntervalSince1970: 10_000)
 
-    private func rec(_ ts: TimeInterval, _ model: String?, _ t: TokenBreakdown) -> AssistantUsageRecord {
-        AssistantUsageRecord(timestamp: Date(timeIntervalSince1970: ts), model: model, cwd: "/c/proj", tokens: t)
+    private func rec(_ ts: TimeInterval, _ model: String?, _ t: TokenBreakdown,
+                     messageID: String? = nil) -> AssistantUsageRecord {
+        AssistantUsageRecord(timestamp: Date(timeIntervalSince1970: ts), model: model, cwd: "/c/proj",
+                             tokens: t, messageID: messageID)
     }
 
     @Test func emptyRecordsProduceNil() {
@@ -37,6 +39,37 @@ import Testing
         let parsed = ParsedTranscript(records: [rec(9_000, "m", TokenBreakdown(input: 1))], malformedLineCount: 0)
         let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "", origin: .cli, title: nil, now: now))
         #expect(s.projectPath == "/c/proj")
+    }
+
+    // Claude Code writes one JSONL entry per content block of an API message; every
+    // entry repeats the same message.id and the identical usage object. Counting them
+    // all inflates totals 2-4x, so only the first record per message.id may count.
+    @Test func duplicateMessageIDsCountOnce() throws {
+        let agg = SessionAggregator(burnWindow: 300)
+        let usage = TokenBreakdown(input: 10, output: 5, cacheCreation: 20, cacheRead: 100)
+        let parsed = ParsedTranscript(records: [
+            rec(now.timeIntervalSince1970 - 60, "m", usage, messageID: "msg_1"),
+            rec(now.timeIntervalSince1970 - 59, "m", usage, messageID: "msg_1"),
+            rec(now.timeIntervalSince1970 - 58, "m", usage, messageID: "msg_1"),
+            rec(now.timeIntervalSince1970 - 30, "m", usage, messageID: "msg_2"),
+        ], malformedLineCount: 0)
+        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: nil, now: now))
+        #expect(s.tokens == usage + usage)
+        #expect(s.messageCount == 2)
+        // Burn rate over the deduped records only: 2 x 35 tokens over 5 min.
+        #expect(s.burnRate == Double(2 * usage.total) / 5)
+    }
+
+    @Test func recordsWithoutMessageIDAllCount() throws {
+        let agg = SessionAggregator()
+        let usage = TokenBreakdown(input: 1)
+        let parsed = ParsedTranscript(records: [
+            rec(9_000, "m", usage),
+            rec(9_001, "m", usage),
+        ], malformedLineCount: 0)
+        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: nil, now: now))
+        #expect(s.tokens == TokenBreakdown(input: 2))
+        #expect(s.messageCount == 2)
     }
 
     @Test func burnRateCountsOnlyRecordsInTrailingWindow() throws {

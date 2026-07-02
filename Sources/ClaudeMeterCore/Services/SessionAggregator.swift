@@ -16,7 +16,15 @@ public struct SessionAggregator: Sendable {
         title: String?,
         now: Date
     ) -> SessionUsage? {
-        let records = parsed.records
+        // One API message is written as several JSONL entries (one per content
+        // block), each repeating the same message.id and identical usage. Keep only
+        // the first record per id so each message counts once; records without an
+        // id (older transcripts) always count.
+        var seenIDs = Set<String>()
+        let records = parsed.records.filter { record in
+            guard let id = record.messageID else { return true }
+            return seenIDs.insert(id).inserted
+        }
         guard !records.isEmpty else { return nil }
 
         let tokens = records.reduce(TokenBreakdown.zero) { $0 + $1.tokens }

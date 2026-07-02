@@ -6,12 +6,18 @@ public struct AssistantUsageRecord: Equatable, Sendable {
     public let model: String?
     public let cwd: String?
     public let tokens: TokenBreakdown
+    /// The API message id (`message.id`). Claude Code writes one JSONL entry per
+    /// content block, each repeating the same id and identical usage — the
+    /// aggregator uses this to count each API message exactly once.
+    public let messageID: String?
 
-    public init(timestamp: Date, model: String?, cwd: String?, tokens: TokenBreakdown) {
+    public init(timestamp: Date, model: String?, cwd: String?, tokens: TokenBreakdown,
+                messageID: String? = nil) {
         self.timestamp = timestamp
         self.model = model
         self.cwd = cwd
         self.tokens = tokens
+        self.messageID = messageID
     }
 }
 
@@ -54,7 +60,8 @@ public struct TranscriptParser: Sendable {
             timestamp: timestamp,
             model: message["model"] as? String,
             cwd: root["cwd"] as? String,
-            tokens: tokens
+            tokens: tokens,
+            messageID: message["id"] as? String
         )
     }
 
