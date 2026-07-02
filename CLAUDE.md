@@ -42,6 +42,32 @@ Scan roots: `~/.claude/projects` (CLI) **and** `~/Library/Application Support/Cl
 local-agent-mode-sessions/**/.claude/projects` (desktop agent/Cowork). Plain desktop chat is
 server-side and not trackable.
 
+### Auto-Resume feature (type `continue` into armed sessions after a quota refill)
+
+When the 5-hour window refills, each **armed** session that's sitting at a usage-limit cutoff
+gets `continue` typed into its iTerm2 tab. Pipeline:
+
+- **Core** (`AutoResumePlanner`, pure/TDD): given the usage reading + armed set + live processes
+  + transcript tails, returns a `ResumePlan` (targets to fire, skips with reasons, updated window).
+  Detection is `UsageStats.didRefill` (utilization **drops ≥25** on a 0–100 scale — the only
+  reliable reset signal). Eligibility is `CutoffDetector` (`.eligibleCutoff` only — last
+  meaningful transcript entry is a `<synthetic>` `isApiErrorMessage` containing "limit").
+- **App**: `AutoResumeCoordinator` (@MainActor) runs the planner each ~10s scan and performs the
+  side effects — scheduling (staggered), the `ITermDriver` (`NSAppleScript` `write text`, matched
+  by `tty`), the tty-reuse defense (`LibprocProcessProbe`), and notifications.
+
+**Retry window (critical).** A refill is detected on a *single* scan, but the gates (live process,
+eligible tail) may not all hold at that instant — and a reset during sleep is only seen on wake. So
+a refill opens a **5-min retry window** (`resumeWindowSeconds`); every scan re-attempts armed
+sessions that haven't fired, and a *failed* attempt un-marks the session so it retries. Without this
+the feature was a fragile one-shot that silently missed. Don't revert it to fire-once.
+
+**Diagnosing a miss.** Every decision logs at `.notice` (persisted, unlike `.info`):
+`log show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category == "autoresume"'`.
+A successful resume posts a "▶︎ Resumed X" notification (the only way to tell an auto-`continue`
+from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
+summary notifies if armed sessions never became eligible.
+
 Two builds: **`./build.sh`** = SwiftPM menu-bar app (no widget). **`./build-xcode.sh`** =
 XcodeGen project (`project.yml`) building app + widget extension, signed with the dev team.
 Diagnostics: `ClaudeMeter --dump-sessions`, `ClaudeMeter --snapshot-test`.
