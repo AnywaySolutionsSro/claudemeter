@@ -165,8 +165,9 @@ struct ClaudeMeterWidgetEntryView: View {
     var body: some View {
         Group {
             switch family {
-            case .systemLarge: sessionsListView   // active sessions only
-            default: gaugesOnlyView               // systemMedium: gauges only
+            case .systemLarge: sessionsListView        // active sessions only
+            case .systemExtraLarge: sessionsGridView   // two columns of sessions
+            default: gaugesOnlyView                    // systemMedium: gauges only
             }
         }
         .padding(12)
@@ -217,17 +218,18 @@ struct ClaudeMeterWidgetEntryView: View {
         startPoint: .top, endPoint: .bottom
     )
 
-    @ViewBuilder private func sessionBar(_ s: SessionUsage) -> some View {
+    @ViewBuilder private func sessionBar(_ s: SessionUsage, compact: Bool = false) -> some View {
         let isArmed = armedIDs.contains(s.id)
         let canArm = armableIDs.contains(s.id)
         HStack(spacing: 10) {
             // Left column: name + token count + (now shorter) progress bar.
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: compact ? 2 : 3) {
                 HStack(spacing: 5) {
-                    Text(s.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(s.projectName)
+                        .font(.system(size: compact ? 11 : 12, weight: .medium)).lineLimit(1)
                     Spacer(minLength: 4)
                     Text(Formatting.tokenCount(s.totalTokens))
-                        .font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        .font(.system(size: compact ? 11 : 12, weight: .bold)).monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
                 GeometryReader { geo in
@@ -237,10 +239,11 @@ struct ClaudeMeterWidgetEntryView: View {
                             .frame(width: max(8, geo.size.width * CGFloat(s.totalTokens) / CGFloat(maxTokens)))
                     }
                 }
-                .frame(height: 7)
+                .frame(height: compact ? 5 : 7)
             }
             // Right: an on/off toggle. ON (armed) = lit amber track + knob right;
-            // OFF (armable) = muted track + knob left. Same metaphor as the app's switch.
+            // OFF (armable) = muted track + knob left; not armable = the same
+            // toggle dimmed (matches the Sessions window instead of a hole).
             if isArmed {
                 armToggle(DisarmSessionIntent(sessionID: s.id), armed: true)
                     .help("Armed — tap to disarm")
@@ -248,7 +251,8 @@ struct ClaudeMeterWidgetEntryView: View {
                 armToggle(ArmSessionIntent(sessionID: s.id), armed: false)
                     .help("Tap to arm overnight auto-resume")
             } else {
-                Color.clear.frame(width: toggleWidth, height: toggleHeight)
+                togglePill(armed: false)
+                    .opacity(0.28)
             }
         }
     }
@@ -258,26 +262,32 @@ struct ClaudeMeterWidgetEntryView: View {
     /// rendering mode — including the desktop's monochrome tint over windows.
     @ViewBuilder private func armToggle<I: AppIntent>(_ intent: I, armed: Bool) -> some View {
         Button(intent: intent) {
-            ZStack(alignment: armed ? .trailing : .leading) {
-                Capsule()
-                    .fill(Color.black.opacity(0.32))
-                    .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
-                Circle()
-                    .fill(armed ? AnyShapeStyle(armedAccent) : AnyShapeStyle(Color.white))
-                    .frame(width: toggleHeight - 6, height: toggleHeight - 6)
-                    .overlay {
-                        if armed {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
-                    .padding(.horizontal, 3)
-            }
-            .frame(width: toggleWidth, height: toggleHeight)
+            togglePill(armed: armed)
         }
         .buttonStyle(.plain)
+    }
+
+    /// The pill itself (shared by the interactive toggle and its dimmed,
+    /// non-interactive "can't arm" placeholder).
+    @ViewBuilder private func togglePill(armed: Bool) -> some View {
+        ZStack(alignment: armed ? .trailing : .leading) {
+            Capsule()
+                .fill(Color.black.opacity(0.32))
+                .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            Circle()
+                .fill(armed ? AnyShapeStyle(armedAccent) : AnyShapeStyle(Color.white))
+                .frame(width: toggleHeight - 6, height: toggleHeight - 6)
+                .overlay {
+                    if armed {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+                .padding(.horizontal, 3)
+        }
+        .frame(width: toggleWidth, height: toggleHeight)
     }
 
     // MARK: Layouts
@@ -297,7 +307,25 @@ struct ClaudeMeterWidgetEntryView: View {
     }
 
     /// Large widget: just the active-session list (arm/disarm toggles), no gauges.
+    /// Widgets can't scroll, so when more sessions are live than the roomy layout
+    /// fits, rows tighten up to squeeze in ten instead of seven.
     @ViewBuilder private var sessionsListView: some View {
+        let compact = sessions.count > 7
+        VStack(alignment: .leading, spacing: compact ? 6 : 9) {
+            header
+            if sessions.isEmpty {
+                Spacer(minLength: 0)
+                HStack { Spacer(); emptyLabel; Spacer() }
+                Spacer(minLength: 0)
+            } else {
+                ForEach(sessions.prefix(compact ? 10 : 7)) { sessionBar($0, compact: compact) }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// Extra-large widget: two columns, up to 20 sessions.
+    @ViewBuilder private var sessionsGridView: some View {
         VStack(alignment: .leading, spacing: 9) {
             header
             if sessions.isEmpty {
@@ -305,7 +333,12 @@ struct ClaudeMeterWidgetEntryView: View {
                 HStack { Spacer(); emptyLabel; Spacer() }
                 Spacer(minLength: 0)
             } else {
-                ForEach(sessions.prefix(7)) { sessionBar($0) }
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 22), GridItem(.flexible())],
+                    alignment: .leading, spacing: 9
+                ) {
+                    ForEach(sessions.prefix(20)) { sessionBar($0) }
+                }
                 Spacer(minLength: 0)
             }
         }
@@ -391,8 +424,8 @@ struct ClaudeMeterWidget: Widget {
             ClaudeMeterWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Claude Sessions")
-        .description("Medium shows account usage gauges; Large shows live Claude Code sessions.")
-        .supportedFamilies([.systemMedium, .systemLarge])
+        .description("Medium shows account usage gauges; Large and Extra Large show live Claude Code sessions.")
+        .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
     }
 }
 

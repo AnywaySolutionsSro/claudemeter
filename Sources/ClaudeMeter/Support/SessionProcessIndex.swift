@@ -17,6 +17,11 @@ struct SessionProcessIndex {
         return matches[0]
     }
 
+    /// How many live claude processes share this cwd (0 = none, 2+ = ambiguous).
+    func matchCount(forCwd cwd: String) -> Int {
+        byCwd[cwd]?.count ?? 0
+    }
+
     func terminalKind(
         forCwd cwd: String,
         detector: TerminalDetector,

@@ -7,6 +7,9 @@ struct SessionRow: View {
     let session: SessionUsage
     let now: Date
     var terminalKind: TerminalKind = .unknown
+    /// Non-nil when the session can't be armed; shown as the toggle's tooltip.
+    /// Mirrors the widget: a disabled toggle is dimmed, not just non-interactive.
+    var armDisabledReason: String?
     var isArmed: Bool = false
     var onArmChange: (Bool) -> Void = { _ in }
 
@@ -40,17 +43,14 @@ struct SessionRow: View {
                     .monospacedDigit()
             }
 
-            let canArm = terminalKind.isDrivable && session.running == .running
+            let canArm = armDisabledReason == nil
             Toggle("", isOn: Binding(get: { isArmed }, set: { onArmChange($0) }))
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .controlSize(.mini)
                 .disabled(!canArm)
-                .help(canArm
-                      ? "Auto-resume this session when quota refreshes"
-                      : (session.running != .running
-                         ? "Only live sessions can be armed"
-                         : "Supports iTerm2 only for now (\(terminalKind.displayName))"))
+                .opacity(canArm ? 1 : 0.35)
+                .help(armDisabledReason ?? "Auto-resume this session when quota refreshes")
         }
         .padding(.vertical, 3)
     }

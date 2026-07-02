@@ -89,7 +89,7 @@ final class SessionMonitor: ObservableObject {
             discoverer: TranscriptSource(),
             processProbe: LibprocProcessProbe(),
             desktopDetector: DesktopAppProbe(),
-            snapshotLimit: 12   // enough running sessions to fill the large widget
+            snapshotLimit: 20   // enough running sessions to fill the extra-large widget
         )
     }
 
@@ -126,7 +126,7 @@ final class SessionMonitor: ObservableObject {
         let widgetSessions = result.sessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
             from: widgetSessions, now: result.snapshot.generatedAt,
-            limit: 12, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+            limit: 20, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable)
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = result.sessions.filter { $0.running == .running }.count
         let gauges = usageProvider?()?.gauges ?? []

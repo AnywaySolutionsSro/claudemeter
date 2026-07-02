@@ -29,6 +29,20 @@ struct SessionsView: View {
         return map
     }
 
+    /// Why a session can't be armed (nil = armable). Matches the scanner's
+    /// armable gating exactly; the text is what the disabled toggle's tooltip shows.
+    private func armDisabledReason(_ session: SessionUsage, kind: TerminalKind) -> String? {
+        guard session.running == .running else { return "Only live sessions can be armed" }
+        let index = SessionProcessIndex(processes: monitor.latestProcesses)
+        switch index.matchCount(forCwd: session.projectPath) {
+        case 0: return "No live Claude Code process found for this folder"
+        case 1: break
+        case let n: return "\(n) Claude tabs share this folder — can't safely target one"
+        }
+        guard kind.isDrivable else { return "Supports iTerm2 only for now (\(kind.displayName))" }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -88,9 +102,11 @@ struct SessionsView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleSessions) { session in
+                        let kind = terminalKinds[session.id] ?? .unknown
                         SessionRow(
                             session: session, now: now,
-                            terminalKind: terminalKinds[session.id] ?? .unknown,
+                            terminalKind: kind,
+                            armDisabledReason: armDisabledReason(session, kind: kind),
                             isArmed: armed.isArmed(session.id),
                             onArmChange: { armed.setArmed(session.id, $0) })
                             .padding(.horizontal, 12)
