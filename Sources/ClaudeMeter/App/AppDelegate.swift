@@ -13,7 +13,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
     private let sessionMonitor = SessionMonitor()
-    private lazy var sessionsWindow = SessionsWindowController(monitor: sessionMonitor, armed: armedSessions)
+    private lazy var sessionsWindow = SessionsWindowController(
+        monitor: sessionMonitor, armed: armedSessions,
+        onTestResume: { [weak self] session in
+            guard let self else { return }
+            self.autoResume.testResume(
+                session: session,
+                processes: self.sessionMonitor.latestProcesses,
+                paths: { LibprocProcessProbe.executablePathForPID($0) },
+                parents: { LibprocProcessProbe.parentPIDForPID($0) })
+        })
     private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
     private let armedSessions = ArmedSessions()
     private let sleepInhibitor = SleepInhibitor()

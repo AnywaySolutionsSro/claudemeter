@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ClaudeMeterCore
 
 /// Owns the Live Sessions window. The window hosts `SessionsView` bound to the
 /// shared `SessionMonitor`, which the app keeps running so the widget snapshot
@@ -8,11 +9,14 @@ import SwiftUI
 final class SessionsWindowController: NSObject {
     private let monitor: SessionMonitor
     private let armed: ArmedSessions
+    private let onTestResume: (SessionUsage) -> Void
     private var window: NSWindow?
 
-    init(monitor: SessionMonitor, armed: ArmedSessions) {
+    init(monitor: SessionMonitor, armed: ArmedSessions,
+         onTestResume: @escaping (SessionUsage) -> Void = { _ in }) {
         self.monitor = monitor
         self.armed = armed
+        self.onTestResume = onTestResume
         super.init()
     }
 
@@ -20,7 +24,8 @@ final class SessionsWindowController: NSObject {
     /// list is current the moment it appears.
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SessionsView(monitor: monitor, armed: armed))
+            let hosting = NSHostingController(
+                rootView: SessionsView(monitor: monitor, armed: armed, onTestResume: onTestResume))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Claude Sessions"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]

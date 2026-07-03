@@ -35,6 +35,7 @@ import Testing
         previous: Double?,
         current: Double,
         window: ResumeWindow? = nil,
+        lastRefillAt: Date? = nil,
         armed: Set<String>,
         sessions: [SessionUsage],
         processes: [LiveProcess],
@@ -47,6 +48,7 @@ import Testing
             currentUtilization: current,
             window: window,
             windowSeconds: windowSeconds,
+            lastRefillAt: lastRefillAt,
             armedIDs: armed,
             sessions: sessions,
             processes: processes,
@@ -76,6 +78,29 @@ import Testing
         #expect(p.targets.map(\.sessionID) == ["s1"])
         #expect(p.targets.first?.tty == "/dev/ttys003")
         #expect(p.targets.first?.pid == 10)
+    }
+
+    // A real 5h refill cannot happen twice within an hour; a second "drop" that
+    // soon is a stale-vs-fresh usage reading flapping (e.g. cache served during
+    // rate-limit backoff) and must NOT reopen the window — that caused repeated
+    // resume attempts and notification storms.
+    @Test func refillWithinCooldownOfPreviousIsIgnored() {
+        let p = plan(now: base.addingTimeInterval(600), previous: 100, current: 0,
+                     lastRefillAt: base, armed: ["s1"],
+                     sessions: [session("s1", path: "/p1")],
+                     processes: [proc(10, cwd: "/p1")], tail: { _ in [self.cutoff] })
+        #expect(p.refillDetected == false)
+        #expect(p.window == nil)
+        #expect(p.targets.isEmpty)
+    }
+
+    @Test func refillAfterCooldownIsAccepted() {
+        let p = plan(now: base.addingTimeInterval(3_700), previous: 100, current: 0,
+                     lastRefillAt: base, armed: ["s1"],
+                     sessions: [session("s1", path: "/p1")],
+                     processes: [proc(10, cwd: "/p1")], tail: { _ in [self.cutoff] })
+        #expect(p.refillDetected == true)
+        #expect(p.targets.map(\.sessionID) == ["s1"])
     }
 
     // MARK: - The retry window (the core hardening)

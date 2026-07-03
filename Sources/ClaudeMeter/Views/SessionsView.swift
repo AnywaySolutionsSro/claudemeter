@@ -6,6 +6,8 @@ import ClaudeMeterCore
 struct SessionsView: View {
     @ObservedObject var monitor: SessionMonitor
     @ObservedObject var armed: ArmedSessions
+    /// Fires the real resume pipeline for one session right now (debug/test).
+    var onTestResume: (SessionUsage) -> Void = { _ in }
     @State private var now = Date()
     @AppStorage("sessionsActiveOnly") private var activeOnly = false
 
@@ -110,6 +112,13 @@ struct SessionsView: View {
                             isArmed: armed.isArmed(session.id),
                             onArmChange: { armed.setArmed(session.id, $0) })
                             .padding(.horizontal, 12)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("Send “continue” now (test resume)") {
+                                    onTestResume(session)
+                                }
+                                .disabled(session.running != .running)
+                            }
                         Divider().padding(.leading, 30)
                     }
                 }

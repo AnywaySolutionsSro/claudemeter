@@ -32,6 +32,11 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- REQUIRED for auto-resume: without this key macOS silently auto-DENIES
+	     every Apple Event (no consent prompt is ever shown), and iTerm2 control
+	     fails with "Not authorized to send Apple events". -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ClaudeMeter types “continue” into your iTerm2 session to auto-resume Claude Code after your usage quota refills.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>ClaudeMeter — Claude subscription usage in the menu bar.</string>
 	<key>NSSupportsSuddenTermination</key>

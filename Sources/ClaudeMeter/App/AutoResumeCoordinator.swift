@@ -31,6 +31,14 @@ final class AutoResumeCoordinator {
     private var lastUtilization: Double?
     /// The active retry window (nil between refills).
     private var window: ResumeWindow?
+    /// When the last accepted refill opened a window (feeds the planner's
+    /// cooldown so flapping usage readings can't reopen windows all day).
+    private var lastRefillAt: Date?
+    /// Sessions whose failure was already notified this window. The retry loop
+    /// attempts every scan (~10s for 5 min); without this gate a persistent
+    /// failure (e.g. missing Automation permission) fires dozens of identical
+    /// notifications per window. Retries still log at .error every attempt.
+    private var notifiedFailures: Set<String> = []
 
     init(armed: ArmedSessions,
          settings: Settings,
@@ -46,6 +54,43 @@ final class AutoResumeCoordinator {
         self.resumeWindowSeconds = resumeWindowSeconds
         self.now = now
         self.notify = notify
+    }
+
+    /// User-initiated test fire: runs the exact resume pipeline for one session —
+    /// process match, tty validation, terminal detection, tty-reuse defense, the
+    /// AppleScript drive — bypassing only refill detection and the cutoff gate.
+    /// This is the debugging path for e.g. Automation (TCC) permission: outcome
+    /// is always reported via a notification.
+    func testResume(session: SessionUsage,
+                    processes: [LiveProcess],
+                    paths: @escaping (Int32) -> String?,
+                    parents: @escaping (Int32) -> Int32) {
+        let name = session.projectName
+        let index = SessionProcessIndex(processes: processes)
+        guard let proc = index.process(forCwd: session.projectPath) else {
+            log.notice("TEST \(name, privacy: .public): no unique live terminal for cwd")
+            notify("Test \(name): no unique live terminal found for its folder.")
+            return
+        }
+        guard let tty = proc.tty, tty.hasPrefix("/dev/tty") else {
+            log.notice("TEST \(name, privacy: .public): missing/unexpected tty")
+            notify("Test \(name): no controlling tty.")
+            return
+        }
+        let kind = terminalDetector.detect(startPID: proc.pid,
+                                           executablePathForPID: paths, parentPIDForPID: parents)
+        guard kind.isDrivable else {
+            log.notice("TEST \(name, privacy: .public): terminal \(kind.displayName, privacy: .public) not drivable")
+            notify("Test \(name): \(kind.displayName) is not supported (iTerm2 only).")
+            return
+        }
+        log.notice("TEST resume: typing into \(name, privacy: .public) on \(tty, privacy: .public)")
+        notifiedFailures.remove(session.id)   // a test always reports its outcome
+        scheduleResume(
+            ResumeTarget(sessionID: session.id, tty: tty,
+                         continueText: settings.normalizedContinueText,
+                         expectedPID: proc.pid, expectedCwd: proc.cwd),
+            after: 0, projectName: name)
     }
 
     /// Resolve the owning terminal for a session's cwd (for the UI's arm toggle).
@@ -84,6 +129,7 @@ final class AutoResumeCoordinator {
             currentUtilization: current,
             window: window,
             windowSeconds: resumeWindowSeconds,
+            lastRefillAt: lastRefillAt,
             armedIDs: armed.armed,
             sessions: sessions,
             processes: processes,
@@ -97,6 +143,8 @@ final class AutoResumeCoordinator {
         if plan.refillDetected {
             let armedCount = sessions.filter { self.armed.isArmed($0.id) }.count
             log.notice("refill detected (\(previous ?? -1, format: .fixed(precision: 1)) -> \(current, format: .fixed(precision: 1))%); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)")
+            lastRefillAt = now()
+            notifiedFailures.removeAll()   // a fresh window may notify each session once again
         }
 
         // Diagnostic: every armed session not fired this cycle, with its reason.
@@ -143,10 +191,13 @@ final class AutoResumeCoordinator {
                 self.notify("▶︎ Resumed \(projectName)")
             } catch {
                 // Most likely on the first ever fire: macOS Automation (TCC) permission
-                // not yet granted. Un-mark so the window keeps retrying.
+                // not yet granted. Un-mark so the window keeps retrying — but notify
+                // only once per session per window (retries log every attempt).
                 self.log.error("\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)")
                 self.window?.fired.remove(target.sessionID)
-                self.notify("Couldn't resume \(projectName): \(String(describing: error))")
+                if self.notifiedFailures.insert(target.sessionID).inserted {
+                    self.notify("Couldn't resume \(projectName): \(String(describing: error)) — retrying quietly; check System Settings → Privacy & Security → Automation if this persists.")
+                }
             }
         }
     }

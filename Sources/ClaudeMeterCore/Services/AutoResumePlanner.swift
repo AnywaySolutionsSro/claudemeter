@@ -93,6 +93,8 @@ public enum AutoResumePlanner {
         window: ResumeWindow?,
         windowSeconds: Double,
         dropThreshold: Double = 25,
+        lastRefillAt: Date? = nil,
+        refillCooldownSeconds: Double = 3600,
         armedIDs: Set<String>,
         sessions: [SessionUsage],
         processes: [LiveProcess],
@@ -100,10 +102,16 @@ public enum AutoResumePlanner {
         executablePath: (Int32) -> String?,
         parentPID: (Int32) -> Int32
     ) -> ResumePlan {
-        let refilled = UsageStats.didRefill(
+        var refilled = UsageStats.didRefill(
             previousUtilization: previousUtilization,
             currentUtilization: currentUtilization,
             dropThreshold: dropThreshold)
+        // A real 5h refill cannot recur within the cooldown; a second "drop" that
+        // soon is a stale-vs-fresh usage reading flapping (e.g. a cached snapshot
+        // served during rate-limit backoff) and must not reopen the window.
+        if refilled, let last = lastRefillAt, now < last.addingTimeInterval(refillCooldownSeconds) {
+            refilled = false
+        }
 
         // A fresh refill opens (or restarts) the retry window.
         var window = window
