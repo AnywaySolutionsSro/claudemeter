@@ -6,5 +6,11 @@
 	<array>
 		<string>group.com.jakubzak.claudemeter</string>
 	</array>
+	<!-- Hardened-runtime apps may not send Apple Events AT ALL without this
+	     entitlement — the denial is silent (no consent prompt, error -1743).
+	     Pairs with NSAppleEventsUsageDescription in Info.plist; BOTH are
+	     required for auto-resume to drive iTerm2. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>
