@@ -106,6 +106,17 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
 
 ## Gotchas (learned the hard way)
 
+- **Sending Apple Events (auto-resume → iTerm2) requires BOTH
+  `NSAppleEventsUsageDescription` in Info.plist AND the
+  `com.apple.security.automation.apple-events` entitlement** (the app builds with the
+  hardened runtime). Missing either one makes macOS deny with
+  `Not authorized to send Apple events` **silently — the consent prompt is never shown**, so
+  the Settings pre-authorize button and every resume just fail. Diagnose with
+  `codesign -d --entitlements - /Applications/ClaudeMeter.app` and PlistBuddy; recover a
+  recorded denial with `tccutil reset AppleEvents com.jakubzak.claudemeter` (+ app relaunch).
+  The consent is requested proactively on first launch / first arm
+  (`AppDelegate.requestITermAuthorizationIfNeeded`), and the Sessions window has a per-session
+  right-click **test resume** that fires the real pipeline on demand.
 - **Keychain re-prompts on every ad-hoc rebuild.** macOS ties "Always Allow" to the code
   signature; an ad-hoc signature changes each build, so `./build.sh --install` re-prompts.
   A stable **Developer ID** (notarized) build prompts once and never again. Don't "fix" this in

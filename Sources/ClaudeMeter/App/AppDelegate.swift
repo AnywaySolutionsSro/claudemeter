@@ -101,14 +101,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
         }
         // React to arming changes immediately (sleep assertion + republish).
+        // Arming is also the fallback moment to surface the iTerm2 Automation
+        // consent (iTerm2 is guaranteed running then — armable implies it).
         armedSessions.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] in
                 guard let self else { return }
                 self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
+                self.requestITermAuthorizationIfNeeded()
                 Task { await self.sessionMonitor.refresh() }
             }
             .store(in: &cancellables)
+
+        // Surface the macOS "control iTerm2" consent shortly after first launch,
+        // not at 4am when the first unattended resume fires. Small delay so the
+        // dialog doesn't collide with login/startup.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.requestITermAuthorizationIfNeeded()
+        }
         // Republish the widget snapshot when account usage refreshes, so the gauges
         // track the latest Session/Weekly percentages between session scans.
         // $snapshot (deduplicated), NOT objectWillChange: one poll mutates many
@@ -134,6 +144,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self, selector: #selector(handleThemeChange),
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil
         )
+    }
+
+    /// One-time proactive Automation authorization (the TCC consent prompt).
+    /// Skipped once answered either way — Settings → "Authorize iTerm2 control"
+    /// remains the manual retry. When iTerm2 isn't running the attempt is a
+    /// no-op and repeats on a later launch or on the first arm.
+    private func requestITermAuthorizationIfNeeded() {
+        let key = "didRequestITermAutomation"
+        guard settings.autoResumeEnabled, !UserDefaults.standard.bool(forKey: key) else { return }
+        switch ITermDriver().authorize() {
+        case .granted:
+            UserDefaults.standard.set(true, forKey: key)
+            notifications.notify("ClaudeMeter", "iTerm2 control authorized — auto-resume is ready.")
+        case .denied:
+            UserDefaults.standard.set(true, forKey: key)   // answered; don't nag again
+            notifications.notify("ClaudeMeter",
+                "iTerm2 control was denied — auto-resume can't type into sessions. Re-enable in System Settings → Privacy & Security → Automation, or Settings → Authorize iTerm2 control.")
+        case .notRunning:
+            break   // try again on a later launch or when a session is first armed
+        }
     }
 
     private func handle(_ event: UsageEvent) {
