@@ -91,11 +91,18 @@ struct SettingsView: View {
                 Toggle(isOn: $settings.autoResumeEnabled) {
                     Label("Master switch", systemImage: "power")
                 }
+                // Enabling the feature is the natural moment to surface the macOS
+                // Automation consent — not app launch, not 4am.
+                .onChange(of: settings.autoResumeEnabled) { _, enabled in
+                    if enabled { authorizeITerm() }
+                }
                 LabeledContent("Continue text") {
                     TextField("continue", text: $settings.autoResumeContinueText)
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                 }
                 Text("On by default — a global pause, not the arming control. Arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed with an external display and power connected).")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -111,6 +118,16 @@ struct SettingsView: View {
                     if let status = authStatus {
                         Text(status.text).font(.caption.weight(.semibold))
                             .foregroundStyle(status.color)
+                    }
+                }
+                if case .some(let status) = authStatus, status.showsSettingsLink {
+                    // A recorded denial can only be undone in System Settings —
+                    // deep-link straight to the Automation pane.
+                    Button {
+                        NSWorkspace.shared.open(
+                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+                    } label: {
+                        Label("Open Automation settings…", systemImage: "gearshape")
                     }
                 }
                 Text("Grants macOS Automation permission now (iTerm2 must be running) so the first resume can fire unattended.")
@@ -143,6 +160,7 @@ struct SettingsView: View {
     private struct AuthStatus {
         let text: String
         let color: Color
+        var showsSettingsLink = false
     }
 
     private func authorizeITerm() {
@@ -152,7 +170,7 @@ struct SettingsView: View {
         case .notRunning:
             authStatus = AuthStatus(text: "Start iTerm2 first", color: .orange)
         case .denied(let message):
-            authStatus = AuthStatus(text: "Denied — \(message)", color: .red)
+            authStatus = AuthStatus(text: "Denied — \(message)", color: .red, showsSettingsLink: true)
         }
     }
 }

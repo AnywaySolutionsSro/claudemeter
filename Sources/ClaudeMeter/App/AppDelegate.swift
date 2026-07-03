@@ -112,13 +112,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 Task { await self.sessionMonitor.refresh() }
             }
             .store(in: &cancellables)
-
-        // Surface the macOS "control iTerm2" consent shortly after first launch,
-        // not at 4am when the first unattended resume fires. Small delay so the
-        // dialog doesn't collide with login/startup.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            self?.requestITermAuthorizationIfNeeded()
-        }
         // Republish the widget snapshot when account usage refreshes, so the gauges
         // track the latest Session/Weekly percentages between session scans.
         // $snapshot (deduplicated), NOT objectWillChange: one poll mutates many
@@ -146,10 +139,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         )
     }
 
-    /// One-time proactive Automation authorization (the TCC consent prompt).
+    /// One-time proactive Automation authorization (the TCC consent prompt),
+    /// surfaced when the user first ARMS a session — the moment the feature is
+    /// actually enabled, with iTerm2 guaranteed running. (Enabling the master
+    /// switch in Settings triggers its own inline authorize with visible status.)
     /// Skipped once answered either way — Settings → "Authorize iTerm2 control"
-    /// remains the manual retry. When iTerm2 isn't running the attempt is a
-    /// no-op and repeats on a later launch or on the first arm.
+    /// remains the manual retry.
     private func requestITermAuthorizationIfNeeded() {
         let key = "didRequestITermAutomation"
         guard settings.autoResumeEnabled, !UserDefaults.standard.bool(forKey: key) else { return }
