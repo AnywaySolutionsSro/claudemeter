@@ -100,7 +100,7 @@ struct SettingsView: View {
                     TextField("continue", text: $settings.autoResumeContinueText)
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                 }
-                Text("On by default — a global pause, not the arming control. Arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.")
+                Text("Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.")
                     .font(.caption).foregroundStyle(.secondary)
                 Text("Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed with an external display and power connected).")
                     .font(.caption).foregroundStyle(.secondary)

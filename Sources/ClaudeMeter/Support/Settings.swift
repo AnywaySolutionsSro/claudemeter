@@ -60,11 +60,12 @@ final class Settings: ObservableObject {
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
-        // Master switch defaults ON: arming a session (in Sessions / widget) is the
-        // opt-in, so the feature must be live out of the box for armed sessions to
-        // ever fire. This is only a global kill-switch — nothing fires unless at
-        // least one session is explicitly armed.
-        self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? true
+        // Master switch defaults OFF for fresh installs: enabling it in Settings is
+        // the deliberate opt-in that also surfaces the iTerm2 Automation consent
+        // (with visible status). The fallback only applies when the key was never
+        // written — any user who has ever flipped the switch keeps their choice
+        // across updates (didSet persists it).
+        self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? false
         self.autoResumeContinueText = defaults.string(forKey: Keys.autoResumeContinueText) ?? "continue"
     }
 
