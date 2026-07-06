@@ -11,6 +11,9 @@ final class ArmedSessions: ObservableObject {
     private let store = ArmedSessionsStore()
     private let armedURL: URL
     private let commandURL: URL
+    private let pruner = ArmedSessionPruner()
+    /// Consecutive not-running scan counts per armed session (pruning state).
+    private var pruneMisses: [String: Int] = [:]
 
     init(armedURL: URL = ArmedSessions.defaultArmedURL(),
          commandURL: URL = ArmedSessions.commandInboxURL()) {
@@ -54,6 +57,20 @@ final class ArmedSessions: ObservableObject {
         }
         if changed { persist() }
         return changed
+    }
+
+    /// Auto-disarm armed sessions that stopped running (tab closed, /clear made a
+    /// new session id). Call once per scan; disarm happens only after several
+    /// consecutive not-running scans (see `ArmedSessionPruner`). Returns the ids
+    /// disarmed this pass so the caller can log/notify.
+    @discardableResult
+    func pruneDead(runningIDs: Set<String>) -> Set<String> {
+        let plan = pruner.plan(armed: armed, runningIDs: runningIDs, previousMisses: pruneMisses)
+        pruneMisses = plan.misses
+        guard !plan.disarm.isEmpty else { return [] }
+        armed.subtract(plan.disarm)
+        persist()
+        return plan.disarm
     }
 
     private func persist() { try? store.write(armed, to: armedURL) }

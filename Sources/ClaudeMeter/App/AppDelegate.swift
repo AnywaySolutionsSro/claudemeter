@@ -88,6 +88,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if self.armedSessions.drainWidgetCommands(isArmable: { armable.contains($0) }) {
                 Task { await self.sessionMonitor.refresh() }
             }
+            // Auto-disarm armed sessions whose terminal died (tab closed, /clear):
+            // they'd otherwise stay pinned in the widget forever. Grace period in
+            // the pruner protects against a transient probe glitch.
+            let runningIDs = Set(inputs.sessions.filter { $0.running == .running }.map(\.id))
+            let disarmed = self.armedSessions.pruneDead(runningIDs: runningIDs)
+            if !disarmed.isEmpty {
+                let names = inputs.sessions.filter { disarmed.contains($0.id) }.map(\.projectName)
+                let label = names.isEmpty ? "\(disarmed.count) session(s)" : names.joined(separator: ", ")
+                self.notifications.notify("ClaudeMeter", "Disarmed \(label) — session no longer running.")
+                Task { await self.sessionMonitor.refresh() }
+            }
             // Keep the Mac awake while anything is armed.
             self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
             // Drive auto-resume.
