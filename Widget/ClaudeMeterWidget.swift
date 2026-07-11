@@ -228,11 +228,18 @@ struct ClaudeMeterWidgetEntryView: View {
                     Text(s.projectName)
                         .font(.system(size: compact ? 11 : 12, weight: .medium)).lineLimit(1)
                     if let model = s.lastModel ?? s.models.last {
-                        Text(shortModel(model))
-                            .font(.system(size: compact ? 8.5 : 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .layoutPriority(-1)
+                        HStack(spacing: 3) {
+                            // Grayscaled emoji: SF Symbols has no robot glyph, and
+                            // the filter keeps it neutral in every rendering mode.
+                            Text("🤖")
+                                .font(.system(size: compact ? 9 : 10))
+                                .grayscale(1)
+                            Text(shortModel(model))
+                                .font(.system(size: compact ? 10.5 : 11.5, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .lineLimit(1)
+                        .layoutPriority(-1)
                     }
                     Spacer(minLength: 4)
                     Text(Formatting.tokenCount(s.totalTokens))
