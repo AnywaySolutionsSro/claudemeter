@@ -222,11 +222,18 @@ struct ClaudeMeterWidgetEntryView: View {
         let isArmed = armedIDs.contains(s.id)
         let canArm = armableIDs.contains(s.id)
         HStack(spacing: 10) {
-            // Left column: name + token count + (now shorter) progress bar.
+            // Left column: name + current model + token count + progress bar.
             VStack(alignment: .leading, spacing: compact ? 2 : 3) {
                 HStack(spacing: 5) {
                     Text(s.projectName)
                         .font(.system(size: compact ? 11 : 12, weight: .medium)).lineLimit(1)
+                    if let model = s.lastModel ?? s.models.last {
+                        Text(shortModel(model))
+                            .font(.system(size: compact ? 8.5 : 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                    }
                     Spacer(minLength: 4)
                     Text(Formatting.tokenCount(s.totalTokens))
                         .font(.system(size: compact ? 11 : 12, weight: .bold)).monospacedDigit()
@@ -255,6 +262,11 @@ struct ClaudeMeterWidgetEntryView: View {
                     .opacity(0.28)
             }
         }
+    }
+
+    /// Trim the common `claude-` prefix for compact display, e.g. `opus-4-8`.
+    private func shortModel(_ model: String) -> String {
+        model.hasPrefix("claude-") ? String(model.dropFirst("claude-".count)) : model
     }
 
     /// A toggle-style pill that runs `intent` on tap. The track stays a consistent

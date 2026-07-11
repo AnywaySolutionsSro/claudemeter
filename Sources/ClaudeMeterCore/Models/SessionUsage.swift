@@ -7,6 +7,9 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
     public let projectPath: String
     public let title: String?
     public let models: [String]
+    /// Model of the most recent usage record — "the model being used" for display.
+    /// Optional so snapshots written before this field existed still decode.
+    public let lastModel: String?
     public let tokens: TokenBreakdown
     public let messageCount: Int
     public let firstActivity: Date
@@ -20,6 +23,7 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         projectPath: String,
         title: String? = nil,
         models: [String],
+        lastModel: String? = nil,
         tokens: TokenBreakdown,
         messageCount: Int,
         firstActivity: Date,
@@ -32,6 +36,7 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         self.projectPath = projectPath
         self.title = title
         self.models = models
+        self.lastModel = lastModel
         self.tokens = tokens
         self.messageCount = messageCount
         self.firstActivity = firstActivity
@@ -56,7 +61,8 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
 
     public func withProjectPath(_ path: String) -> SessionUsage {
         SessionUsage(id: id, origin: origin, projectPath: path, title: title, models: models,
-                     tokens: tokens, messageCount: messageCount, firstActivity: firstActivity,
-                     lastActivity: lastActivity, burnRate: burnRate, running: running)
+                     lastModel: lastModel, tokens: tokens, messageCount: messageCount,
+                     firstActivity: firstActivity, lastActivity: lastActivity,
+                     burnRate: burnRate, running: running)
     }
 }

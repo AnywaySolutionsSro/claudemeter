@@ -24,6 +24,10 @@ public struct SessionAccumulator: Equatable, Sendable {
     private var firstCwd: String?
     private var seenMessageIDs: Set<String> = []
     private var burnEvents: [BurnEvent] = []
+    /// Model of the newest record that carried one, with its timestamp — "the
+    /// model being used", unlike `models` which is the alphabetical full set.
+    private var lastModel: String?
+    private var lastModelStamp: Date?
 
     public init(burnWindow: TimeInterval = 300) {
         self.burnWindow = burnWindow
@@ -37,7 +41,13 @@ public struct SessionAccumulator: Equatable, Sendable {
         if let id = record.messageID, !seenMessageIDs.insert(id).inserted { return }
 
         tokens = tokens + record.tokens
-        if let model = record.model { models.insert(model) }
+        if let model = record.model {
+            models.insert(model)
+            if lastModelStamp == nil || record.timestamp >= lastModelStamp! {
+                lastModel = model
+                lastModelStamp = record.timestamp
+            }
+        }
         messageCount += 1
         firstTimestamp = min(firstTimestamp ?? record.timestamp, record.timestamp)
         lastTimestamp = max(lastTimestamp ?? record.timestamp, record.timestamp)
@@ -65,6 +75,10 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.firstCwd = firstCwd ?? other.firstCwd
         result.seenMessageIDs = seenMessageIDs.union(other.seenMessageIDs)
         result.burnEvents = burnEvents + other.burnEvents
+        if (other.lastModelStamp ?? .distantPast) > (lastModelStamp ?? .distantPast) {
+            result.lastModel = other.lastModel
+            result.lastModelStamp = other.lastModelStamp
+        }
         return result
     }
 
@@ -89,6 +103,7 @@ public struct SessionAccumulator: Equatable, Sendable {
             projectPath: projectPath.isEmpty ? (firstCwd ?? "") : projectPath,
             title: title,
             models: models.sorted(),
+            lastModel: lastModel,
             tokens: tokens,
             messageCount: messageCount,
             firstActivity: firstTimestamp ?? now,

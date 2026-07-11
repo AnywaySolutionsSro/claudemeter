@@ -69,6 +69,36 @@ import Testing
         #expect(u.burnRate == 10)  // 50 tokens / 5 min
     }
 
+    // The UI shows "the model being used" = the model of the most recent record,
+    // NOT models.last (which is alphabetical and lies once a session switched
+    // models, e.g. opus during planning then sonnet).
+    @Test func lastModelTracksTheMostRecentRecord() throws {
+        var acc = SessionAccumulator()
+        acc.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-sonnet-4-6"))
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8"))  // older, out of order
+        let u = try #require(acc.usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
+        #expect(u.lastModel == "claude-sonnet-4-6")
+        #expect(u.models == ["claude-opus-4-8", "claude-sonnet-4-6"])
+    }
+
+    @Test func recordsWithoutModelDoNotClobberLastModel() throws {
+        var acc = SessionAccumulator()
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8"))
+        acc.fold(rec(9_500, TokenBreakdown(input: 1), model: nil))
+        let u = try #require(acc.usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
+        #expect(u.lastModel == "claude-opus-4-8")
+    }
+
+    @Test func mergedLastModelComesFromTheNewerSide() throws {
+        var parent = SessionAccumulator()
+        parent.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8"))
+        var sub = SessionAccumulator()
+        sub.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-haiku-4-5"))
+        let u = try #require(parent.merged(with: sub)
+            .usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
+        #expect(u.lastModel == "claude-haiku-4-5")
+    }
+
     @Test func mergedCombinesParentAndSubagentUsage() throws {
         var parent = SessionAccumulator(burnWindow: 300)
         parent.fold(rec(9_000, TokenBreakdown(input: 10), model: "a", cwd: "/parent"))

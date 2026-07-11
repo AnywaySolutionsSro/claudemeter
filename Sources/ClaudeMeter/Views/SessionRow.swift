@@ -71,7 +71,8 @@ struct SessionRow: View {
     }
 
     private var subtitle: String {
-        let model = session.models.last.map(shortModel) ?? "—"
+        // The model currently in use, not the alphabetically-last one ever seen.
+        let model = (session.lastModel ?? session.models.last).map(shortModel) ?? "—"
         return "\(model) · \(relativeActivity)"
     }
 

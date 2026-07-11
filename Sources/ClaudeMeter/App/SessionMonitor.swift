@@ -61,7 +61,7 @@ final class SessionMonitor: ObservableObject {
     /// the content actually changed, to avoid spending WidgetKit's reload budget.
     private var lastSignature: [String]?
     func publish(_ snapshot: SessionSnapshot) {
-        let signature = snapshot.sessions.map { "\($0.id):\($0.totalTokens):\($0.running.rawValue)" }
+        let signature = snapshot.sessions.map { "\($0.id):\($0.totalTokens):\($0.running.rawValue):\($0.lastModel ?? "")" }
             + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)",
                "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
                "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
