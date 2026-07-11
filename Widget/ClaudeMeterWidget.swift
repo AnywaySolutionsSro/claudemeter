@@ -225,8 +225,14 @@ struct ClaudeMeterWidgetEntryView: View {
             // Left column: name + current model + token count + progress bar.
             VStack(alignment: .leading, spacing: compact ? 2 : 3) {
                 HStack(spacing: 5) {
+                    // Name and token count outrank the model label, so the model
+                    // truncates first on narrow rows. NB: a negative priority on
+                    // the model does NOT work — the Spacer (priority 0) claims all
+                    // leftover width before a -1 view is sized, collapsing it to
+                    // zero. Priorities must be raised on the keepers instead.
                     Text(s.projectName)
                         .font(.system(size: compact ? 11 : 12, weight: .medium)).lineLimit(1)
+                        .layoutPriority(1)
                     if let model = s.lastModel ?? s.models.last {
                         HStack(spacing: 3) {
                             // Grayscaled emoji: SF Symbols has no robot glyph, and
@@ -239,12 +245,12 @@ struct ClaudeMeterWidgetEntryView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .lineLimit(1)
-                        .layoutPriority(-1)
                     }
                     Spacer(minLength: 4)
                     Text(Formatting.tokenCount(s.totalTokens))
                         .font(.system(size: compact ? 11 : 12, weight: .bold)).monospacedDigit()
                         .foregroundStyle(.secondary)
+                        .layoutPriority(1)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
