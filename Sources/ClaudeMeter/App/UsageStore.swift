@@ -26,6 +26,11 @@ final class UsageStore: ObservableObject {
     /// Fired for threshold crossings and resets so the app can notify / run Shortcuts.
     var onEvent: ((UsageEvent) -> Void)?
 
+    /// Fired when the OAuth session is irrecoverably dead (refresh token rejected, or the API
+    /// keeps 401-ing a fresh token). The app flips to the signed-out UI instead of silently
+    /// showing the stale cached reading forever.
+    var onAuthExpired: (() -> Void)?
+
     let refreshInterval: TimeInterval
     let minFetchInterval: TimeInterval
 
@@ -37,6 +42,10 @@ final class UsageStore: ObservableObject {
     /// Events only fire once we've seen a live reading this session, so the (possibly stale)
     /// on-disk cache never triggers spurious notifications on launch.
     private var hasLiveBaseline = false
+    /// Consecutive auth-fatal refresh outcomes. A lone 401/403 on the undocumented endpoints
+    /// can be a transient server flake, so the session is only declared dead — signing the
+    /// user out and dropping their tokens — after two independent refresh cycles agree.
+    private var consecutiveAuthFailures = 0
 
     init(client: UsageClient, refreshInterval: TimeInterval = 300, minFetchInterval: TimeInterval = 30) {
         self.client = client
@@ -71,6 +80,7 @@ final class UsageStore: ObservableObject {
         burnEstimate = nil
         paceRatio = nil
         hasLiveBaseline = false
+        consecutiveAuthFailures = 0
     }
 
     func refresh(force: Bool = false) async {
@@ -91,6 +101,7 @@ final class UsageStore: ObservableObject {
             errorMessage = nil
             statusNote = nil
             backoffUntil = nil
+            consecutiveAuthFailures = 0
 
             if let sample = fresh.sample(at: now) {
                 history = UsageHistory.append(sample, to: history)
@@ -103,6 +114,19 @@ final class UsageStore: ObservableObject {
         } catch UsageError.rateLimited(let retryAfter) {
             backoffUntil = Date().addingTimeInterval(retryAfter ?? 120)
             present(UsageError.rateLimited(retryAfter: retryAfter).errorDescription ?? "Rate limited.")
+        } catch UsageError.sessionExpired, AuthError.notAuthenticated {
+            consecutiveAuthFailures += 1
+            if consecutiveAuthFailures >= 2 {
+                // Confirmed dead. Drop the stale reading here too (not only via the app's
+                // signed-out wiring) so no path can keep rendering it.
+                snapshot = nil
+                lastUpdated = nil
+                errorMessage = UsageError.sessionExpired.errorDescription
+                statusNote = nil
+                onAuthExpired?()
+            } else {
+                present(UsageError.sessionExpired.errorDescription ?? "Session expired.")
+            }
         } catch {
             present((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }

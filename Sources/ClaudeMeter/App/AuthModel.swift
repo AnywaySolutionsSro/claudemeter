@@ -123,6 +123,18 @@ final class AuthModel: ObservableObject {
         onSignedOut?()
     }
 
+    /// The stored grant was rejected server-side and can never refresh again. Drop the dead
+    /// tokens and land on the signed-out UI with an explanation, so the user sees "sign in
+    /// again" instead of a permanently stale reading.
+    func sessionExpired() {
+        guard state == .signedIn else { return }
+        account.clear()
+        pastedCode = ""
+        errorMessage = "Your login session expired. Please sign in again."
+        state = .signedOut
+        onSignedOut?()
+    }
+
     private func present(_ error: Error) {
         errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sign-in failed. Please try again."
     }

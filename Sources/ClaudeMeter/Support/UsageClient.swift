@@ -22,7 +22,12 @@ struct UsageClient {
         } catch UsageError.http(401) {
             // Token rejected despite passing the local expiry check — refresh once and retry.
             let fresh = try await account.forceRefresh(now: now)
-            return try await request(token: fresh, now: now)
+            do {
+                return try await request(token: fresh, now: now)
+            } catch UsageError.http(401) {
+                // Even a freshly refreshed token is rejected — the session is dead server-side.
+                throw UsageError.sessionExpired
+            }
         }
     }
 

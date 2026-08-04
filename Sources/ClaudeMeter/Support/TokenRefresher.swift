@@ -37,7 +37,12 @@ struct TokenRefresher {
             throw UsageError.network(error.localizedDescription)
         }
 
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else { throw UsageError.refreshFailed }
+        guard (200..<300).contains(http.statusCode) else {
+            // 400/401/403 mean the grant itself was rejected (revoked / expired refresh token) —
+            // that never recovers without a new sign-in. Anything else (5xx, odd shapes) is
+            // treated as transient so a flaky token endpoint doesn't sign the user out.
+            if [400, 401, 403].contains(http.statusCode) { throw UsageError.sessionExpired }
             throw UsageError.refreshFailed
         }
         guard

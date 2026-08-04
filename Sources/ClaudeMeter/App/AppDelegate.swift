@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         auth.onSignedIn = { [weak self] in self?.store.start(); self?.updateLabel() }
         auth.onSignedOut = { [weak self] in self?.store.clear(); self?.updateLabel() }
         store.onEvent = { [weak self] in self?.handle($0) }
+        store.onAuthExpired = { [weak self] in self?.auth.sessionExpired() }
 
         // Redraw the bar on usage/auth/settings changes (e.g. async refresh, mode switch).
         for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange] {
