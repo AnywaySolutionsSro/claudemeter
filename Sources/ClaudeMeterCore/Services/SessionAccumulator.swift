@@ -21,7 +21,12 @@ public struct SessionAccumulator: Equatable, Sendable {
     private var messageCount = 0
     private var firstTimestamp: Date?
     private var lastTimestamp: Date?
-    private var firstCwd: String?
+    /// Cwd of the newest record that carried one — where the session is NOW.
+    /// Sessions move (cd, `--resume` from another dir, worktrees); the label and
+    /// the live-process cwd match must follow, or the session stays pinned to
+    /// its birth directory and never matches its process again.
+    private var lastCwd: String?
+    private var lastCwdStamp: Date?
     private var seenMessageIDs: Set<String> = []
     private var burnEvents: [BurnEvent] = []
     /// Model of the newest record that carried one, with its timestamp — "the
@@ -51,7 +56,10 @@ public struct SessionAccumulator: Equatable, Sendable {
         messageCount += 1
         firstTimestamp = min(firstTimestamp ?? record.timestamp, record.timestamp)
         lastTimestamp = max(lastTimestamp ?? record.timestamp, record.timestamp)
-        if firstCwd == nil { firstCwd = record.cwd }
+        if let cwd = record.cwd, lastCwdStamp == nil || record.timestamp >= lastCwdStamp! {
+            lastCwd = cwd
+            lastCwdStamp = record.timestamp
+        }
 
         burnEvents.append(BurnEvent(timestamp: record.timestamp, total: record.tokens.total))
         // Keep only events that can still fall inside a window anchored at (or
@@ -72,7 +80,8 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.messageCount = messageCount + other.messageCount
         result.firstTimestamp = [firstTimestamp, other.firstTimestamp].compactMap { $0 }.min()
         result.lastTimestamp = [lastTimestamp, other.lastTimestamp].compactMap { $0 }.max()
-        result.firstCwd = firstCwd ?? other.firstCwd
+        result.lastCwd = lastCwd ?? other.lastCwd
+        result.lastCwdStamp = lastCwd != nil ? lastCwdStamp : other.lastCwdStamp
         result.seenMessageIDs = seenMessageIDs.union(other.seenMessageIDs)
         result.burnEvents = burnEvents + other.burnEvents
         if (other.lastModelStamp ?? .distantPast) > (lastModelStamp ?? .distantPast) {
@@ -100,7 +109,7 @@ public struct SessionAccumulator: Equatable, Sendable {
         return SessionUsage(
             id: id,
             origin: origin,
-            projectPath: projectPath.isEmpty ? (firstCwd ?? "") : projectPath,
+            projectPath: projectPath.isEmpty ? (lastCwd ?? "") : projectPath,
             title: title,
             models: models.sorted(),
             lastModel: lastModel,

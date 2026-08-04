@@ -53,10 +53,30 @@ import Testing
         #expect(u.tokens == TokenBreakdown(input: 2))
     }
 
-    @Test func emptyProjectPathFallsBackToFirstRecordCwd() throws {
+    // A session that starts in one project and moves (cd, --resume from another
+    // dir, worktrees) must be labeled AND process-matched by where it is NOW,
+    // not where it was born — otherwise it shows under the old name and never
+    // matches its live process's cwd (invisible in the widget / Active only).
+    @Test func emptyProjectPathFollowsTheNewestRecordCwd() throws {
+        var acc = SessionAccumulator()
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), cwd: "/born/here"))
+        acc.fold(rec(9_001, TokenBreakdown(input: 1), cwd: "/moved/here"))
+        let u = try #require(acc.usage(id: "s", projectPath: "", origin: .cli, title: nil, now: now))
+        #expect(u.projectPath == "/moved/here")
+    }
+
+    @Test func outOfOrderOlderRecordDoesNotClobberNewestCwd() throws {
+        var acc = SessionAccumulator()
+        acc.fold(rec(9_500, TokenBreakdown(input: 1), cwd: "/moved/here"))
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), cwd: "/born/here"))  // older, out of order
+        let u = try #require(acc.usage(id: "s", projectPath: "", origin: .cli, title: nil, now: now))
+        #expect(u.projectPath == "/moved/here")
+    }
+
+    @Test func recordsWithoutCwdDoNotClobberNewestCwd() throws {
         var acc = SessionAccumulator()
         acc.fold(rec(9_000, TokenBreakdown(input: 1), cwd: "/real/path"))
-        acc.fold(rec(9_001, TokenBreakdown(input: 1), cwd: "/other"))
+        acc.fold(rec(9_500, TokenBreakdown(input: 1), cwd: nil))
         let u = try #require(acc.usage(id: "s", projectPath: "", origin: .cli, title: nil, now: now))
         #expect(u.projectPath == "/real/path")
     }
