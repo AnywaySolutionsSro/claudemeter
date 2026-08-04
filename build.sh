@@ -57,7 +57,11 @@ sign_developer_id() {
 		exit 1
 	fi
 	echo "==> Developer ID code signing (${CODESIGN_ID})"
-	codesign --force --deep --options runtime --timestamp --sign "${CODESIGN_ID}" "${APP}"
+	# --entitlements is required here: the hardened runtime silently denies Apple Events
+	# (auto-resume -> iTerm2) without com.apple.security.automation.apple-events.
+	codesign --force --deep --options runtime --timestamp \
+		--entitlements "${ROOT}/ClaudeMeter.entitlements" \
+		--sign "${CODESIGN_ID}" "${APP}"
 	codesign --verify --deep --strict --verbose=2 "${APP}"
 }
 
