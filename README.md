@@ -3,6 +3,9 @@
 A tiny native macOS **menu-bar** app that shows your Claude subscription usage at a glance:
 **percent remaining** and **time until reset**, read live from Anthropic.
 
+> **Unofficial.** ClaudeMeter is an independent project, not affiliated with or endorsed by
+> Anthropic. It relies on undocumented endpoints that may change or stop working at any time.
+
 ```
   ┌─────────────┐
   │ 37% · 2h14m │   ← Claude-orange pill in the menu bar
@@ -93,7 +96,7 @@ A notarized `ClaudeMeter.zip`:
 
 ## Build from source
 
-Requires the Xcode command-line toolchain (Swift 5.9+, macOS 13+).
+Requires the Xcode 26 toolchain (Swift 6.2) and targets macOS 26 (Tahoe).
 
 ```bash
 swift test                # run the core unit tests
@@ -151,3 +154,7 @@ only, no secrets).
 - The OAuth `client_id` and `anthropic-beta` value are public values extracted from the Claude
   Code CLI; no secrets are embedded.
 - Sign out any time from the dropdown (clears the Keychain item).
+
+## License
+
+[MIT](LICENSE)
