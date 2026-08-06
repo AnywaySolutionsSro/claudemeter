@@ -7,6 +7,11 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var auth: AuthModel
 
+    /// Read from `settings` directly rather than the environment: this view sets
+    /// the environment value for its own children, and a value set in `body`
+    /// does not apply to the view that sets it.
+    private var scale: TextScale { settings.textScale }
+
     var body: some View {
         TabView {
             generalTab
@@ -16,7 +21,8 @@ struct SettingsView: View {
             autoResumeTab
                 .tabItem { Label("Auto-Resume", systemImage: "bolt.fill") }
         }
-        .frame(width: 460, height: 400)
+        .frame(width: scale.pt(460), height: scale.pt(400))
+        .environment(\.textScale, scale)
     }
 
     // MARK: - General
@@ -26,6 +32,9 @@ struct SettingsView: View {
             Section(header: sectionHeader("Appearance", "paintbrush.fill", .pink)) {
                 Picker("Menu-bar style", selection: $settings.displayMode) {
                     ForEach(DisplayMode.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Text size", selection: $settings.textScale) {
+                    ForEach(TextScale.allCases) { Text($0.title).tag($0) }
                 }
                 Toggle(isOn: launchAtLoginBinding) {
                     Label("Start at login", systemImage: "power")
@@ -52,7 +61,7 @@ struct SettingsView: View {
 
             Section {
                 Label("Toggle the usage window anytime with ⌥⌘U.", systemImage: "command")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(scale.font(10)).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -74,7 +83,7 @@ struct SettingsView: View {
             Section(header: sectionHeader("Low-usage Shortcut", "bolt.badge.clock", .yellow)) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Run a Shortcut when usage drops to ≤10%.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(scale.font(10)).foregroundStyle(.secondary)
                     TextField("Shortcut name", text: $settings.lowUsageShortcut)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -101,9 +110,9 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                 }
                 Text("Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(scale.font(10)).foregroundStyle(.secondary)
                 Text("Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed with an external display and power connected).")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(scale.font(10)).foregroundStyle(.secondary)
             }
 
             Section(header: sectionHeader("iTerm2 Permission", "lock.shield.fill", .green)) {
@@ -116,7 +125,7 @@ struct SettingsView: View {
                     .buttonStyle(.borderedProminent)
                     Spacer()
                     if let status = authStatus {
-                        Text(status.text).font(.caption.weight(.semibold))
+                        Text(status.text).font(scale.font(10, weight: .semibold))
                             .foregroundStyle(status.color)
                     }
                 }
@@ -131,7 +140,7 @@ struct SettingsView: View {
                     }
                 }
                 Text("Grants macOS Automation permission now (iTerm2 must be running) so the first resume can fire unattended.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(scale.font(10)).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -145,7 +154,7 @@ struct SettingsView: View {
         } icon: {
             Image(systemName: symbol).foregroundStyle(tint)
         }
-        .font(.system(size: 12, weight: .semibold))
+        .font(scale.font(12, weight: .semibold))
         .textCase(nil)
     }
 
