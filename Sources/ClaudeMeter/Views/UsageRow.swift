@@ -6,15 +6,16 @@ struct UsageRow: View {
     let title: String
     let bucket: UsageBucket
     let now: Date
+    @Environment(\.textScale) private var scale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: scale.pt(5)) {
             HStack {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                 Spacer()
                 Text("\(Formatting.percent(bucket.percentRemaining)) left")
-                    .font(.system(size: 12))
+                    .font(scale.font(12))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
             }
@@ -25,7 +26,7 @@ struct UsageRow: View {
 
             if let remaining = bucket.timeUntilReset(now: now) {
                 Text("resets in \(Formatting.countdown(remaining))")
-                    .font(.system(size: 10))
+                    .font(scale.font(10))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
             }
