@@ -6,10 +6,17 @@ import ClaudeMeterCore
 struct SessionsView: View {
     @ObservedObject var monitor: SessionMonitor
     @ObservedObject var armed: ArmedSessions
+    @ObservedObject var settings: Settings
     /// Fires the real resume pipeline for one session right now (debug/test).
     var onTestResume: (SessionUsage) -> Void = { _ in }
     @State private var now = Date()
     @AppStorage("sessionsActiveOnly") private var activeOnly = false
+
+    /// Read from `settings` rather than the environment, since this view sets the
+    /// environment value for its children. Observing `settings` is what makes an
+    /// already-open window react to a scale change: the hosting controller is
+    /// created once and cached, so a value captured at construction would go stale.
+    private var scale: TextScale { settings.textScale }
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -51,52 +58,53 @@ struct SessionsView: View {
             Divider()
             content
         }
-        .frame(minWidth: 380, minHeight: 420)
+        .frame(minWidth: scale.pt(380), minHeight: scale.pt(420))
+        .environment(\.textScale, scale)
         .onReceive(ticker) { now = $0 }
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "list.bullet.rectangle")
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Claude Sessions").font(.system(size: 13, weight: .bold))
-                Text(summary).font(.system(size: 10)).foregroundColor(.secondary)
+        HStack(spacing: scale.pt(8)) {
+            Image(systemName: "list.bullet.rectangle").font(scale.font(13))
+            VStack(alignment: .leading, spacing: scale.pt(1)) {
+                Text("Claude Sessions").font(scale.font(13, weight: .bold))
+                Text(summary).font(scale.font(10)).foregroundColor(.secondary)
             }
             Spacer()
             if armed.count > 0 {
-                HStack(spacing: 3) {
-                    Image(systemName: "bolt.fill").font(.system(size: 10))
-                    Text("\(armed.count) armed").font(.system(size: 11, weight: .semibold))
+                HStack(spacing: scale.pt(3)) {
+                    Image(systemName: "bolt.fill").font(scale.font(10))
+                    Text("\(armed.count) armed").font(scale.font(11, weight: .semibold))
                 }
-                .padding(.horizontal, 7).padding(.vertical, 3)
+                .padding(.horizontal, scale.pt(7)).padding(.vertical, scale.pt(3))
                 .background(Capsule().fill(Color.orange.opacity(0.18)))
                 .foregroundStyle(.orange)
             }
             Toggle("Active only", isOn: $activeOnly)
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .font(.system(size: 10))
+                .font(scale.font(10))
                 .help("Show only sessions that are currently running")
             Button { Task { await monitor.refresh() } } label: {
-                Image(systemName: "arrow.clockwise")
+                Image(systemName: "arrow.clockwise").font(scale.font(13))
             }
             .buttonStyle(.borderless)
             .help("Refresh now")
         }
-        .padding(12)
+        .padding(scale.pt(12))
     }
 
     @ViewBuilder private var content: some View {
         if visibleSessions.isEmpty {
-            VStack(spacing: 6) {
+            VStack(spacing: scale.pt(6)) {
                 Spacer()
-                Image(systemName: "moon.zzz").font(.system(size: 24)).foregroundColor(.secondary)
+                Image(systemName: "moon.zzz").font(scale.font(24)).foregroundColor(.secondary)
                 Text(activeOnly ? "No active sessions" : "No sessions found")
-                    .font(.system(size: 12)).foregroundColor(.secondary)
+                    .font(scale.font(12)).foregroundColor(.secondary)
                 Text(activeOnly
                      ? "Running Claude Code sessions show up here live."
                      : "Start a Claude Code session and it will appear here.")
-                    .font(.system(size: 10)).foregroundColor(.secondary)
+                    .font(scale.font(10)).foregroundColor(.secondary)
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,7 +119,7 @@ struct SessionsView: View {
                             armDisabledReason: armDisabledReason(session, kind: kind),
                             isArmed: armed.isArmed(session.id),
                             onArmChange: { armed.setArmed(session.id, $0) })
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, scale.pt(12))
                             .contentShape(Rectangle())
                             .contextMenu {
                                 Button("Send “continue” now (test resume)") {
@@ -119,10 +127,10 @@ struct SessionsView: View {
                                 }
                                 .disabled(session.running != .running)
                             }
-                        Divider().padding(.leading, 30)
+                        Divider().padding(.leading, scale.pt(30))
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, scale.pt(4))
             }
         }
     }

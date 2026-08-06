@@ -9,13 +9,15 @@ import ClaudeMeterCore
 final class SessionsWindowController: NSObject {
     private let monitor: SessionMonitor
     private let armed: ArmedSessions
+    private let settings: Settings
     private let onTestResume: (SessionUsage) -> Void
     private var window: NSWindow?
 
-    init(monitor: SessionMonitor, armed: ArmedSessions,
+    init(monitor: SessionMonitor, armed: ArmedSessions, settings: Settings,
          onTestResume: @escaping (SessionUsage) -> Void = { _ in }) {
         self.monitor = monitor
         self.armed = armed
+        self.settings = settings
         self.onTestResume = onTestResume
         super.init()
     }
@@ -25,11 +27,13 @@ final class SessionsWindowController: NSObject {
     func show() {
         if window == nil {
             let hosting = NSHostingController(
-                rootView: SessionsView(monitor: monitor, armed: armed, onTestResume: onTestResume))
+                rootView: SessionsView(monitor: monitor, armed: armed, settings: settings,
+                                       onTestResume: onTestResume))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Claude Sessions"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 440, height: 640))
+            window.setContentSize(NSSize(width: settings.textScale.pt(440),
+                                         height: settings.textScale.pt(640)))
             window.isReleasedWhenClosed = false
             window.center()
             self.window = window

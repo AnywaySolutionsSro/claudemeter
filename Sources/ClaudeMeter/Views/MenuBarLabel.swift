@@ -13,14 +13,19 @@ enum MenuBarLabel {
         snapshot: UsageSnapshot?,
         burn: BurnEstimate?,
         errorMessage: String?,
-        now: Date
+        now: Date,
+        scale: TextScale
     ) -> NSImage {
+        let (font, verticalPadding) = metrics(for: scale)
+
         guard signedIn else {
-            return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange)
+            return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange,
+                       font: font, verticalPadding: verticalPadding)
         }
         guard let bucket = snapshot?.primary else {
             return glyph(errorMessage == nil ? "…" : "⚠︎",
-                         color: errorMessage == nil ? .labelColor : .systemRed)
+                         color: errorMessage == nil ? .labelColor : .systemRed,
+                         font: font, verticalPadding: verticalPadding)
         }
 
         let remaining = bucket.percentRemaining
@@ -33,22 +38,25 @@ enum MenuBarLabel {
         case .classic:
             var text = Formatting.percent(remaining)
             if let reset { text += " · " + Formatting.countdown(reset) }
-            return gaugePill(text: text, remaining: remaining)
+            return gaugePill(text: text, remaining: remaining, font: font, verticalPadding: verticalPadding)
 
         case .burnRate:
             // Only show an ETA when the limit would actually be hit before the window resets.
             if let burn, burn.isBurning, let eta = burn.etaToLimit, let reset, eta < reset {
-                return pill(text: "🔥 " + Formatting.countdown(eta), textColor: textColor, borderColor: borderColor)
+                return pill(text: "🔥 " + Formatting.countdown(eta), textColor: textColor, borderColor: borderColor,
+                           font: font, verticalPadding: verticalPadding)
             }
-            return pill(text: Formatting.percent(remaining), textColor: textColor, borderColor: borderColor)
+            return pill(text: Formatting.percent(remaining), textColor: textColor, borderColor: borderColor,
+                       font: font, verticalPadding: verticalPadding)
 
         case .mood:
             return pill(text: "\(Personality.moodEmoji(remaining: remaining)) \(Formatting.percent(remaining))",
-                        textColor: textColor, borderColor: borderColor)
+                        textColor: textColor, borderColor: borderColor, font: font, verticalPadding: verticalPadding)
 
         case .pet:
             let pet = Personality.petEmoji(Personality.petState(remaining: remaining))
-            return pill(text: "\(pet) \(Formatting.percent(remaining))", textColor: textColor, borderColor: borderColor)
+            return pill(text: "\(pet) \(Formatting.percent(remaining))", textColor: textColor, borderColor: borderColor,
+                       font: font, verticalPadding: verticalPadding)
 
         case .fuelGauge:
             return fuelGauge(remaining: remaining)
@@ -65,13 +73,34 @@ enum MenuBarLabel {
 
     // MARK: - Drawing
 
-    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    /// Design-time base size. The clamp never returns below this, so the pill is
+    /// never smaller than it was before the text-size setting existed.
+    private static let baseFontSize: Double = 11
+    private static let basePadding: Double = 2
     private static let horizontalPadding: CGFloat = 6
-    private static let verticalPadding: CGFloat = 2
     private static let lineWidth: CGFloat = 1.25
     private static let cornerRadius: CGFloat = 4
 
-    private static func pill(text: String, textColor: NSColor, borderColor: NSColor) -> NSImage {
+    /// Font and vertical padding for a scale, clamped to the real menu-bar height.
+    /// The line-height measurement is what `TextScale` cannot compute itself.
+    private static func metrics(for scale: TextScale) -> (font: NSFont, verticalPadding: CGFloat) {
+        let clamped = scale.menuBarMetrics(
+            base: baseFontSize,
+            padding: basePadding,
+            thickness: Double(NSStatusBar.system.thickness),
+            textHeight: { size in
+                let candidate = NSFont.monospacedDigitSystemFont(ofSize: CGFloat(size), weight: .regular)
+                let height = ("0" as NSString).size(withAttributes: [.font: candidate]).height
+                // `pill`/`gaugePill` draw with `ceil(textSize.height)`, so the clamp must
+                // validate the same ceiled value or the pill could exceed the bar's thickness.
+                return Double(ceil(height))
+            })
+        return (NSFont.monospacedDigitSystemFont(ofSize: CGFloat(clamped.font), weight: .regular),
+                CGFloat(clamped.padding))
+    }
+
+    private static func pill(text: String, textColor: NSColor, borderColor: NSColor,
+                             font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let textSize = (text as NSString).size(withAttributes: attributes)
         let width = ceil(textSize.width) + horizontalPadding * 2
@@ -94,15 +123,17 @@ enum MenuBarLabel {
     /// remaining level (echoes the speedometer app icon).
     /// Width of the fixed menu-bar slot, sized to the widest Classic content so the item never
     /// resizes (which would shift the button and misalign the popover).
-    static func recommendedSlotWidth() -> CGFloat {
+    static func recommendedSlotWidth(for scale: TextScale) -> CGFloat {
         let reference = "100% · 4h59m"
+        let (font, _) = metrics(for: scale)
         let textWidth = (reference as NSString).size(withAttributes: [.font: font]).width
         return ceil(textWidth + horizontalPadding * 2 + lineWidth * 2 + 4)
     }
 
     /// Classic pill whose border is a receding "fuel ring": a faint full track plus a coloured
     /// arc spanning the remaining fraction (green ≥50 %, yellow ≥20 %, red below).
-    private static func gaugePill(text: String, remaining: Double) -> NSImage {
+    private static func gaugePill(text: String, remaining: Double,
+                                  font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
         let textSize = (text as NSString).size(withAttributes: attributes)
         let width = ceil(textSize.width) + horizontalPadding * 2
@@ -193,7 +224,8 @@ enum MenuBarLabel {
         }
     }
 
-    private static func glyph(_ glyph: String, color: NSColor) -> NSImage {
+    private static func glyph(_ glyph: String, color: NSColor,
+                              font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         let size = (glyph as NSString).size(withAttributes: attributes)
         return draw(width: ceil(size.width) + 4, height: ceil(size.height) + verticalPadding * 2) {
