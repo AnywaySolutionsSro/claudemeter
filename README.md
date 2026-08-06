@@ -36,9 +36,12 @@ orange under 25 % and red under 10 %.
 
 ## Personality & extras
 
-- **Display modes** (switch in the dropdown): `Classic` (% + reset countdown) · `Burn rate`
+- **Display modes** (Settings ▸ General): `Classic` (% + reset countdown) · `Burn rate`
   (🔥 ETA, shown only when you'd hit the limit before reset) · `Mood face` (😎→💀) ·
   `Fuel gauge` (an E–F dial with a needle) · `Pet` (a cat that sleeps when you're out).
+- **Text size** (Settings ▸ General): `Default` / `Large` / `Larger` / `Largest`, for large or
+  low-DPI displays. Scales the dropdown, the Sessions window, and the Settings pane's labels;
+  the menu-bar pill scales too, up to the fixed height of the macOS menu bar.
 - **Burn rate & ETA** — a smoothed least-squares estimate of how fast you're spending
   (% per hour — the API exposes utilization %, not token counts), plus *"2.1× your usual pace"*
   vs. your history.
