@@ -12,12 +12,13 @@ struct MenuContentView: View {
     @EnvironmentObject var store: UsageStore
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
+    @Environment(\.textScale) private var scale
     @State private var now = Date()
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: scale.pt(12)) {
             header
             Divider()
             if auth.isSignedIn {
@@ -28,24 +29,24 @@ struct MenuContentView: View {
                 loginContent
             }
         }
-        .padding(14)
-        .frame(width: 300)
+        .padding(scale.pt(14))
+        .frame(width: scale.pt(300))
         .onReceive(ticker) { now = $0 }
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "gauge.medium")
-            Text("ClaudeMeter").font(.system(size: 13, weight: .bold))
+        HStack(spacing: scale.pt(6)) {
+            Image(systemName: "gauge.medium").font(scale.font(13))
+            Text("ClaudeMeter").font(scale.font(13, weight: .bold))
             Spacer()
             if store.isLoading { ProgressView().controlSize(.small) }
             Button(action: onOpenSessions) {
-                Image(systemName: "list.bullet.rectangle")
+                Image(systemName: "list.bullet.rectangle").font(scale.font(13))
             }
             .buttonStyle(.borderless)
             .help("Live token usage per session")
             Button(action: onOpenSettings) {
-                Image(systemName: "gearshape")
+                Image(systemName: "gearshape").font(scale.font(13))
             }
             .buttonStyle(.borderless)
             .help("Settings")
@@ -56,7 +57,7 @@ struct MenuContentView: View {
 
     @ViewBuilder private var usageContent: some View {
         if let snapshot = store.snapshot {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: scale.pt(12)) {
                 ForEach(snapshot.allBuckets, id: \.title) { row in
                     UsageRow(title: row.title, bucket: row.bucket, now: now)
                 }
@@ -65,40 +66,40 @@ struct MenuContentView: View {
             }
         } else if let error = store.errorMessage {
             Label(error, systemImage: "exclamationmark.triangle")
-                .font(.system(size: 11)).foregroundColor(.secondary)
+                .font(scale.font(11)).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            Text("Loading usage…").font(.system(size: 12)).foregroundColor(.secondary)
+            Text("Loading usage…").font(scale.font(12)).foregroundColor(.secondary)
         }
     }
 
     @ViewBuilder private var insights: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: scale.pt(6)) {
+            HStack(spacing: scale.pt(4)) {
                 if let burn = store.burnEstimate, burn.isBurning {
                     Text("🔥 Spending ~\(Int(burn.percentPerHour.rounded()))%/hr")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(scale.font(11, weight: .medium))
                     Text(burnDetail(burn))
-                        .font(.system(size: 11)).foregroundColor(.secondary)
+                        .font(scale.font(11)).foregroundColor(.secondary)
                 } else {
                     Text("💤 Idle — not spending right now")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
+                        .font(scale.font(11)).foregroundColor(.secondary)
                 }
             }
             if let ratio = store.paceRatio, ratio >= 1.2 || ratio <= 0.8 {
                 Text(String(format: "%.1f× your usual pace", ratio))
-                    .font(.system(size: 10)).foregroundColor(.secondary)
+                    .font(scale.font(10)).foregroundColor(.secondary)
             }
 
             if sparklineValues.count >= 2 {
                 Sparkline(values: sparklineValues)
-                    .frame(height: 28)
-                    .padding(.top, 2)
+                    .frame(height: scale.pt(28))
+                    .padding(.top, scale.pt(2))
             }
 
             if maxedThisWeek > 0 {
                 Text("Maxed \(maxedThisWeek) session window\(maxedThisWeek == 1 ? "" : "s") this week")
-                    .font(.system(size: 10)).foregroundColor(.secondary)
+                    .font(scale.font(10)).foregroundColor(.secondary)
             }
         }
     }
@@ -106,44 +107,44 @@ struct MenuContentView: View {
     @ViewBuilder private var cooldownBox: some View {
         if let bucket = store.snapshot?.primary, bucket.percentRemaining <= 0.5,
            let reset = bucket.timeUntilReset(now: now) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: scale.pt(6)) {
                 Text("Cooling down")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                 Text("Session is empty — resets in \(Formatting.countdown(reset)). Good time for a break.")
-                    .font(.system(size: 11)).foregroundColor(.secondary)
+                    .font(scale.font(11)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Remind me when it resets") {
                     if let resetAt = bucket.resetsAt { NotificationManager().scheduleResetReminder(at: resetAt) }
                 }
-                .font(.system(size: 11))
+                .font(scale.font(11))
             }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+            .padding(scale.pt(8))
+            .background(RoundedRectangle(cornerRadius: scale.pt(8)).fill(Color.orange.opacity(0.12)))
         }
     }
 
     private var signedInFooter: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: scale.pt(8)) {
             if let note = store.statusNote {
-                Text(note).font(.system(size: 10)).foregroundColor(.secondary)
+                Text(note).font(scale.font(10)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack {
                 if let updated = store.lastUpdated {
                     Text("Updated \(updated.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: 10)).foregroundColor(.secondary)
+                        .font(scale.font(10)).foregroundColor(.secondary)
                 }
                 Spacer()
                 Button("Refresh") { Task { await store.refresh(force: true) } }
-                    .font(.system(size: 11))
+                    .font(scale.font(11))
             }
 
             HStack {
                 quickLinksMenu
                 Spacer()
-                Button("Sign out") { auth.signOut() }.font(.system(size: 11))
-                Button("Quit") { NSApplication.shared.terminate(nil) }.font(.system(size: 11))
+                Button("Sign out") { auth.signOut() }.font(scale.font(11))
+                Button("Quit") { NSApplication.shared.terminate(nil) }.font(scale.font(11))
             }
         }
     }
@@ -155,8 +156,8 @@ struct MenuContentView: View {
             Link("Usage help", destination: URL(string: "https://support.claude.com")!)
         }
         .menuStyle(.borderlessButton)
-        .frame(width: 28)
-        .font(.system(size: 11))
+        .frame(width: scale.pt(28))
+        .font(scale.font(11))
     }
 
     // MARK: - Derived
@@ -187,55 +188,55 @@ struct MenuContentView: View {
     @ViewBuilder private var loginContent: some View {
         switch auth.state {
         case .signedOut:
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: scale.pt(10)) {
                 Text("Connect your Claude account to see your usage and reset times.")
-                    .font(.system(size: 12)).foregroundColor(.secondary)
+                    .font(scale.font(12)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let error = auth.errorMessage {
-                    Text(error).font(.system(size: 10)).foregroundColor(.red)
+                    Text(error).font(scale.font(10)).foregroundColor(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Button("Connect Claude account") { auth.beginLogin() }
                     .keyboardShortcut(.defaultAction)
                 Button("Paste code manually") { auth.beginManualLogin() }
-                    .buttonStyle(.link).font(.system(size: 10))
+                    .buttonStyle(.link).font(scale.font(10))
                 quitRow
             }
 
         case .waitingForBrowser:
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: scale.pt(10)) {
+                HStack(spacing: scale.pt(8)) {
                     ProgressView().controlSize(.small)
                     Text("Waiting for approval in your browser…")
-                        .font(.system(size: 12)).foregroundColor(.secondary)
+                        .font(scale.font(12)).foregroundColor(.secondary)
                 }
                 Text("Approve access in the browser tab that opened. This window updates on its own.")
-                    .font(.system(size: 10)).foregroundColor(.secondary)
+                    .font(scale.font(10)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                HStack { Button("Cancel") { auth.cancel() }.font(.system(size: 11)); Spacer() }
+                HStack { Button("Cancel") { auth.cancel() }.font(scale.font(11)); Spacer() }
             }
 
         case .awaitingCode, .connecting:
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: scale.pt(8)) {
                 Text("Approve access in the browser, copy the code shown, and paste it here:")
-                    .font(.system(size: 11)).foregroundColor(.secondary)
+                    .font(scale.font(11)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Paste authorization code", text: $auth.pastedCode)
-                    .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                    .textFieldStyle(.roundedBorder).font(scale.font(11))
                     .disabled(auth.state == .connecting)
                     .onSubmit { auth.submitCode() }
                 if let error = auth.errorMessage {
-                    Text(error).font(.system(size: 10)).foregroundColor(.red)
+                    Text(error).font(scale.font(10)).foregroundColor(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
-                    Button("Cancel") { auth.cancel() }.font(.system(size: 11))
+                    Button("Cancel") { auth.cancel() }.font(scale.font(11))
                     Spacer()
                     if auth.state == .connecting {
                         ProgressView().controlSize(.small)
                     } else {
                         Button("Sign in") { auth.submitCode() }
-                            .font(.system(size: 11)).keyboardShortcut(.defaultAction)
+                            .font(scale.font(11)).keyboardShortcut(.defaultAction)
                     }
                 }
             }
@@ -246,6 +247,6 @@ struct MenuContentView: View {
     }
 
     private var quitRow: some View {
-        HStack { Spacer(); Button("Quit") { NSApplication.shared.terminate(nil) }.font(.system(size: 11)) }
+        HStack { Spacer(); Button("Quit") { NSApplication.shared.terminate(nil) }.font(scale.font(11)) }
     }
 }
