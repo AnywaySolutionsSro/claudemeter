@@ -4,6 +4,7 @@ import SwiftUI
 struct Sparkline: View {
     let values: [Double]
     var color: Color = Color(nsColor: MenuBarLabel.claudeOrange)
+    @Environment(\.textScale) private var scale
 
     var body: some View {
         GeometryReader { geo in
@@ -28,7 +29,7 @@ struct Sparkline: View {
                         path.move(to: points[0])
                         points.dropFirst().forEach { path.addLine(to: $0) }
                     }
-                    .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                    .stroke(color, style: StrokeStyle(lineWidth: scale.pt(1.5), lineJoin: .round))
                 }
             }
         }
