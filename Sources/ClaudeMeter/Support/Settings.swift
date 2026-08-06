@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ClaudeMeterCore
 
 /// How the menu-bar item presents usage.
 enum DisplayMode: String, CaseIterable, Identifiable {
@@ -34,6 +35,9 @@ final class Settings: ObservableObject {
     @Published var displayMode: DisplayMode {
         didSet { defaults.set(displayMode.rawValue, forKey: Keys.displayMode) }
     }
+    @Published var textScale: TextScale {
+        didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
+    }
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
@@ -58,6 +62,7 @@ final class Settings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
+        self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
         // Master switch defaults OFF for fresh installs: enabling it in Settings is
@@ -71,6 +76,7 @@ final class Settings: ObservableObject {
 
     private enum Keys {
         static let displayMode = "displayMode"
+        static let textScale = "textScale"
         static let notificationsEnabled = "notificationsEnabled"
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
