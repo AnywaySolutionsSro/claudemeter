@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var auth = AuthModel(account: account)
     private let sessionMonitor = SessionMonitor()
     private lazy var sessionsWindow = SessionsWindowController(
-        monitor: sessionMonitor, armed: armedSessions,
+        monitor: sessionMonitor, armed: armedSessions, settings: settings,
         onTestResume: { [weak self] session in
             guard let self else { return }
             self.autoResume.testResume(
@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Fixed width (content centered) so switching modes / changing the countdown never
         // resizes the item — that would shift the button and misalign the open popover.
-        statusItem = NSStatusBar.system.statusItem(withLength: MenuBarLabel.recommendedSlotWidth())
+        statusItem = NSStatusBar.system.statusItem(withLength: MenuBarLabel.recommendedSlotWidth(for: settings.textScale))
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
@@ -208,16 +208,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func updateLabel() {
         guard let button = statusItem.button else { return }
         let mode = settings.displayMode
+        let scale = settings.textScale
         let signedIn = auth.isSignedIn
         let snapshot = store.snapshot
         let burn = store.burnEstimate
         let error = store.errorMessage
         let now = Date()
 
+        // Re-assert the slot width here, not just at launch: the width is fixed
+        // *per scale*, and a text-size change must widen the slot or the new image
+        // lands in a stale one. `settings.objectWillChange` already routes here.
+        statusItem.length = MenuBarLabel.recommendedSlotWidth(for: scale)
+
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
             image = MenuBarLabel.image(
-                mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn, errorMessage: error, now: now
+                mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
+                errorMessage: error, now: now, scale: scale
             )
         }
         button.image = image
@@ -241,6 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .environmentObject(store)
             .environmentObject(auth)
             .environmentObject(settings)
+            .environment(\.textScale, settings.textScale)
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting

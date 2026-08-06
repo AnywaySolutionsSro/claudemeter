@@ -12,33 +12,34 @@ struct SessionRow: View {
     var armDisabledReason: String?
     var isArmed: Bool = false
     var onArmChange: (Bool) -> Void = { _ in }
+    @Environment(\.textScale) private var scale
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: scale.pt(10)) {
             runningDot
-                .padding(.top, 3)
+                .padding(.top, scale.pt(3))
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: scale.pt(2)) {
+                HStack(spacing: scale.pt(6)) {
                     Text(session.projectName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(scale.font(12, weight: .semibold))
                         .lineLimit(1)
                     originBadge
                 }
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(scale.font(10))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: scale.pt(8))
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: scale.pt(2)) {
                 Text(Formatting.tokenCount(session.totalTokens))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .monospacedDigit()
                 Text(secondary)
-                    .font(.system(size: 9))
+                    .font(scale.font(9))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
             }
@@ -59,22 +60,22 @@ struct SessionRow: View {
                 .overlay { if !canArm { Color.clear.contentShape(Rectangle()) } }
                 .help(armDisabledReason ?? "Auto-resume this session when quota refreshes")
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, scale.pt(3))
     }
 
     private var runningDot: some View {
         Circle()
             .fill(session.running == .running ? Color.green : Color.secondary.opacity(0.35))
-            .frame(width: 8, height: 8)
+            .frame(width: scale.pt(8), height: scale.pt(8))
     }
 
     private var originBadge: some View {
         Text(session.origin == .cli ? "CLI" : "APP")
-            .font(.system(size: 8, weight: .bold))
+            .font(scale.font(8, weight: .bold))
             .foregroundColor(.secondary)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 3).fill(Color.secondary.opacity(0.12)))
+            .padding(.horizontal, scale.pt(4))
+            .padding(.vertical, scale.pt(1))
+            .background(RoundedRectangle(cornerRadius: scale.pt(3)).fill(Color.secondary.opacity(0.12)))
     }
 
     private var subtitle: String {
