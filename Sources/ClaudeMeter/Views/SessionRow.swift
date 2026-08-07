@@ -50,6 +50,13 @@ struct SessionRow: View {
                 .controlSize(.mini)
                 .disabled(!canArm)
                 .opacity(canArm ? 1 : 0.35)
+                // A disabled AppKit control gets no mouse tracking, so a tooltip
+                // attached to it never appears, which silenced this help text on
+                // exactly the rows whose reason the user needs. The overlay sits
+                // outside the disabled scope and restores hover without making the
+                // switch interactive; it takes the Toggle's size, so the row layout
+                // is unchanged.
+                .overlay { if !canArm { Color.clear.contentShape(Rectangle()) } }
                 .help(armDisabledReason ?? "Auto-resume this session when quota refreshes")
         }
         .padding(.vertical, 3)
