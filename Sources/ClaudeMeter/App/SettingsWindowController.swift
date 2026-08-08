@@ -18,6 +18,11 @@ final class SettingsWindowController: NSObject {
     func show() {
         if window == nil {
             let hosting = NSHostingController(rootView: SettingsView(settings: settings, auth: auth))
+            // A hosted NSWindow does not follow its root view's preferred size on
+            // its own, unlike NSPopover. Without this, `SettingsView`'s reactive
+            // frame changes when the text size setting changes but the window keeps
+            // its old frame, clipping the larger content in a non-resizable window.
+            hosting.sizingOptions = [.preferredContentSize]
             let window = NSWindow(contentViewController: hosting)
             window.title = "ClaudeMeter Settings"
             window.styleMask = [.titled, .closable, .miniaturizable]
