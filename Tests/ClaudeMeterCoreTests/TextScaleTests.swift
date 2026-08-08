@@ -69,6 +69,9 @@ import Testing
     @Test func menuBarFontIsMonotonicInScale() {
         let fonts = TextScale.allCases.map { metrics($0).font }
         #expect(fonts == fonts.sorted())
+        // Sortedness alone also holds if every scale collapsed to the base font,
+        // so assert the ladder actually climbs.
+        #expect(fonts.first! < fonts.last!)
     }
 
     @Test func neverReturnsBelowBaseEvenWhenNothingFits() {

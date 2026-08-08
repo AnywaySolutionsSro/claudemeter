@@ -172,6 +172,10 @@ enum MenuBarLabel {
         return straight + corners
     }
 
+    /// Deliberately not scaled by `TextScale`: this is a fixed 40x18 vector drawing
+    /// whose only text is the 6.5pt E/F labels, so redrawing it at arbitrary sizes
+    /// risks regressions in a hand-tuned dial for no readability gain. The pill
+    /// modes scale; this one does not.
     private static func fuelGauge(remaining: Double) -> NSImage {
         let width: CGFloat = 40, height: CGFloat = 18
         let pivot = NSPoint(x: width / 2, y: 4)
