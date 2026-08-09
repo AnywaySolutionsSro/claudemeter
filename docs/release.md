@@ -11,11 +11,18 @@ export NOTARY_PROFILE="mbx-notary"
 
 ## How `build.sh` modes differ
 
+All modes except `--spm` build the **full app + widget extension** via the XcodeGen project.
+
 | Command              | Signing                         | Distributable?                          |
 | -------------------- | ------------------------------- | --------------------------------------- |
-| `./build.sh`         | ad-hoc (`-`)                    | local only                              |
-| `./build.sh --install` | ad-hoc, installs to /Applications | local only; re-prompts Keychain per build |
+| `./build.sh`         | dev team                        | local only                              |
+| `./build.sh --install` | dev team, installs to /Applications | local only; stable signature (Keychain prompts once) |
 | `./build.sh --release` | Developer ID + hardened runtime | yes — notarized if a notary profile exists |
+| `./build.sh --spm`   | ad-hoc (`-`), **no widget**     | local fallback for Xcode-less toolchains |
+
+Release signing is **inside-out and per-bundle** (appex with `ClaudeMeterWidget.entitlements`,
+then the app with `ClaudeMeter.entitlements`) — never `--deep`, which would stamp the app's
+entitlements onto the appex.
 
 `--release` notarizes when `xcrun notarytool history --keychain-profile "$NOTARY_PROFILE"`
 succeeds; otherwise it ships a Developer ID signed but **un-notarized** build (friend must

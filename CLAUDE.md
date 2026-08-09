@@ -77,17 +77,20 @@ A successful resume posts a "▶︎ Resumed X" notification (the only way to tel
 from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
 summary notifies if armed sessions never became eligible.
 
-Two builds: **`./build.sh`** = SwiftPM menu-bar app (no widget). **`./build-xcode.sh`** =
-XcodeGen project (`project.yml`) building app + widget extension, signed with the dev team.
-Diagnostics: `ClaudeMeter --dump-sessions`, `ClaudeMeter --snapshot-test`.
+**`./build.sh` always builds the full app + widget extension** (XcodeGen project from
+`project.yml`, dev-team signed). Jakub uses the widget — never install a widget-less build,
+or macOS silently deletes his placed widgets. `./build.sh --spm` remains as the widget-less
+SwiftPM fallback for toolchains without Xcode; `./build-xcode.sh` is a legacy alias for
+`./build.sh --install`. Diagnostics: `ClaudeMeter --dump-sessions`, `ClaudeMeter --snapshot-test`.
 
 ## Commands
 
 ```bash
-swift build -c release          # compile
+swift build -c release          # compile (SwiftPM targets only, quick check)
 swift test                      # core unit tests (keep these green)
-./build.sh --install            # build + install to /Applications + launch (ad-hoc signed)
-./build.sh --release            # signed + notarized zip to ~/Desktop (see env vars below)
+./build.sh --install            # app + widget → /Applications + launch (dev-team signed)
+./build.sh --release            # app + widget, signed + notarized zip to ~/Desktop (env vars below)
+./build.sh --spm                # widget-less SwiftPM fallback (no Xcode needed)
 swift Resources/make_icon.swift && iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
 ```
 
@@ -118,9 +121,9 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
   (`AppDelegate.requestITermAuthorizationIfNeeded`), and the Sessions window has a per-session
   right-click **test resume** that fires the real pipeline on demand.
 - **Keychain re-prompts on every ad-hoc rebuild.** macOS ties "Always Allow" to the code
-  signature; an ad-hoc signature changes each build, so `./build.sh --install` re-prompts.
-  A stable **Developer ID** (notarized) build prompts once and never again. Don't "fix" this in
-  code — it's expected for ad-hoc dev builds.
+  signature; an ad-hoc signature changes each build, so `./build.sh --spm` builds re-prompt.
+  The default `./build.sh --install` is dev-team signed (stable), so it prompts once. Don't
+  "fix" this in code — it's expected for ad-hoc fallback builds.
 - **Agent apps (LSUIElement) have no menu bar**, so Cmd+V/C/X/A don't reach text fields. We
   install a minimal Edit menu in `AppDelegate.installEditMenu()`. Don't remove it.
 - **`.transient` popovers don't auto-close for a background agent** (the window never becomes
@@ -180,7 +183,7 @@ projects — it authenticates the Apple **team**, not the app). See [docs/releas
   redacted placeholder or never appears in the gallery at all (the snapshot file is fine).
   Diagnose with `lsregister -dump | grep ClaudeMeterWidget.appex` (lists *every* registered path —
   there should be exactly one, in `/Applications`), plus `pluginkit -mAvvv -i <widgetID>` and `pgrep
-  -lf ClaudeMeterWidget.appex` to see which path is running. `build-xcode.sh` now (a) deletes the
+  -lf ClaudeMeterWidget.appex` to see which path is running. `build.sh --install` (a) deletes the
   standalone copies, (b) `lsregister -u`'s every stale `ClaudeMeter.app` in DerivedData/`.build`
   (this is what clears the *embedded* registrations — deleting only the standalone appex is not
   enough), and (c) `lsregister -f /Applications/ClaudeMeter.app` + `killall chronod`. Manual

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 #
-# Build, install, or notarize ClaudeMeter.app.
+# Build, install, or notarize ClaudeMeter.app — always including the widget extension.
 #
-#   ./build.sh              Build dist/ClaudeMeter.app (ad-hoc signed, for local use)
-#   ./build.sh --install    Build, install to /Applications (or ~/Applications), and launch
-#   ./build.sh --notarize   Build, Developer ID sign, notarize, staple, and zip for sharing
+#   ./build.sh              Build dist/ClaudeMeter.app (app + widget, dev-team signed)
+#   ./build.sh --install    Build, install to /Applications, consolidate widget registration, launch
+#   ./build.sh --release    Build, Developer ID sign, notarize when possible, zip to ~/Desktop
+#   ./build.sh --notarize   Build, Developer ID sign, notarize, staple, and zip to dist/
+#   ./build.sh --spm        Widget-less SwiftPM fallback build (no Xcode/team needed; ad-hoc signed)
+#
+# Requires: xcodegen (brew install xcodegen), Xcode, and a Developer team (override with
+# DEVELOPMENT_TEAM). The --spm fallback needs only the Swift toolchain.
 #
 # Notarizing requires an Apple Developer account and these environment variables:
 #
@@ -22,66 +27,118 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="ClaudeMeter"
 DIST="${ROOT}/dist"
 APP="${DIST}/${APP_NAME}.app"
+APPEX="${APP}/Contents/PlugIns/ClaudeMeterWidget.appex"
+TEAM="${DEVELOPMENT_TEAM:-72K9YQF24J}"
+LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 MODE="${1:-}"
 
-build_binary() {
-	echo "==> Building release binary"
-	swift build -c release
-	BIN_DIR="$(swift build -c release --show-bin-path)"
+# Full app + widget via the XcodeGen project. The result lands in dist/ already
+# dev-team signed (stable signature -> the Keychain "Always Allow" persists).
+build_app() {
+	echo "==> Generating Xcode project"
+	xcodegen generate --spec "${ROOT}/project.yml"
+
+	echo "==> Building Release (app + widget, team ${TEAM})"
+	xcodebuild -project "${ROOT}/${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" \
+		-configuration Release -destination 'platform=macOS' \
+		-allowProvisioningUpdates DEVELOPMENT_TEAM="${TEAM}" build
+
+	local built
+	built="$(find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products/Release \
+		-maxdepth 1 -name "${APP_NAME}.app" 2>/dev/null | head -1)"
+	if [ -z "${built}" ]; then echo "ERROR: built app not found" >&2; exit 1; fi
+
+	echo "==> Staging ${APP_NAME}.app in dist/"
+	rm -rf "${APP}"
+	mkdir -p "${DIST}"
+	cp -R "${built}" "${APP}"
+
+	if [ ! -d "${APPEX}" ]; then
+		echo "ERROR: widget appex missing from the built app" >&2
+		exit 1
+	fi
 }
 
-assemble_bundle() {
-	echo "==> Assembling ${APP_NAME}.app"
+# Widget-less SwiftPM fallback for machines without Xcode/xcodegen/a team.
+build_spm() {
+	echo "==> Building widget-less SwiftPM binary (fallback)"
+	swift build -c release
+	local bin_dir
+	bin_dir="$(swift build -c release --show-bin-path)"
+
+	echo "==> Assembling ${APP_NAME}.app (no widget)"
 	rm -rf "${APP}"
 	mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
-	cp "${BIN_DIR}/${APP_NAME}" "${APP}/Contents/MacOS/${APP_NAME}"
+	cp "${bin_dir}/${APP_NAME}" "${APP}/Contents/MacOS/${APP_NAME}"
 	cp "${ROOT}/Info.plist" "${APP}/Contents/Info.plist"
 	if [ -f "${ROOT}/Resources/AppIcon.icns" ]; then
 		cp "${ROOT}/Resources/AppIcon.icns" "${APP}/Contents/Resources/AppIcon.icns"
 	fi
-}
-
-# Ad-hoc signature: stable enough for one machine, but every rebuild changes the identity,
-# so macOS re-prompts for Keychain access after each update.
-sign_adhoc() {
-	echo "==> Ad-hoc code signing"
 	codesign --force --deep --sign - "${APP}"
 	codesign --verify --deep --strict "${APP}" && echo "    signature OK"
 }
 
-# Developer ID signature with hardened runtime + secure timestamp, required for notarization.
-# A stable certificate means the friend's "Always Allow" Keychain choice persists across updates.
+# Developer ID signatures with hardened runtime + secure timestamp, required for
+# notarization. Signed inside-out (appex first, then the app) and WITHOUT --deep,
+# because each bundle needs its OWN entitlements: the hardened runtime silently
+# denies Apple Events (auto-resume -> iTerm2) without
+# com.apple.security.automation.apple-events on the app, and the widget carries
+# only the app-group entitlement.
 sign_developer_id() {
 	if [ -z "${CODESIGN_ID:-}" ]; then
 		echo "ERROR: CODESIGN_ID is not set (see header of this script)." >&2
 		exit 1
 	fi
 	echo "==> Developer ID code signing (${CODESIGN_ID})"
-	# --entitlements is required here: the hardened runtime silently denies Apple Events
-	# (auto-resume -> iTerm2) without com.apple.security.automation.apple-events.
-	codesign --force --deep --options runtime --timestamp \
-		--entitlements "${ROOT}/ClaudeMeter.entitlements" \
+	codesign --force --options runtime --timestamp \
+		--entitlements "${ROOT}/ClaudeMeterWidget.entitlements" \
+		--sign "${CODESIGN_ID}" "${APPEX}"
+	codesign --force --options runtime --timestamp \
+		--entitlements "${ROOT}/${APP_NAME}.entitlements" \
 		--sign "${CODESIGN_ID}" "${APP}"
 	codesign --verify --deep --strict --verbose=2 "${APP}"
 }
 
+# The widget appex is emitted two ways that both shadow the installed copy: as a
+# standalone build product next to the app, and embedded inside every stale
+# ClaudeMeter.app in DerivedData / .build. LaunchServices/chronod discover ALL of
+# them for the one bundle ID and flip-flop; when they pick a stale path the
+# timeline provider is never invoked and the widget wedges or vanishes from the
+# gallery. Delete the standalone copies, unregister every stale bundle, re-assert
+# /Applications, and kick chronod.
+consolidate_widget_registration() {
+	local target="$1"
+	echo "==> Consolidating widget registration (${target} only)"
+
+	find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products \
+		-maxdepth 2 -name 'ClaudeMeterWidget.appex' -not -path "*/${APP_NAME}.app/*" \
+		-exec rm -rf {} + 2>/dev/null || true
+
+	while IFS= read -r staleApp; do
+		[ -n "${staleApp}" ] && "${LSREG}" -u "${staleApp}" 2>/dev/null || true
+	done < <(find ~/Library/Developer/Xcode/DerivedData "${ROOT}/.build" \
+		-maxdepth 6 -name "${APP_NAME}.app" 2>/dev/null)
+
+	"${LSREG}" -f "${target}" 2>/dev/null || true
+	pluginkit -a "${target}/Contents/PlugIns/ClaudeMeterWidget.appex" 2>/dev/null || true
+	killall chronod 2>/dev/null || true
+}
+
 install_and_launch() {
-	if [ -w /Applications ]; then
-		DEST="/Applications"
-	else
-		DEST="${HOME}/Applications"
-		mkdir -p "${DEST}"
+	local target="/Applications/${APP_NAME}.app"
+
+	echo "==> Installing to ${target}"
+	pkill -x "${APP_NAME}" 2>/dev/null || true
+	sleep 1
+	rm -rf "${target}"
+	cp -R "${APP}" "${target}"
+
+	if [ -d "${target}/Contents/PlugIns/ClaudeMeterWidget.appex" ]; then
+		consolidate_widget_registration "${target}"
 	fi
-	TARGET="${DEST}/${APP_NAME}.app"
 
-	echo "==> Installing to ${TARGET}"
-	pkill -f "${TARGET}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
-	rm -rf "${TARGET}"
-	cp -R "${APP}" "${TARGET}"
-	codesign --force --deep --sign - "${TARGET}"
-
-	echo "==> Installed. Launching — click the 'Sign in' pill in the menu bar to connect."
-	open "${TARGET}"
+	echo "==> Installed. Launching."
+	open "${target}"
 }
 
 notarize_and_package() {
@@ -104,7 +161,7 @@ notarize_and_package() {
 	/usr/bin/ditto -c -k --keepParent "${APP}" "${zip}"
 
 	echo "==> Done. Share this with friends: ${zip}"
-	echo "    They unzip it, drag ClaudeMeter.app to /Applications, and open it normally."
+	echo "    They unzip it, drag ${APP_NAME}.app to /Applications, and open it normally."
 }
 
 # Developer ID signed release zipped to the Desktop for sharing. Notarizes when a notary
@@ -125,7 +182,7 @@ package_release() {
 		echo "==> Notarized + stapled (opens with a normal double-click)"
 	else
 		echo "==> No notary profile '${profile}' found — shipping Developer ID signed (un-notarized)."
-		echo "    Friend: right-click ClaudeMeter.app > Open the first time to bypass Gatekeeper."
+		echo "    Friend: right-click ${APP_NAME}.app > Open the first time to bypass Gatekeeper."
 	fi
 
 	rm -f "${desktop_zip}"
@@ -133,24 +190,27 @@ package_release() {
 	echo "==> Release on your Desktop: ${desktop_zip}"
 }
 
-build_binary
-assemble_bundle
-
 case "${MODE}" in
 	--release)
+		build_app
 		sign_developer_id
 		package_release
 		;;
 	--notarize)
+		build_app
 		sign_developer_id
 		notarize_and_package
 		;;
 	--install)
-		sign_adhoc
+		build_app
 		install_and_launch
 		;;
+	--spm)
+		build_spm
+		echo "==> Built ${APP} (no widget — SwiftPM fallback)"
+		;;
 	*)
-		sign_adhoc
-		echo "==> Built ${APP}"
+		build_app
+		echo "==> Built ${APP} (app + widget)"
 		;;
 esac

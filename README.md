@@ -103,8 +103,9 @@ Requires the Xcode 26 toolchain (Swift 6.2) and targets macOS 26 (Tahoe).
 
 ```bash
 swift test                # run the core unit tests
-./build.sh                # build dist/ClaudeMeter.app (ad-hoc signed, local use)
-./build.sh --install      # build, install to /Applications, launch, enable login item
+./build.sh                # build dist/ClaudeMeter.app — app + widget (needs Xcode + xcodegen)
+./build.sh --install      # build, install to /Applications, launch
+./build.sh --spm          # widget-less fallback using only the Swift toolchain
 ```
 
 ### Release (signed + notarized)
