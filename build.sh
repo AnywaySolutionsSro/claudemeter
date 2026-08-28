@@ -22,12 +22,13 @@
 #                       --password <app-specific-password>
 #   NOTARY_KEYCHAIN Optional keychain path holding that profile (CI uses a temp keychain)
 #
-# Release CI (.github/workflows/release.yml) additionally sets:
+# CI (.github/workflows/{ci,codeql,release}.yml) additionally sets:
 #
-#   BUILD_UNSIGNED=1           build without dev-team signing (Developer ID signs later)
-#   WARNINGS_AS_ERRORS=1       fail on any compiler warning (the build-app CI job)
-#   MARKETING_VERSION          from the tag, e.g. 01.02.03
-#   CURRENT_PROJECT_VERSION    build number (the workflow run number)
+#   BUILD_UNSIGNED=1           build without dev-team signing (CI has no dev cert;
+#                              release.yml applies the Developer ID signature after)
+#   WARNINGS_AS_ERRORS=1       fail on any compiler warning (the ci.yml build-app job)
+#   MARKETING_VERSION          release.yml: from the tag, e.g. 01.02.03
+#   CURRENT_PROJECT_VERSION    release.yml: build number (the workflow run number)
 #
 set -euo pipefail
 

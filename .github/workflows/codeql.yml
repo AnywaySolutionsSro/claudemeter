@@ -1,5 +1,8 @@
 # Advisory security scanning (GitHub code scanning, Swift). Not a required
 # check: results land in the Security tab. Runs on pushes to main and weekly.
+# The traced build goes through ./build.sh (XcodeGen + xcodebuild) so the
+# widget extension and its App Intents are analyzed too — `swift build` alone
+# never compiles Widget/.
 name: codeql
 
 on:
@@ -19,7 +22,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Select newest Xcode 26
         run: |
@@ -32,8 +35,13 @@ jobs:
         with:
           languages: swift
 
-      - name: Build
-        run: swift build
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build app + widget (traced)
+        env:
+          BUILD_UNSIGNED: "1"
+        run: ./build.sh
 
       - uses: github/codeql-action/analyze@v3
         with:
