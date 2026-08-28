@@ -58,8 +58,8 @@ struct MenuContentView: View {
     @ViewBuilder private var usageContent: some View {
         if let snapshot = store.snapshot {
             VStack(alignment: .leading, spacing: scale.pt(12)) {
-                ForEach(snapshot.allBuckets, id: \.title) { row in
-                    UsageRow(title: row.title, bucket: row.bucket, now: now)
+                ForEach(snapshot.allBuckets) { row in
+                    UsageRow(title: row.title, bucket: row.bucket, isActive: row.isActive, now: now)
                 }
                 insights
                 cooldownBox

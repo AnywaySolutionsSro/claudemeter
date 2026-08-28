@@ -34,16 +34,13 @@ public extension UsageSnapshot {
             percentLeft: b.percentRemaining,
             resetsAt: b.resetsAt,
         )) }
-        if let b = sevenDayOpus { result.append(UsageGauge(
-            label: "Opus",
-            percentLeft: b.percentRemaining,
-            resetsAt: b.resetsAt,
-        )) }
-        if let b = sevenDaySonnet { result.append(UsageGauge(
-            label: "Sonnet",
-            percentLeft: b.percentRemaining,
-            resetsAt: b.resetsAt,
-        )) }
+        for limit in allModelWeekly {
+            result.append(UsageGauge(
+                label: limit.label,
+                percentLeft: limit.bucket.percentRemaining,
+                resetsAt: limit.bucket.resetsAt,
+            ))
+        }
         return result
     }
 }

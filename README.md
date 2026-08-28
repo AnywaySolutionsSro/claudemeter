@@ -33,7 +33,10 @@ The same numbers Claude Code's `/usage` command reports — the real server-side
 local estimate:
 
 - **Session (5h)** — the rolling 5-hour limit, shown in the menu bar by default.
-- **Weekly**, **Weekly · Opus**, **Weekly · Sonnet** — whichever windows your plan returns.
+- **Weekly** — the all-models weekly window.
+- **Weekly · Fable** (and any other per-model weekly window Anthropic reports, e.g. Opus or
+  Sonnet) — labelled with the server-supplied model name. The one Anthropic flags as currently
+  in effect carries a small **limiting** tag. The widget shows a ring per window.
 
 Each shows percent **remaining** and a live **reset countdown**. The menu-bar pill turns
 orange under 25 % and red under 10 %.
