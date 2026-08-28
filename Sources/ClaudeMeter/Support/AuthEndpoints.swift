@@ -19,11 +19,11 @@ enum AuthError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Sign-in failed: unexpected response. Please try again."
-        case .exchangeFailed(let code):
-            return "Sign-in failed (HTTP \(code)). Check the code and try again."
+            "Sign-in failed: unexpected response. Please try again."
+        case let .exchangeFailed(code):
+            "Sign-in failed (HTTP \(code)). Check the code and try again."
         case .notAuthenticated:
-            return "Not connected. Click Connect to sign in."
+            "Not connected. Click Connect to sign in."
         }
     }
 }

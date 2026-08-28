@@ -16,7 +16,7 @@ public struct SessionAggregator: Sendable {
         projectPath: String,
         origin: SessionOrigin,
         title: String?,
-        now: Date
+        now: Date,
     ) -> SessionUsage? {
         var accumulator = SessionAccumulator(burnWindow: burnWindow)
         for record in parsed.records {

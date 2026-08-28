@@ -12,7 +12,8 @@ public struct AssistantUsageRecord: Equatable, Sendable {
     public let messageID: String?
 
     public init(timestamp: Date, model: String?, cwd: String?, tokens: TokenBreakdown,
-                messageID: String? = nil) {
+                messageID: String? = nil)
+    {
         self.timestamp = timestamp
         self.model = model
         self.cwd = cwd
@@ -47,7 +48,7 @@ public struct TranscriptParser: Sendable {
     }
 
     public func parseLine(_ line: String) -> AssistantUsageRecord? {
-        if case .record(let record) = classify(line) { return record }
+        if case let .record(record) = classify(line) { return record }
         return nil
     }
 
@@ -56,7 +57,7 @@ public struct TranscriptParser: Sendable {
         var malformed = 0
         for line in lines {
             switch classify(line) {
-            case .record(let record): records.append(record)
+            case let .record(record): records.append(record)
             case .malformed: malformed += 1
             case .skipped: break
             }
@@ -85,7 +86,7 @@ public struct TranscriptParser: Sendable {
             input: int("input_tokens"),
             output: int("output_tokens"),
             cacheCreation: int("cache_creation_input_tokens"),
-            cacheRead: int("cache_read_input_tokens")
+            cacheRead: int("cache_read_input_tokens"),
         )
 
         let timestamp = (root["timestamp"] as? String).flatMap(ISODate.parse) ?? Date(timeIntervalSince1970: 0)
@@ -94,7 +95,7 @@ public struct TranscriptParser: Sendable {
             model: message["model"] as? String,
             cwd: root["cwd"] as? String,
             tokens: tokens,
-            messageID: message["id"] as? String
+            messageID: message["id"] as? String,
         ))
     }
 }

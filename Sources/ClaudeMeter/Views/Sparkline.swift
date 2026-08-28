@@ -3,7 +3,7 @@ import SwiftUI
 /// A minimal line chart of values (0–100), oldest → newest.
 struct Sparkline: View {
     let values: [Double]
-    var color: Color = Color(nsColor: MenuBarLabel.claudeOrange)
+    var color: Color = .init(nsColor: MenuBarLabel.claudeOrange)
     @Environment(\.textScale) private var scale
 
     var body: some View {
@@ -13,7 +13,7 @@ struct Sparkline: View {
                 let points = values.enumerated().map { index, value in
                     CGPoint(
                         x: CGFloat(index) * stepX,
-                        y: geo.size.height - CGFloat(min(100, max(0, value)) / 100) * geo.size.height
+                        y: geo.size.height - CGFloat(min(100, max(0, value)) / 100) * geo.size.height,
                     )
                 }
                 ZStack {

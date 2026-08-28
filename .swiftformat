@@ -1,0 +1,21 @@
+# SwiftFormat (https://github.com/nicklockwood/SwiftFormat) — run `swiftformat .`
+# locally; CI runs `swiftformat . --lint`. Defaults, minus the pure-churn rules
+# below. SwiftLint owns style *checks*; SwiftFormat owns layout.
+--swiftversion 6.2
+--maxwidth 120
+--indent 4
+--decimalgrouping ignore
+
+# Disabled on purpose:
+#   wrap*Bodies / wrapLoopBodies — this codebase leans on one-line guards
+#     (`guard x else { return }`, `if a { b() }`); forcing them multi-line is noise.
+#   swiftTestingTestCaseNames — renames every @Test function; no value here.
+#   docComments — flips `//` <-> `///` heuristically and gets it wrong on notes
+#     that sit above declarations but aren't API docs.
+--disable wrapIfStatementBodies,wrapPropertyBodies,wrapFunctionBodies,wrapLoopBodies
+--disable swiftTestingTestCaseNames,docComments
+#   redundantSelf — stripped a `self.` that Swift 6 capture semantics require
+#     (AutoResumeCoordinator) and broke the build; not worth the risk.
+--disable redundantSelf
+
+--exclude .build,dist,DerivedData,ClaudeMeter.xcodeproj

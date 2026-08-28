@@ -14,12 +14,13 @@ public struct ArmedSessionsStore: Sendable {
     }
 
     public func decode(_ data: Data) throws -> Set<String> {
-        Set(try JSONDecoder().decode(Container.self, from: data).sessionIDs)
+        try Set(JSONDecoder().decode(Container.self, from: data).sessionIDs)
     }
 
     public func write(_ ids: Set<String>, to url: URL) throws {
         try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+        )
         try encode(ids).write(to: url, options: .atomic)
     }
 
@@ -34,7 +35,8 @@ public struct ArmedSessionsStore: Sendable {
         var batch = readBatch(at: url)
         batch.commands.append(command)
         try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+        )
         try JSONEncoder().encode(batch).write(to: url, options: .atomic)
     }
 

@@ -1,5 +1,5 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 
 /// Supplies a valid access token to the usage client.
 protocol AccessTokenProvider {
@@ -22,6 +22,7 @@ final class AccountStore: AccessTokenProvider {
         encoder.dateEncodingStrategy = .secondsSince1970
         return encoder
     }()
+
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
@@ -36,7 +37,7 @@ final class AccountStore: AccessTokenProvider {
     }
 
     func save(_ tokens: AuthTokens) throws {
-        try keychain.write(try encoder.encode(tokens), account: Self.account)
+        try keychain.write(encoder.encode(tokens), account: Self.account)
     }
 
     func clear() {
@@ -50,7 +51,7 @@ final class AccountStore: AccessTokenProvider {
     }
 
     func forceRefresh(now: Date = Date()) async throws -> String {
-        try await refreshAndSave(try load(), now: now)
+        try await refreshAndSave(load(), now: now)
     }
 
     private func refreshAndSave(_ tokens: AuthTokens, now: Date) async throws -> String {
@@ -59,7 +60,7 @@ final class AccountStore: AccessTokenProvider {
         let updated = AuthTokens(
             accessToken: refreshed.accessToken,
             refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
-            expiresAt: refreshed.expiresAt
+            expiresAt: refreshed.expiresAt,
         )
         try save(updated)
         return updated.accessToken

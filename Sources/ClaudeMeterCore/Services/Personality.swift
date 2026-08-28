@@ -5,11 +5,11 @@ public enum Personality {
     /// A face that degrades as the budget drains.
     public static func moodEmoji(remaining: Double) -> String {
         switch remaining {
-        case ..<5: return "💀"
-        case ..<15: return "🥵"
-        case ..<30: return "😬"
-        case ..<60: return "🙂"
-        default: return "😎"
+        case ..<5: "💀"
+        case ..<15: "🥵"
+        case ..<30: "😬"
+        case ..<60: "🙂"
+        default: "😎"
         }
     }
 
@@ -19,22 +19,22 @@ public enum Personality {
 
     public static func petState(remaining: Double) -> PetState {
         switch remaining {
-        case ..<5: return .asleep
-        case ..<20: return .sleepy
-        case ..<45: return .tired
-        case ..<75: return .content
-        default: return .happy
+        case ..<5: .asleep
+        case ..<20: .sleepy
+        case ..<45: .tired
+        case ..<75: .content
+        default: .happy
         }
     }
 
     /// A cat whose mood tracks the pet state (sleeps when you're out of budget).
     public static func petEmoji(_ state: PetState) -> String {
         switch state {
-        case .happy: return "😺"
-        case .content: return "😸"
-        case .tired: return "😼"
-        case .sleepy: return "🙀"
-        case .asleep: return "😴"
+        case .happy: "😺"
+        case .content: "😸"
+        case .tired: "😼"
+        case .sleepy: "🙀"
+        case .asleep: "😴"
         }
     }
 }

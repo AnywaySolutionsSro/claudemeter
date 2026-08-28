@@ -1,16 +1,17 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
 /// The accumulator is the incremental heart of the scan pipeline: records fold
 /// in one at a time (so a file can be resumed from a byte offset without
 /// re-reading), message.id dedup happens at fold time, and two accumulators can
 /// merge (parent transcript + its subagent transcripts).
-@Suite struct SessionAccumulatorTests {
+struct SessionAccumulatorTests {
     private let now = Date(timeIntervalSince1970: 10_000)
 
     private func rec(_ ts: TimeInterval, _ t: TokenBreakdown, model: String? = "m",
-                     cwd: String? = "/c/proj", messageID: String? = nil) -> AssistantUsageRecord {
+                     cwd: String? = "/c/proj", messageID: String? = nil) -> AssistantUsageRecord
+    {
         AssistantUsageRecord(timestamp: Date(timeIntervalSince1970: ts), model: model, cwd: cwd,
                              tokens: t, messageID: messageID)
     }
@@ -68,7 +69,7 @@ import Testing
     @Test func outOfOrderOlderRecordDoesNotClobberNewestCwd() throws {
         var acc = SessionAccumulator()
         acc.fold(rec(9_500, TokenBreakdown(input: 1), cwd: "/moved/here"))
-        acc.fold(rec(9_000, TokenBreakdown(input: 1), cwd: "/born/here"))  // older, out of order
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), cwd: "/born/here")) // older, out of order
         let u = try #require(acc.usage(id: "s", projectPath: "", origin: .cli, title: nil, now: now))
         #expect(u.projectPath == "/moved/here")
     }
@@ -83,10 +84,10 @@ import Testing
 
     @Test func burnRateCountsOnlyTrailingWindow() throws {
         var acc = SessionAccumulator(burnWindow: 300)
-        acc.fold(rec(now.timeIntervalSince1970 - 600, TokenBreakdown(input: 1000)))  // outside
-        acc.fold(rec(now.timeIntervalSince1970 - 60, TokenBreakdown(input: 50)))     // inside
+        acc.fold(rec(now.timeIntervalSince1970 - 600, TokenBreakdown(input: 1000))) // outside
+        acc.fold(rec(now.timeIntervalSince1970 - 60, TokenBreakdown(input: 50))) // inside
         let u = try #require(acc.usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
-        #expect(u.burnRate == 10)  // 50 tokens / 5 min
+        #expect(u.burnRate == 10) // 50 tokens / 5 min
     }
 
     // The UI shows "the model being used" = the model of the most recent record,
@@ -95,7 +96,7 @@ import Testing
     @Test func lastModelTracksTheMostRecentRecord() throws {
         var acc = SessionAccumulator()
         acc.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-sonnet-4-6"))
-        acc.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8"))  // older, out of order
+        acc.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8")) // older, out of order
         let u = try #require(acc.usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
         #expect(u.lastModel == "claude-sonnet-4-6")
         #expect(u.models == ["claude-opus-4-8", "claude-sonnet-4-6"])
@@ -158,6 +159,6 @@ import Testing
         sub.fold(rec(now.timeIntervalSince1970 - 30, TokenBreakdown(output: 20)))
         let u = try #require(parent.merged(with: sub)
             .usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
-        #expect(u.burnRate == 10)  // 50 tokens / 5 min
+        #expect(u.burnRate == 10) // 50 tokens / 5 min
     }
 }

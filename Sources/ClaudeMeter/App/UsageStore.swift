@@ -1,6 +1,6 @@
+import ClaudeMeterCore
 import Foundation
 import SwiftUI
-import ClaudeMeterCore
 
 /// Events worth reacting to (notifications, Shortcut hooks), emitted on each refresh.
 enum UsageEvent {
@@ -111,7 +111,7 @@ final class UsageStore: ObservableObject {
                 detectEvents(previous: previous, current: fresh, now: now)
             }
             hasLiveBaseline = true
-        } catch UsageError.rateLimited(let retryAfter) {
+        } catch let UsageError.rateLimited(retryAfter) {
             backoffUntil = Date().addingTimeInterval(retryAfter ?? 120)
             present(UsageError.rateLimited(retryAfter: retryAfter).errorDescription ?? "Rate limited.")
         } catch UsageError.sessionExpired, AuthError.notAuthenticated {
@@ -136,7 +136,7 @@ final class UsageStore: ObservableObject {
         burnEstimate = BurnRate.estimate(samples: history, now: now)
         paceRatio = UsageStats.paceRatio(
             current: burnEstimate?.percentPerHour ?? 0,
-            typical: UsageStats.typicalPercentPerHour(samples: history)
+            typical: UsageStats.typicalPercentPerHour(samples: history),
         )
     }
 
@@ -145,20 +145,23 @@ final class UsageStore: ObservableObject {
     private func detectEvents(previous: UsageSnapshot?, current: UsageSnapshot, now: Date) {
         guard let previous, let bucket = current.fiveHour else { return }
 
-        if UsageStats.didRefill(previousUtilization: previous.fiveHour?.utilization, currentUtilization: bucket.utilization) {
+        if UsageStats.didRefill(
+            previousUtilization: previous.fiveHour?.utilization,
+            currentUtilization: bucket.utilization,
+        ) {
             onEvent?(.reset(nextResetsAt: bucket.resetsAt))
         }
 
         let crossed = UsageStats.crossedThresholds(
             previous: previous.fiveHour?.utilization,
             current: bucket.utilization,
-            thresholds: [80, 90, 100]
+            thresholds: [80, 90, 100],
         )
         for threshold in crossed {
             onEvent?(.crossedThreshold(
                 threshold,
                 remaining: bucket.percentRemaining,
-                etaToReset: bucket.timeUntilReset(now: now)
+                etaToReset: bucket.timeUntilReset(now: now),
             ))
         }
     }

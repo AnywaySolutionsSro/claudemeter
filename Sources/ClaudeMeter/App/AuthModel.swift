@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Drives the sign-in flow and exposes auth state to the UI. Owns no tokens itself — those
@@ -11,8 +11,8 @@ import SwiftUI
 final class AuthModel: ObservableObject {
     enum State: Equatable {
         case signedOut
-        case waitingForBrowser   // automatic loopback flow
-        case awaitingCode        // manual paste fallback
+        case waitingForBrowser // automatic loopback flow
+        case awaitingCode // manual paste fallback
         case connecting
         case signedIn
     }

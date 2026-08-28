@@ -1,7 +1,7 @@
+import ClaudeMeterCore
 import Foundation
 import SwiftUI
 import WidgetKit
-import ClaudeMeterCore
 
 /// Inputs the AppDelegate forwards to the AutoResumeCoordinator after each scan.
 struct UsageContextInputs {
@@ -61,11 +61,13 @@ final class SessionMonitor: ObservableObject {
     /// the content actually changed, to avoid spending WidgetKit's reload budget.
     private var lastSignature: [String]?
     func publish(_ snapshot: SessionSnapshot) {
-        let signature = snapshot.sessions.map { "\($0.id):\($0.totalTokens):\($0.running.rawValue):\($0.lastModel ?? "")" }
+        let signature = snapshot.sessions
+            .map { "\($0.id):\($0.totalTokens):\($0.running.rawValue):\($0.lastModel ?? "")" }
             + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)",
                "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
                "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
-            + snapshot.usageGauges.map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
+            + snapshot.usageGauges
+            .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
         guard signature != lastSignature else { return }
         lastSignature = signature
 
@@ -78,7 +80,8 @@ final class SessionMonitor: ObservableObject {
     }
 
     init(scanner: SessionScanner = SessionMonitor.makeDefaultScanner(),
-         interval: TimeInterval = 10) {
+         interval: TimeInterval = 10)
+    {
         self.scanner = scanner
         self.interval = interval
     }
@@ -89,7 +92,7 @@ final class SessionMonitor: ObservableObject {
             discoverer: TranscriptSource(),
             processProbe: LibprocProcessProbe(),
             desktopDetector: DesktopAppProbe(),
-            snapshotLimit: 20   // enough running sessions to fill the extra-large widget
+            snapshotLimit: 20, // enough running sessions to fill the extra-large widget
         )
     }
 
@@ -126,7 +129,8 @@ final class SessionMonitor: ObservableObject {
         let widgetSessions = result.sessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
             from: widgetSessions, now: result.snapshot.generatedAt,
-            limit: 20, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable)
+            limit: 20, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable,
+        )
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = result.sessions.filter { $0.running == .running }.count
         let gauges = usageProvider?()?.gauges ?? []
@@ -134,7 +138,8 @@ final class SessionMonitor: ObservableObject {
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
-            usageGauges: gauges)
+            usageGauges: gauges,
+        )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)
 

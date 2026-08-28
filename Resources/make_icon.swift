@@ -14,19 +14,25 @@ func drawIcon() {
     let background = NSBezierPath(roundedRect: bgRect, xRadius: 185, yRadius: 185)
     let gradient = NSGradient(
         starting: NSColor(srgbRed: 0.93, green: 0.62, blue: 0.45, alpha: 1),
-        ending: NSColor(srgbRed: 0.78, green: 0.36, blue: 0.20, alpha: 1)
+        ending: NSColor(srgbRed: 0.78, green: 0.36, blue: 0.20, alpha: 1),
     )!
     gradient.draw(in: background, angle: -90)
 
     let center = NSPoint(x: 512, y: 476)
     let radius: CGFloat = 250
     let arcWidth: CGFloat = 78
-    let startAngle: CGFloat = 225          // down-left
-    let totalSweep: CGFloat = 270          // opening at the bottom
+    let startAngle: CGFloat = 225 // down-left
+    let totalSweep: CGFloat = 270 // opening at the bottom
 
     // Track (unused portion).
     let track = NSBezierPath()
-    track.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: startAngle - totalSweep, clockwise: true)
+    track.appendArc(
+        withCenter: center,
+        radius: radius,
+        startAngle: startAngle,
+        endAngle: startAngle - totalSweep,
+        clockwise: true,
+    )
     track.lineWidth = arcWidth
     track.lineCapStyle = .round
     NSColor(white: 1, alpha: 0.30).setStroke()
@@ -44,7 +50,7 @@ func drawIcon() {
 
     // Tick marks just inside the track.
     NSColor(white: 1, alpha: 0.55).setStroke()
-    for i in 0...8 {
+    for i in 0 ... 8 {
         let angle = (startAngle - CGFloat(i) * (totalSweep / 8)) * .pi / 180
         let inner = radius - arcWidth / 2 - 20
         let outer = radius - arcWidth / 2 - 4
@@ -78,7 +84,7 @@ func renderPNG(size: Int) -> Data {
     let rep = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0,
     )!
     rep.size = NSSize(width: size, height: size)
 
@@ -109,4 +115,5 @@ for variant in variants {
     let url = iconset.appendingPathComponent("\(variant.name).png")
     try! renderPNG(size: variant.size).write(to: url)
 }
+
 print("Wrote \(iconset.path)")

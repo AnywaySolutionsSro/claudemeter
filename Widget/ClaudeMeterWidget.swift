@@ -1,8 +1,8 @@
-import WidgetKit
-import SwiftUI
 import AppIntents
-import OSLog
 import ClaudeMeterCore
+import OSLog
+import SwiftUI
+import WidgetKit
 
 private let widgetLog = Logger(subsystem: "com.jakubzak.claudemeter.widget", category: "snapshot")
 
@@ -32,7 +32,8 @@ struct SnapshotEntry: TimelineEntry {
         ]
         let snap = SessionSnapshot(
             generatedAt: base.generatedAt, sessions: base.sessions, totalTokens: base.totalTokens,
-            runningCount: base.runningCount, usageGauges: gauges)
+            runningCount: base.runningCount, usageGauges: gauges,
+        )
         return SnapshotEntry(date: now, snapshot: snap, effectiveArmed: [])
     }
 }
@@ -41,15 +42,15 @@ struct SnapshotEntry: TimelineEntry {
 struct Provider: TimelineProvider {
     private let store = SnapshotStore()
 
-    func placeholder(in context: Context) -> SnapshotEntry {
+    func placeholder(in _: Context) -> SnapshotEntry {
         .sample
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (SnapshotEntry) -> Void) {
+    func getSnapshot(in _: Context, completion: @escaping (SnapshotEntry) -> Void) {
         completion(loadEntry())
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
+    func getTimeline(in _: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
         let entry = loadEntry()
         // WidgetKit throttles refreshes; ask for one roughly every 5 minutes.
         let next = Date().addingTimeInterval(300)
@@ -79,7 +80,7 @@ struct Provider: TimelineProvider {
 
 private let activeGradient = LinearGradient(
     colors: [Color.green, Color(red: 0.2, green: 0.85, blue: 0.6)],
-    startPoint: .leading, endPoint: .trailing
+    startPoint: .leading, endPoint: .trailing,
 )
 
 // MARK: - Reusable circular gauge
@@ -125,11 +126,10 @@ struct GaugeRingView: View {
 
     /// Green when plenty left, amber as it tightens, red when nearly spent.
     static func style(_ left: Double) -> LinearGradient {
-        let colors: [Color]
-        switch left {
-        case ..<15: colors = [Color.red, Color.orange]
-        case ..<40: colors = [Color.orange, Color(red: 1.0, green: 0.82, blue: 0.3)]
-        default:    colors = [Color.green, Color(red: 0.2, green: 0.85, blue: 0.6)]
+        let colors: [Color] = switch left {
+        case ..<15: [Color.red, Color.orange]
+        case ..<40: [Color.orange, Color(red: 1.0, green: 0.82, blue: 0.3)]
+        default: [Color.green, Color(red: 0.2, green: 0.85, blue: 0.6)]
         }
         return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
     }
@@ -165,9 +165,9 @@ struct ClaudeMeterWidgetEntryView: View {
     var body: some View {
         Group {
             switch family {
-            case .systemLarge: sessionsListView        // active sessions only
-            case .systemExtraLarge: sessionsGridView   // two columns of sessions
-            default: gaugesOnlyView                    // systemMedium: gauges only
+            case .systemLarge: sessionsListView // active sessions only
+            case .systemExtraLarge: sessionsGridView // two columns of sessions
+            default: gaugesOnlyView // systemMedium: gauges only
             }
         }
         .padding(12)
@@ -215,7 +215,7 @@ struct ClaudeMeterWidgetEntryView: View {
     /// "Charged" amber knob fill shown when a session is armed.
     private let armedAccent = LinearGradient(
         colors: [Color.orange, Color(red: 1.0, green: 0.78, blue: 0.25)],
-        startPoint: .top, endPoint: .bottom
+        startPoint: .top, endPoint: .bottom,
     )
 
     @ViewBuilder private func sessionBar(_ s: SessionUsage, compact: Bool = false) -> some View {
@@ -285,7 +285,7 @@ struct ClaudeMeterWidgetEntryView: View {
     /// A toggle-style pill that runs `intent` on tap. The track stays a consistent
     /// dark capsule (low luminance) so the light knob is visible in every widget
     /// rendering mode — including the desktop's monochrome tint over windows.
-    @ViewBuilder private func armToggle<I: AppIntent>(_ intent: I, armed: Bool) -> some View {
+    private func armToggle(_ intent: some AppIntent, armed: Bool) -> some View {
         Button(intent: intent) {
             togglePill(armed: armed)
         }
@@ -294,7 +294,7 @@ struct ClaudeMeterWidgetEntryView: View {
 
     /// The pill itself (shared by the interactive toggle and its dimmed,
     /// non-interactive "can't arm" placeholder).
-    @ViewBuilder private func togglePill(armed: Bool) -> some View {
+    private func togglePill(armed: Bool) -> some View {
         ZStack(alignment: armed ? .trailing : .leading) {
             Capsule()
                 .fill(Color.black.opacity(0.32))
@@ -350,7 +350,7 @@ struct ClaudeMeterWidgetEntryView: View {
     }
 
     /// Extra-large widget: two columns, up to 20 sessions.
-    @ViewBuilder private var sessionsGridView: some View {
+    private var sessionsGridView: some View {
         VStack(alignment: .leading, spacing: 9) {
             header
             if sessions.isEmpty {
@@ -360,7 +360,7 @@ struct ClaudeMeterWidgetEntryView: View {
             } else {
                 LazyVGrid(
                     columns: [GridItem(.flexible(), spacing: 22), GridItem(.flexible())],
-                    alignment: .leading, spacing: 9
+                    alignment: .leading, spacing: 9,
                 ) {
                     ForEach(sessions.prefix(20)) { sessionBar($0) }
                 }

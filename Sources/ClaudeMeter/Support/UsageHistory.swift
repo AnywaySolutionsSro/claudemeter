@@ -1,16 +1,17 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 
 /// Persists a rolling window of `UsageSample`s to Application Support, powering burn-rate,
 /// sparklines, averages, and weekly stats across launches.
 enum UsageHistory {
-    private static let maxSamples = 4000   // ~2 weeks at 5-minute polling
+    private static let maxSamples = 4000 // ~2 weeks at 5-minute polling
 
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970
         return encoder
     }()
+
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
@@ -34,7 +35,7 @@ enum UsageHistory {
     private static func save(_ samples: [UsageSample]) {
         guard let url = fileURL, let data = try? encoder.encode(samples) else { return }
         try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
         )
         try? data.write(to: url)
     }

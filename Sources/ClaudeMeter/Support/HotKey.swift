@@ -14,7 +14,7 @@ final class HotKey {
     func register(keyCode: UInt32 = UInt32(kVK_ANSI_U), modifiers: UInt32 = UInt32(cmdKey | optionKey)) {
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
+            eventKind: UInt32(kEventHotKeyPressed),
         )
         InstallEventHandler(
             GetApplicationEventTarget(),
@@ -27,10 +27,10 @@ final class HotKey {
             1,
             &eventType,
             Unmanaged.passUnretained(self).toOpaque(),
-            &handlerRef
+            &handlerRef,
         )
 
-        let id = EventHotKeyID(signature: OSType(0x434D5452), id: 1)   // 'CMTR'
+        let id = EventHotKeyID(signature: OSType(0x434D_5452), id: 1) // 'CMTR'
         RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
 

@@ -9,7 +9,7 @@ enum ResponseCache {
     static func write(_ data: Data) {
         guard let url = fileURL else { return }
         try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
         )
         try? data.write(to: url)
     }

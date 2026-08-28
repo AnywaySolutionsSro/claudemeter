@@ -24,7 +24,8 @@ final class SleepInhibitor {
         let result = IOPMAssertionCreateWithName(
             kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
             IOPMAssertionLevel(kIOPMAssertionLevelOn),
-            reason, &id)
+            reason, &id,
+        )
         guard result == kIOReturnSuccess else {
             log.error("failed to create power assertion: \(result)")
             return

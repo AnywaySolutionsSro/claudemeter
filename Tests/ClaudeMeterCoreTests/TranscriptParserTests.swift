@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct TranscriptParserTests {
+struct TranscriptParserTests {
     private let parser = TranscriptParser()
 
     private let assistantLine = #"""
@@ -62,9 +62,9 @@ import Testing
     @Test func parseCollectsRecordsAndCountsMalformed() {
         let lines = [
             assistantLine,
-            "",                                                  // blank: ignored, not malformed
-            #"{"type":"user"}"#,                                 // non-assistant: ignored, not malformed
-            #"{"type":"assistant","message":{"model":"m"}}"#,   // assistant w/o usage: malformed
+            "", // blank: ignored, not malformed
+            #"{"type":"user"}"#, // non-assistant: ignored, not malformed
+            #"{"type":"assistant","message":{"model":"m"}}"#, // assistant w/o usage: malformed
             assistantLine,
         ]
         let parsed = parser.parse(lines)

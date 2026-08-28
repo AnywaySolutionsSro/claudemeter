@@ -27,7 +27,7 @@ public enum BurnRate {
     public static func estimate(
         samples: [UsageSample],
         now: Date,
-        lookback: TimeInterval = 3600
+        lookback: TimeInterval = 3600,
     ) -> BurnEstimate? {
         guard let latest = samples.max(by: { $0.timestamp < $1.timestamp }) else { return nil }
 

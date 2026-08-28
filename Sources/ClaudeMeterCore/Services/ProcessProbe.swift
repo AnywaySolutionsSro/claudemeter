@@ -37,7 +37,7 @@ public struct LibprocProcessProbe: ProcessProbing {
             result.append(LiveProcess(
                 pid: pid, cwd: cwd,
                 tty: Self.controllingTTY(pid),
-                ppid: Self.parentPID(pid)
+                ppid: Self.parentPID(pid),
             ))
         }
         return result
@@ -106,7 +106,7 @@ public struct LibprocProcessProbe: ProcessProbing {
             PROC_PIDVNODEPATHINFO,
             0,
             &vpi,
-            Int32(MemoryLayout<proc_vnodepathinfo>.size)
+            Int32(MemoryLayout<proc_vnodepathinfo>.size),
         )
         guard code > 0 else { return nil }
 

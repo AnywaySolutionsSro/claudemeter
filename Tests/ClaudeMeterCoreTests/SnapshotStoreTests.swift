@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct SnapshotStoreTests {
+struct SnapshotStoreTests {
     private let now = Date(timeIntervalSince1970: 7_000)
     private let store = SnapshotStore()
 
@@ -30,7 +30,8 @@ import Testing
     }
 
     @Test func readMissingFileReturnsNil() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("does-not-exist-\(UUID().uuidString).json")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("does-not-exist-\(UUID().uuidString).json")
         #expect(store.read(from: url) == nil)
     }
 }

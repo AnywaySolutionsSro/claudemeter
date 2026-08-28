@@ -24,10 +24,26 @@ public extension UsageSnapshot {
     /// Only buckets the API actually returned are included.
     var gauges: [UsageGauge] {
         var result: [UsageGauge] = []
-        if let b = fiveHour { result.append(UsageGauge(label: "Session", percentLeft: b.percentRemaining, resetsAt: b.resetsAt)) }
-        if let b = sevenDay { result.append(UsageGauge(label: "Weekly", percentLeft: b.percentRemaining, resetsAt: b.resetsAt)) }
-        if let b = sevenDayOpus { result.append(UsageGauge(label: "Opus", percentLeft: b.percentRemaining, resetsAt: b.resetsAt)) }
-        if let b = sevenDaySonnet { result.append(UsageGauge(label: "Sonnet", percentLeft: b.percentRemaining, resetsAt: b.resetsAt)) }
+        if let b = fiveHour { result.append(UsageGauge(
+            label: "Session",
+            percentLeft: b.percentRemaining,
+            resetsAt: b.resetsAt,
+        )) }
+        if let b = sevenDay { result.append(UsageGauge(
+            label: "Weekly",
+            percentLeft: b.percentRemaining,
+            resetsAt: b.resetsAt,
+        )) }
+        if let b = sevenDayOpus { result.append(UsageGauge(
+            label: "Opus",
+            percentLeft: b.percentRemaining,
+            resetsAt: b.resetsAt,
+        )) }
+        if let b = sevenDaySonnet { result.append(UsageGauge(
+            label: "Sonnet",
+            percentLeft: b.percentRemaining,
+            resetsAt: b.resetsAt,
+        )) }
         return result
     }
 }

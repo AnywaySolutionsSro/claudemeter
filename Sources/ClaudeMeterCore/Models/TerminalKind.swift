@@ -9,13 +9,13 @@ public enum TerminalKind: String, Equatable, Sendable, Codable {
 
     public var displayName: String {
         switch self {
-        case .iTerm2: return "iTerm2"
-        case .appleTerminal: return "Terminal"
-        case .ghostty: return "Ghostty"
-        case .wezterm: return "WezTerm"
-        case .warp: return "Warp"
-        case .vscode: return "VS Code"
-        case .unknown: return "Terminal"
+        case .iTerm2: "iTerm2"
+        case .appleTerminal: "Terminal"
+        case .ghostty: "Ghostty"
+        case .wezterm: "WezTerm"
+        case .warp: "Warp"
+        case .vscode: "VS Code"
+        case .unknown: "Terminal"
         }
     }
 }

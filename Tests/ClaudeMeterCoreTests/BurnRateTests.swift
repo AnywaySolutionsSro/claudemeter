@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class BurnRateTests: XCTestCase {
     private let reset = Date(timeIntervalSince1970: 2_000_000)
@@ -9,7 +9,7 @@ final class BurnRateTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_000_000 + minutes * 60),
             sessionUtilization: util,
             sessionResetsAt: resetsAt ?? reset,
-            weeklyUtilization: nil
+            weeklyUtilization: nil,
         )
     }
 

@@ -13,7 +13,8 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
 
     public init(generatedAt: Date, sessions: [SessionUsage], totalTokens: Int,
                 runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = [],
-                usageGauges: [UsageGauge] = []) {
+                usageGauges: [UsageGauge] = [])
+    {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalTokens = totalTokens
@@ -50,7 +51,7 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         limit: Int = 5,
         runningOnly: Bool = false,
         armedSessionIDs: [String] = [],
-        armableSessionIDs: [String] = []
+        armableSessionIDs: [String] = [],
     ) -> SessionSnapshot {
         let pool = runningOnly ? sessions.filter { $0.running == .running } : sessions
         let ranked = pool.sorted { $0.totalTokens > $1.totalTokens }
@@ -60,7 +61,7 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
             totalTokens: sessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: sessions.filter { $0.running == .running }.count,
             armedSessionIDs: armedSessionIDs,
-            armableSessionIDs: armableSessionIDs
+            armableSessionIDs: armableSessionIDs,
         )
     }
 }

@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class UsageResponseDecoderTests: XCTestCase {
     private let decoder = UsageResponseDecoder()
@@ -87,11 +87,11 @@ final class UsageResponseDecoderTests: XCTestCase {
     func testISODateParsesMicrosecondsAndTimezone() {
         XCTAssertEqual(
             ISODate.parse("2026-06-27T16:19:59.398499+00:00"),
-            Date(timeIntervalSince1970: 1_782_577_199)
+            Date(timeIntervalSince1970: 1_782_577_199),
         )
         XCTAssertEqual(
             ISODate.parse("2026-06-27T16:19:59Z"),
-            Date(timeIntervalSince1970: 1_782_577_199)
+            Date(timeIntervalSince1970: 1_782_577_199),
         )
         XCTAssertNil(ISODate.parse("not a date"))
     }

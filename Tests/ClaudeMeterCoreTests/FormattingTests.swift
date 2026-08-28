@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class FormattingTests: XCTestCase {
     func testPercentRounds() {
@@ -18,15 +18,15 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Formatting.countdown(2 * 3600), "2h0m")
     }
 
-    func testBucketRemainingAndReset() {
+    func testBucketRemainingAndReset() throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let bucket = UsageBucket(
             utilization: 63,
-            resetsAt: now.addingTimeInterval(8000)
+            resetsAt: now.addingTimeInterval(8000),
         )
         XCTAssertEqual(bucket.percentRemaining, 37)
         XCTAssertEqual(bucket.timeUntilReset(now: now), 8000)
-        XCTAssertEqual(Formatting.countdown(bucket.timeUntilReset(now: now)!), "2h13m")
+        XCTAssertEqual(try Formatting.countdown(XCTUnwrap(bucket.timeUntilReset(now: now))), "2h13m")
     }
 
     func testUtilizationClamped() {

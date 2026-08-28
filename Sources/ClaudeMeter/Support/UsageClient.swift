@@ -1,5 +1,5 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 
 /// Fetches live usage from `GET /api/oauth/usage`, refreshing the token once on a 401.
 struct UsageClient {
@@ -50,7 +50,7 @@ struct UsageClient {
         guard let http = response as? HTTPURLResponse else {
             throw UsageError.network("Malformed response")
         }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             if http.statusCode == 429 {
                 let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
                 throw UsageError.rateLimited(retryAfter: retryAfter)

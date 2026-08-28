@@ -9,7 +9,7 @@ import Foundation
 enum ISODate {
     // ISO8601DateFormatter is a class with mutable config, but we only read from it
     // (`date(from:)`), which is safe to share. nonisolated(unsafe) opts out of the check.
-    nonisolated(unsafe) private static let formatter: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
@@ -28,7 +28,7 @@ enum ISODate {
             end = string.index(after: end)
         }
         var result = string
-        result.removeSubrange(dot..<end)
+        result.removeSubrange(dot ..< end)
         return result
     }
 }

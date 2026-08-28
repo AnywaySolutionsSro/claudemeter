@@ -15,20 +15,20 @@ public enum TextScale: String, CaseIterable, Identifiable, Sendable {
 
     public var title: String {
         switch self {
-        case .standard: return "Default"
-        case .large: return "Large"
-        case .larger: return "Larger"
-        case .largest: return "Largest"
+        case .standard: "Default"
+        case .large: "Large"
+        case .larger: "Larger"
+        case .largest: "Largest"
         }
     }
 
     /// Applied to every design-time font size and layout metric.
     public var multiplier: Double {
         switch self {
-        case .standard: return 1.0
-        case .large: return 1.15
-        case .larger: return 1.3
-        case .largest: return 1.5
+        case .standard: 1.0
+        case .large: 1.15
+        case .larger: 1.3
+        case .largest: 1.5
         }
     }
 
@@ -63,7 +63,7 @@ public enum TextScale: String, CaseIterable, Identifiable, Sendable {
         base: Double,
         padding: Double,
         thickness: Double,
-        textHeight: (Double) -> Double
+        textHeight: (Double) -> Double,
     ) -> (font: Double, padding: Double) {
         // Compressed fallback is deliberately a fixed 1pt, not a gradual decrement from
         // `padding`; the only caller passes 2, so this has never needed to be general.

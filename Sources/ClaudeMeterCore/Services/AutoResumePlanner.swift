@@ -47,11 +47,11 @@ public enum ResumeSkipReason: Equatable, Sendable {
 
     public var detail: String {
         switch self {
-        case .noUniqueProcess: return "no unique live terminal for cwd"
-        case .noControllingTTY: return "no controlling tty"
-        case .unexpectedTTY(let t): return "unexpected tty \(t)"
-        case .notDrivable(let kind): return "\(kind) not drivable"
-        case .notEligible(let state): return "not eligible (\(state))"
+        case .noUniqueProcess: "no unique live terminal for cwd"
+        case .noControllingTTY: "no controlling tty"
+        case let .unexpectedTTY(t): "unexpected tty \(t)"
+        case let .notDrivable(kind): "\(kind) not drivable"
+        case let .notEligible(state): "not eligible (\(state))"
         }
     }
 }
@@ -100,12 +100,13 @@ public enum AutoResumePlanner {
         processes: [LiveProcess],
         transcriptTail: (String) -> [String],
         executablePath: (Int32) -> String?,
-        parentPID: (Int32) -> Int32
+        parentPID: (Int32) -> Int32,
     ) -> ResumePlan {
         var refilled = UsageStats.didRefill(
             previousUtilization: previousUtilization,
             currentUtilization: currentUtilization,
-            dropThreshold: dropThreshold)
+            dropThreshold: dropThreshold,
+        )
         // A real 5h refill cannot recur within the cooldown; a second "drop" that
         // soon is a stale-vs-fresh usage reading flapping (e.g. a cached snapshot
         // served during rate-limit backoff) and must not reopen the window.

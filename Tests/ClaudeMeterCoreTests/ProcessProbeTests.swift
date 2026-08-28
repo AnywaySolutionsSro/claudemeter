@@ -1,7 +1,7 @@
-import Testing
 @testable import ClaudeMeterCore
+import Testing
 
-@Suite struct ProcessProbeTests {
+struct ProcessProbeTests {
     // MARK: tally(processes:) — migrated from old tally([pid: cwd]) signature
 
     @Test func tallyGroupsAndCountsByCwd() {
@@ -33,7 +33,8 @@ import Testing
 
     @Test func recognisesClaudeCodeExecutablePaths() {
         #expect(LibprocProcessProbe.isClaudeCodeExecutable("/Users/x/.local/share/claude/versions/2.1.195"))
-        #expect(LibprocProcessProbe.isClaudeCodeExecutable("/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js"))
+        #expect(LibprocProcessProbe
+            .isClaudeCodeExecutable("/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js"))
     }
 
     @Test func rejectsUnrelatedAndSelfPaths() {

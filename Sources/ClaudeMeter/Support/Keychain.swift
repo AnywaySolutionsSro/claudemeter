@@ -9,7 +9,7 @@ enum KeychainError: Error, LocalizedError {
         switch self {
         case .notFound:
             return "Claude Code credentials not found. Log in with Claude Code first."
-        case .unexpectedStatus(let status):
+        case let .unexpectedStatus(status):
             let message = SecCopyErrorMessageString(status, nil) as String? ?? "status \(status)"
             return "Keychain access failed: \(message). Allow access when macOS prompts."
         }

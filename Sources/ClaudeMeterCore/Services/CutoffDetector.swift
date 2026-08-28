@@ -21,12 +21,13 @@ public struct CutoffDetector: Sendable {
             switch entry.type {
             case "assistant":
                 if entry.isApiErrorMessage, entry.model == "<synthetic>",
-                   entry.text.localizedCaseInsensitiveContains("limit") {
+                   entry.text.localizedCaseInsensitiveContains("limit")
+                {
                     return .eligibleCutoff
                 }
                 switch entry.stopReason {
                 case "end_turn", "stop_sequence": return .cleanlyFinished
-                default: return .running   // tool_use, max_tokens, nil, etc. => in flight
+                default: return .running // tool_use, max_tokens, nil, etc. => in flight
                 }
             case "user":
                 // A real user prompt awaits a reply; a [SYSTEM NOTIFICATION ...]
@@ -62,7 +63,7 @@ public struct CutoffDetector: Sendable {
             model: message?["model"] as? String,
             stopReason: message?["stop_reason"] as? String,
             isApiErrorMessage: (obj["isApiErrorMessage"] as? Bool) ?? false,
-            text: Self.extractText(message?["content"])
+            text: Self.extractText(message?["content"]),
         )
     }
 

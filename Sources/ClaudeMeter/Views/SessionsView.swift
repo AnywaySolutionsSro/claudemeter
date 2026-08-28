@@ -1,5 +1,5 @@
-import SwiftUI
 import ClaudeMeterCore
+import SwiftUI
 
 /// The Live Sessions window content: a header summarising running count and total
 /// tokens, then a scrollable list of sessions ranked by total tokens.
@@ -33,7 +33,8 @@ struct SessionsView: View {
             map[session.id] = index.terminalKind(
                 forCwd: session.projectPath, detector: detector,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
-                parents: { LibprocProcessProbe.parentPIDForPID($0) })
+                parents: { LibprocProcessProbe.parentPIDForPID($0) },
+            )
         }
         return map
     }
@@ -102,8 +103,8 @@ struct SessionsView: View {
                 Text(activeOnly ? "No active sessions" : "No sessions found")
                     .font(scale.font(12)).foregroundColor(.secondary)
                 Text(activeOnly
-                     ? "Running Claude Code sessions show up here live."
-                     : "Start a Claude Code session and it will appear here.")
+                    ? "Running Claude Code sessions show up here live."
+                    : "Start a Claude Code session and it will appear here.")
                     .font(scale.font(10)).foregroundColor(.secondary)
                 Spacer()
             }
@@ -118,15 +119,16 @@ struct SessionsView: View {
                             terminalKind: kind,
                             armDisabledReason: armDisabledReason(session, kind: kind),
                             isArmed: armed.isArmed(session.id),
-                            onArmChange: { armed.setArmed(session.id, $0) })
-                            .padding(.horizontal, scale.pt(12))
-                            .contentShape(Rectangle())
-                            .contextMenu {
-                                Button("Send “continue” now (test resume)") {
-                                    onTestResume(session)
-                                }
-                                .disabled(session.running != .running)
+                            onArmChange: { armed.setArmed(session.id, $0) },
+                        )
+                        .padding(.horizontal, scale.pt(12))
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button("Send “continue” now (test resume)") {
+                                onTestResume(session)
                             }
+                            .disabled(session.running != .running)
+                        }
                         Divider().padding(.leading, scale.pt(30))
                     }
                 }

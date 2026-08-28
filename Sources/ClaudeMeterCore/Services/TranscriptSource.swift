@@ -20,7 +20,8 @@ public struct TranscriptRef: Sendable, Equatable, Identifiable {
     public let parentID: String?
 
     public init(id: String, url: URL, origin: SessionOrigin, title: String?, modifiedAt: Date,
-                parentID: String? = nil) {
+                parentID: String? = nil)
+    {
         self.id = id
         self.url = url
         self.origin = origin
@@ -72,7 +73,8 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
 
     public init(cliRoot: URL = TranscriptSource.defaultCLIRoot,
                 desktopRoot: URL = TranscriptSource.defaultDesktopRoot,
-                fileManager: FileManager = .default) {
+                fileManager: FileManager = .default)
+    {
         self.cliRoot = cliRoot
         self.desktopRoot = desktopRoot
         self.fileManager = fileManager
@@ -117,10 +119,10 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let lastNewline = data.lastIndex(of: UInt8(ascii: "\n")) else {
             return TranscriptChunk(lines: [], endOffset: offset)
         }
-        let complete = data[data.startIndex...lastNewline]
+        let complete = data[data.startIndex ... lastNewline]
         return TranscriptChunk(
             lines: Self.splitLines(Data(complete)),
-            endOffset: offset + Int64(complete.count)
+            endOffset: offset + Int64(complete.count),
         )
     }
 
@@ -151,7 +153,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let projectDirs = try? fileManager.contentsOfDirectory(
             at: cliRoot,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles],
         ) else {
             return []
         }
@@ -161,7 +163,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
             guard let entries = try? fileManager.contentsOfDirectory(
                 at: projectDir,
                 includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles]
+                options: [.skipsHiddenFiles],
             ) else {
                 return []
             }
@@ -183,7 +185,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let files = try? fileManager.contentsOfDirectory(
             at: subagentsDir,
             includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles],
         ) else {
             return []
         }
@@ -203,7 +205,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         // the enumerator from ever descending into it.
         guard let enumerator = fileManager.enumerator(
             at: desktopRoot,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
         ) else {
             return []
         }

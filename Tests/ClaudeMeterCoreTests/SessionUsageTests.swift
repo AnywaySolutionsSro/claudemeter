@@ -1,14 +1,14 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct SessionUsageTests {
+struct SessionUsageTests {
     private func make(path: String) -> SessionUsage {
         SessionUsage(
             id: "abc", origin: .cli, projectPath: path, title: nil,
             models: ["claude-opus-4-8"], tokens: TokenBreakdown(input: 10, output: 5, cacheRead: 99),
             messageCount: 1, firstActivity: .init(timeIntervalSince1970: 0),
-            lastActivity: .init(timeIntervalSince1970: 60), burnRate: 0
+            lastActivity: .init(timeIntervalSince1970: 60), burnRate: 0,
         )
     }
 

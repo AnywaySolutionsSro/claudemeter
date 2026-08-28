@@ -29,7 +29,7 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         firstActivity: Date,
         lastActivity: Date,
         burnRate: Double,
-        running: RunningState = .idle
+        running: RunningState = .idle,
     ) {
         self.id = id
         self.origin = origin

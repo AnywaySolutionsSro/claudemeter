@@ -32,7 +32,7 @@ public struct UsageResponseDecoder {
             sevenDay: bucket("seven_day"),
             sevenDayOpus: bucket("seven_day_opus"),
             sevenDaySonnet: bucket("seven_day_sonnet"),
-            fetchedAt: fetchedAt
+            fetchedAt: fetchedAt,
         )
     }
 

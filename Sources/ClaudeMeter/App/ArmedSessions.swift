@@ -1,6 +1,6 @@
-import Foundation
-import Combine
 import ClaudeMeterCore
+import Combine
+import Foundation
 
 /// The set of armed session UUIDs, persisted to Application Support and mirrored
 /// from widget-issued disarm commands. The single source of truth in the app.
@@ -16,7 +16,8 @@ final class ArmedSessions: ObservableObject {
     private var pruneMisses: [String: Int] = [:]
 
     init(armedURL: URL = ArmedSessions.defaultArmedURL(),
-         commandURL: URL = ArmedSessions.commandInboxURL()) {
+         commandURL: URL = ArmedSessions.commandInboxURL())
+    {
         self.armedURL = armedURL
         self.commandURL = commandURL
         self.armed = store.read(from: armedURL)

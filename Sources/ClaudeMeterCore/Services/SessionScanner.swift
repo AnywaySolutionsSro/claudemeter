@@ -12,7 +12,8 @@ public struct ScanResult: Sendable, Equatable {
     public let armableSessionIDs: [String]
 
     public init(sessions: [SessionUsage], snapshot: SessionSnapshot,
-                processes: [LiveProcess] = [], armableSessionIDs: [String] = []) {
+                processes: [LiveProcess] = [], armableSessionIDs: [String] = [])
+    {
         self.sessions = sessions
         self.snapshot = snapshot
         self.processes = processes
@@ -58,7 +59,7 @@ public actor SessionScanner {
         burnWindow: TimeInterval = 300,
         canonicalize: @escaping @Sendable (String) -> String = SessionScanner.realPath,
         executablePathForPID: @escaping @Sendable (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) },
-        parentPIDForPID: @escaping @Sendable (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
+        parentPIDForPID: @escaping @Sendable (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) },
     ) {
         self.discoverer = discoverer
         self.processProbe = processProbe
@@ -89,11 +90,10 @@ public actor SessionScanner {
 
         for ref in refs {
             let key = ref.url.path
-            let entry: CacheEntry?
-            if let cached = cache[key], cached.modifiedAt == ref.modifiedAt {
-                entry = cached   // unchanged file: not even opened
+            let entry: CacheEntry? = if let cached = cache[key], cached.modifiedAt == ref.modifiedAt {
+                cached // unchanged file: not even opened
             } else {
-                entry = refreshedEntry(for: ref, cached: cache[key])
+                refreshedEntry(for: ref, cached: cache[key])
             }
             guard let entry else { continue }
             nextCache[key] = entry
@@ -124,7 +124,7 @@ public actor SessionScanner {
         for (ref, accumulator) in parents {
             let merged = subagentsByParent[ref.id].map { accumulator.merged(with: $0) } ?? accumulator
             if let usage = merged.usage(
-                id: ref.id, projectPath: "", origin: ref.origin, title: ref.title, now: now
+                id: ref.id, projectPath: "", origin: ref.origin, title: ref.title, now: now,
             ) {
                 usages.append(usage.withProjectPath(canonicalize(usage.projectPath)))
             }
@@ -135,7 +135,7 @@ public actor SessionScanner {
         let desktopRunning = desktopDetector.isClaudeDesktopRunning()
         let resolved = resolver.resolve(
             sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning,
-            activityAt: activityAt, now: now
+            activityAt: activityAt, now: now,
         )
         let sorted = resolved.sorted { $0.totalTokens > $1.totalTokens }
         // The published snapshot feeds the widget, which shows only active sessions.
@@ -171,7 +171,7 @@ public actor SessionScanner {
             accumulator = SessionAccumulator(burnWindow: burnWindow)
             chunk = discoverer.chunk(of: ref, fromByteOffset: 0)
         }
-        guard let chunk else { return nil }   // unreadable this scan; retry next scan
+        guard let chunk else { return nil } // unreadable this scan; retry next scan
         for record in parser.parse(chunk.lines).records {
             accumulator.fold(record)
         }

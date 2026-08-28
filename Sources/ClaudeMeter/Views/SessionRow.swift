@@ -1,5 +1,5 @@
-import SwiftUI
 import ClaudeMeterCore
+import SwiftUI
 
 /// One session in the Live Sessions list: live dot, project + origin, models,
 /// and the headline token total (with cached + burn-rate secondary detail).

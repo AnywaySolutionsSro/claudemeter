@@ -15,17 +15,17 @@ enum UsageError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            return "Not logged in. Run `claude` and sign in, then retry."
+            "Not logged in. Run `claude` and sign in, then retry."
         case .refreshFailed:
-            return "Couldn't refresh the access token. Re-login in Claude Code."
+            "Couldn't refresh the access token. Re-login in Claude Code."
         case .sessionExpired:
-            return "Your login session expired. Please sign in again."
+            "Your login session expired. Please sign in again."
         case .rateLimited:
-            return "Anthropic rate limit reached — showing last reading."
-        case .http(let code):
-            return "Usage API returned HTTP \(code)."
-        case .network(let message):
-            return "Network error: \(message)"
+            "Anthropic rate limit reached — showing last reading."
+        case let .http(code):
+            "Usage API returned HTTP \(code)."
+        case let .network(message):
+            "Network error: \(message)"
         }
     }
 }
