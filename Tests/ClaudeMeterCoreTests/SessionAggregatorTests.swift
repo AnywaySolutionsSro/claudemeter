@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct SessionAggregatorTests {
+struct SessionAggregatorTests {
     private let now = Date(timeIntervalSince1970: 10_000)
 
     private func rec(_ ts: TimeInterval, _ model: String?, _ t: TokenBreakdown,
@@ -23,7 +23,14 @@ import Testing
             rec(9_000, "claude-opus-4-8", TokenBreakdown(input: 10, output: 1, cacheCreation: 2, cacheRead: 100)),
             rec(9_500, "claude-sonnet-4-6", TokenBreakdown(input: 20, output: 3, cacheCreation: 4, cacheRead: 200)),
         ], malformedLineCount: 0)
-        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: "T", now: now))
+        let s = try #require(agg.aggregate(
+            parsed,
+            id: "sid",
+            projectPath: "/c/proj",
+            origin: .cli,
+            title: "T",
+            now: now,
+        ))
         #expect(s.id == "sid")
         #expect(s.title == "T")
         #expect(s.tokens == TokenBreakdown(input: 30, output: 4, cacheCreation: 6, cacheRead: 300))
@@ -53,7 +60,14 @@ import Testing
             rec(now.timeIntervalSince1970 - 58, "m", usage, messageID: "msg_1"),
             rec(now.timeIntervalSince1970 - 30, "m", usage, messageID: "msg_2"),
         ], malformedLineCount: 0)
-        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: nil, now: now))
+        let s = try #require(agg.aggregate(
+            parsed,
+            id: "sid",
+            projectPath: "/c/proj",
+            origin: .cli,
+            title: nil,
+            now: now,
+        ))
         #expect(s.tokens == usage + usage)
         #expect(s.messageCount == 2)
         // Burn rate over the deduped records only: 2 x 35 tokens over 5 min.
@@ -67,7 +81,14 @@ import Testing
             rec(9_000, "m", usage),
             rec(9_001, "m", usage),
         ], malformedLineCount: 0)
-        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: nil, now: now))
+        let s = try #require(agg.aggregate(
+            parsed,
+            id: "sid",
+            projectPath: "/c/proj",
+            origin: .cli,
+            title: nil,
+            now: now,
+        ))
         #expect(s.tokens == TokenBreakdown(input: 2))
         #expect(s.messageCount == 2)
     }
@@ -76,9 +97,16 @@ import Testing
         let agg = SessionAggregator(burnWindow: 300) // 5 min
         let parsed = ParsedTranscript(records: [
             rec(now.timeIntervalSince1970 - 600, "m", TokenBreakdown(input: 1000)), // outside window
-            rec(now.timeIntervalSince1970 - 60,  "m", TokenBreakdown(input: 50)),   // inside: total 50
+            rec(now.timeIntervalSince1970 - 60, "m", TokenBreakdown(input: 50)), // inside: total 50
         ], malformedLineCount: 0)
-        let s = try #require(agg.aggregate(parsed, id: "sid", projectPath: "/c/proj", origin: .cli, title: nil, now: now))
+        let s = try #require(agg.aggregate(
+            parsed,
+            id: "sid",
+            projectPath: "/c/proj",
+            origin: .cli,
+            title: nil,
+            now: now,
+        ))
         // 50 tokens over a 5-minute window => 10 tokens/min
         #expect(s.burnRate == 10)
     }

@@ -13,7 +13,7 @@ public struct UsageSnapshot: Equatable, Sendable {
         sevenDay: UsageBucket?,
         sevenDayOpus: UsageBucket?,
         sevenDaySonnet: UsageBucket?,
-        fetchedAt: Date
+        fetchedAt: Date,
     ) {
         self.fiveHour = fiveHour
         self.sevenDay = sevenDay
@@ -39,7 +39,7 @@ public struct UsageSnapshot: Equatable, Sendable {
     /// The window closest to its limit — the binding constraint right now.
     public var mostConstrained: UsageBucket? {
         [fiveHour, sevenDay, sevenDayOpus, sevenDaySonnet]
-            .compactMap { $0 }
+            .compactMap(\.self)
             .max { $0.utilization < $1.utilization }
     }
 }

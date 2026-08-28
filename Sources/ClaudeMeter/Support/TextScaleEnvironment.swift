@@ -1,17 +1,10 @@
-import SwiftUI
 import ClaudeMeterCore
-
-private struct TextScaleKey: EnvironmentKey {
-    static let defaultValue: TextScale = .standard
-}
+import SwiftUI
 
 extension EnvironmentValues {
     /// How large this subtree renders. Set by whichever view owns `Settings`;
     /// read by every view with hardcoded design sizes.
-    var textScale: TextScale {
-        get { self[TextScaleKey.self] }
-        set { self[TextScaleKey.self] = newValue }
-    }
+    @Entry var textScale: TextScale = .standard
 }
 
 extension TextScale {

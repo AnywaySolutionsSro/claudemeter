@@ -1,7 +1,7 @@
 import AppIntents
-import WidgetKit
-import Foundation
 import ClaudeMeterCore
+import Foundation
+import WidgetKit
 
 /// Widget command inbox: the widget's own container Documents, the same path
 /// `Provider.loadEntry()` reads `snapshot.json` from. Matches the app's

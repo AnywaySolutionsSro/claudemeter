@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class UsageStatsTests: XCTestCase {
     private let reset = Date(timeIntervalSince1970: 2_000_000)
@@ -9,7 +9,7 @@ final class UsageStatsTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_000_000 + minutes * 60),
             sessionUtilization: util,
             sessionResetsAt: resetsAt ?? reset,
-            weeklyUtilization: nil
+            weeklyUtilization: nil,
         )
     }
 
@@ -48,8 +48,8 @@ final class UsageStatsTests: XCTestCase {
         let r1 = reset, r2 = reset.addingTimeInterval(5 * 3600)
         let samples = [
             sample(0, 96, resetsAt: r1),
-            sample(30, 99, resetsAt: r1),   // same window, counts once
-            sample(400, 97, resetsAt: r2),  // second window
+            sample(30, 99, resetsAt: r1), // same window, counts once
+            sample(400, 97, resetsAt: r2), // second window
             sample(430, 50, resetsAt: r2),
         ]
         XCTAssertEqual(UsageStats.maxedWindows(samples: samples, since: Date(timeIntervalSince1970: 0)), 2)

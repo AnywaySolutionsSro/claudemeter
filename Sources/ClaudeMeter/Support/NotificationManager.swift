@@ -1,6 +1,6 @@
+import ClaudeMeterCore
 import Foundation
 import UserNotifications
-import ClaudeMeterCore
 
 /// Thin wrapper over `UNUserNotificationCenter` for threshold nudges, reset celebrations, and
 /// "remind me at reset" scheduling.
@@ -37,7 +37,11 @@ final class NotificationManager {
 
     /// Window refilled to full.
     func notifyRefill() {
-        deliver(title: "Tank refilled 🎉", body: "Your session window reset — back to full.", id: "refill-\(UUID().uuidString)")
+        deliver(
+            title: "Tank refilled 🎉",
+            body: "Your session window reset — back to full.",
+            id: "refill-\(UUID().uuidString)",
+        )
     }
 
     /// Generic one-shot notification for auto-resume status messages.

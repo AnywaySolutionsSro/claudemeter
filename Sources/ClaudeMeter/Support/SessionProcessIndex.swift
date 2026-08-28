@@ -1,5 +1,5 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 
 /// Correlates a session (identified by its project cwd) to the single live
 /// claude process in that directory. If two or more claude processes share a
@@ -26,7 +26,7 @@ struct SessionProcessIndex {
         forCwd cwd: String,
         detector: TerminalDetector,
         paths: @escaping (Int32) -> String?,
-        parents: @escaping (Int32) -> Int32
+        parents: @escaping (Int32) -> Int32,
     ) -> TerminalKind {
         guard let proc = process(forCwd: cwd) else { return .unknown }
         return detector.detect(startPID: proc.pid, executablePathForPID: paths, parentPIDForPID: parents)

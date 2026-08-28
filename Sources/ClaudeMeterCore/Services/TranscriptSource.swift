@@ -63,8 +63,9 @@ public protocol TranscriptDiscovering: Sendable {
 ///
 /// In both cases, files under a `/subagents/` path component are ignored, and a
 /// missing root simply contributes nothing (never crashes).
-// FileManager is not `Sendable`, but we only use it for read-only enumeration and
-// never mutate shared state, so opting out of the check is safe here.
+///
+/// `@unchecked Sendable`: `FileManager` is not `Sendable`, but it is only used for
+/// read-only enumeration and no shared state is mutated.
 public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     private let cliRoot: URL
     private let desktopRoot: URL
@@ -117,10 +118,10 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let lastNewline = data.lastIndex(of: UInt8(ascii: "\n")) else {
             return TranscriptChunk(lines: [], endOffset: offset)
         }
-        let complete = data[data.startIndex...lastNewline]
+        let complete = data[data.startIndex ... lastNewline]
         return TranscriptChunk(
             lines: Self.splitLines(Data(complete)),
-            endOffset: offset + Int64(complete.count)
+            endOffset: offset + Int64(complete.count),
         )
     }
 
@@ -132,11 +133,12 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
             .map { slice -> String in
                 var slice = slice
                 if slice.last == UInt8(ascii: "\r") { slice = slice.dropLast() }
+                // Lossy on purpose: a transcript line with a bad byte still parses.
                 return String(decoding: slice, as: UTF8.self)
             }
         // Drop a single trailing empty line (the common case of a file ending
         // in a newline), but keep genuinely empty intermediate lines.
-        if lines.last == "" {
+        if lines.last?.isEmpty == true {
             lines.removeLast()
         }
         return lines
@@ -151,7 +153,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let projectDirs = try? fileManager.contentsOfDirectory(
             at: cliRoot,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles],
         ) else {
             return []
         }
@@ -161,7 +163,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
             guard let entries = try? fileManager.contentsOfDirectory(
                 at: projectDir,
                 includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles]
+                options: [.skipsHiddenFiles],
             ) else {
                 return []
             }
@@ -183,7 +185,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         guard let files = try? fileManager.contentsOfDirectory(
             at: subagentsDir,
             includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles],
         ) else {
             return []
         }
@@ -203,7 +205,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         // the enumerator from ever descending into it.
         guard let enumerator = fileManager.enumerator(
             at: desktopRoot,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
         ) else {
             return []
         }

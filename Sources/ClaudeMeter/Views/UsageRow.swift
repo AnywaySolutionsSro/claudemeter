@@ -1,5 +1,5 @@
-import SwiftUI
 import ClaudeMeterCore
+import SwiftUI
 
 /// One rate-limit window: title, a utilization bar, percent-left, and a live reset countdown.
 struct UsageRow: View {
@@ -35,9 +35,9 @@ struct UsageRow: View {
 
     private var tint: Color {
         switch bucket.percentRemaining {
-        case ..<10: return .red
-        case ..<25: return .orange
-        default: return .accentColor
+        case ..<10: .red
+        case ..<25: .orange
+        default: .accentColor
         }
     }
 }

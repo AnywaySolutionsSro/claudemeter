@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class PersonalityTests: XCTestCase {
     func testMoodDegradesAsBudgetDrains() {

@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct UsageGaugeTests {
+struct UsageGaugeTests {
     private func bucket(_ utilization: Double) -> UsageBucket {
         UsageBucket(utilization: utilization, resetsAt: Date(timeIntervalSince1970: 1_000), status: nil)
     }
@@ -21,7 +21,8 @@ import Testing
         let snap = UsageSnapshot(
             fiveHour: bucket(22), sevenDay: bucket(63),
             sevenDayOpus: nil, sevenDaySonnet: bucket(23),
-            fetchedAt: Date())
+            fetchedAt: Date(),
+        )
         let gauges = snap.gauges
         #expect(gauges.map(\.label) == ["Session", "Weekly", "Sonnet"])
         // utilization 22 -> 78% left, 63 -> 37% left, 23 -> 77% left

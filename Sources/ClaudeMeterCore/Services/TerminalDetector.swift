@@ -12,7 +12,7 @@ public struct TerminalDetector: Sendable {
     public func detect(
         startPID: Int32,
         executablePathForPID: (Int32) -> String?,
-        parentPIDForPID: (Int32) -> Int32
+        parentPIDForPID: (Int32) -> Int32,
     ) -> TerminalKind {
         var pid = startPID
         var depth = 0

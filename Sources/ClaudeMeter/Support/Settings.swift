@@ -1,6 +1,6 @@
+import ClaudeMeterCore
 import Foundation
 import SwiftUI
-import ClaudeMeterCore
 
 /// How the menu-bar item presents usage.
 enum DisplayMode: String, CaseIterable, Identifiable {
@@ -14,11 +14,11 @@ enum DisplayMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .classic: return "Classic"          // percentage + reset countdown
-        case .burnRate: return "Burn rate"
-        case .mood: return "Mood face"
-        case .fuelGauge: return "Fuel gauge"
-        case .pet: return "Pet"
+        case .classic: "Classic" // percentage + reset countdown
+        case .burnRate: "Burn rate"
+        case .mood: "Mood face"
+        case .fuelGauge: "Fuel gauge"
+        case .pet: "Pet"
         }
     }
 
@@ -35,18 +35,23 @@ final class Settings: ObservableObject {
     @Published var displayMode: DisplayMode {
         didSet { defaults.set(displayMode.rawValue, forKey: Keys.displayMode) }
     }
+
     @Published var textScale: TextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
+
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
+
     @Published var lowUsageShortcut: String {
         didSet { defaults.set(lowUsageShortcut, forKey: Keys.lowUsageShortcut) }
     }
+
     @Published var autoResumeEnabled: Bool {
         didSet { defaults.set(autoResumeEnabled, forKey: Keys.autoResumeEnabled) }
     }
+
     @Published var autoResumeContinueText: String {
         didSet { defaults.set(autoResumeContinueText, forKey: Keys.autoResumeContinueText) }
     }

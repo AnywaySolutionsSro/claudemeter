@@ -1,5 +1,5 @@
-import XCTest
 @testable import ClaudeMeterCore
+import XCTest
 
 final class PKCETests: XCTestCase {
     func testS256ChallengeMatchesRFC7636Vector() {

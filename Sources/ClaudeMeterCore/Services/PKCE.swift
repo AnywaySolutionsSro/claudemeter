@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 import Security
 
 /// A PKCE (RFC 7636) verifier/challenge pair for the OAuth authorization-code flow.
@@ -26,7 +26,7 @@ public struct PKCE: Equatable, Sendable {
     static func randomBytes(_ count: Int) -> Data {
         var bytes = [UInt8](repeating: 0, count: count)
         if SecRandomCopyBytes(kSecRandomDefault, count, &bytes) != errSecSuccess {
-            bytes = (0..<count).map { _ in UInt8.random(in: 0...255) }
+            bytes = (0 ..< count).map { _ in UInt8.random(in: 0 ... 255) }
         }
         return Data(bytes)
     }

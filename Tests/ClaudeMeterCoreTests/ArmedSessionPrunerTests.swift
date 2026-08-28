@@ -1,12 +1,12 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
 /// Armed sessions whose terminal died (tab closed, /clear started a new session
 /// id) must disarm themselves — otherwise they pin dead sessions in the widget
 /// forever. Pruning requires several consecutive not-running scans so a single
 /// transient probe glitch can't disarm everything right before a refill.
-@Suite struct ArmedSessionPrunerTests {
+struct ArmedSessionPrunerTests {
     private let pruner = ArmedSessionPruner(missThreshold: 3)
 
     @Test func runningArmedSessionIsKeptAndMissesReset() {
@@ -17,7 +17,7 @@ import Testing
 
     @Test func notRunningAccumulatesMissesWithoutDisarmingEarly() {
         var misses: [String: Int] = [:]
-        for expected in 1...2 {
+        for expected in 1 ... 2 {
             let plan = pruner.plan(armed: ["a"], runningIDs: [], previousMisses: misses)
             #expect(plan.disarm.isEmpty)
             #expect(plan.misses["a"] == expected)

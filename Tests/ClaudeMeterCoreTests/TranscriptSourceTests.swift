@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct TranscriptSourceTests {
+struct TranscriptSourceTests {
     private let fm = FileManager.default
     private let root: URL
 

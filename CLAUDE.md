@@ -88,6 +88,9 @@ SwiftPM fallback for toolchains without Xcode; `./build-xcode.sh` is a legacy al
 ```bash
 swift build -c release          # compile (SwiftPM targets only, quick check)
 swift test                      # core unit tests (keep these green)
+swiftformat .                   # format (config: .swiftformat); CI runs `swiftformat . --lint`
+swiftlint --strict              # lint (config: .swiftlint.yml); every warning fails CI
+scripts/coverage-gate.sh        # tests + ClaudeMeterCore line coverage >= 80% (what CI runs)
 ./build.sh --install            # app + widget → /Applications + launch (dev-team signed)
 ./build.sh --release            # app + widget, signed + notarized zip to ~/Desktop (env vars below)
 ./build.sh --notarize           # same, notarization mandatory; zip + .sha256 in dist/ (what CI runs)
@@ -105,9 +108,16 @@ notarizes and publishes `ClaudeMeter.zip` to GitHub Releases. Versioning: major 
 feature, minor = any new feature, patch = any fix. The version comes from the tag — don't
 hand-edit `MARKETING_VERSION` in `project.yml` for a release.
 
-**Branch rules:** `main` takes PRs only — the `tests` check must pass (no bypass) and a
-code-owner approval is required (repo admins — Jakub — can bypass). Never push to `main`
-directly; branch, open a PR, let Jakub merge.
+**Branch rules:** `main` takes PRs only — the `ci` jobs `tests`, `lint`, `build-app` and
+`scripts` must pass (no bypass) and a code-owner approval is required (repo admins — Jakub —
+can bypass). Never push to `main` directly; branch, open a PR, let Jakub merge.
+
+**Quality gates (CI = local):** zero compiler warnings (`-warnings-as-errors` in both
+`swift build` and the Xcode build), `swiftlint --strict`, `swiftformat --lint`, core line
+coverage ≥ 80%, shellcheck + actionlint. Run `swiftformat . && swiftlint --strict &&
+scripts/coverage-gate.sh` before pushing. Prefer fixing a violation over disabling a rule; a
+`swiftlint:disable` must be scoped (`:next` or a `disable`/`enable` pair) with a reason.
+CodeQL runs on `main` weekly as an advisory scan (Security tab).
 
 ## Conventions
 

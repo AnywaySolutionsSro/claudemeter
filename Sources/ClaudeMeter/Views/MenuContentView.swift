@@ -1,6 +1,6 @@
-import SwiftUI
 import AppKit
 import ClaudeMeterCore
+import SwiftUI
 
 /// The dropdown shown when the menu-bar item is clicked.
 struct MenuContentView: View {
@@ -73,7 +73,7 @@ struct MenuContentView: View {
         }
     }
 
-    @ViewBuilder private var insights: some View {
+    private var insights: some View {
         VStack(alignment: .leading, spacing: scale.pt(6)) {
             HStack(spacing: scale.pt(4)) {
                 if let burn = store.burnEstimate, burn.isBurning {

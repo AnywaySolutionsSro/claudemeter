@@ -14,13 +14,13 @@ enum MenuBarLabel {
         burn: BurnEstimate?,
         errorMessage: String?,
         now: Date,
-        scale: TextScale
+        scale: TextScale,
     ) -> NSImage {
         let (font, verticalPadding) = metrics(for: scale)
 
         guard signedIn else {
             return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange,
-                       font: font, verticalPadding: verticalPadding)
+                        font: font, verticalPadding: verticalPadding)
         }
         guard let bucket = snapshot?.primary else {
             return glyph(errorMessage == nil ? "…" : "⚠︎",
@@ -44,10 +44,10 @@ enum MenuBarLabel {
             // Only show an ETA when the limit would actually be hit before the window resets.
             if let burn, burn.isBurning, let eta = burn.etaToLimit, let reset, eta < reset {
                 return pill(text: "🔥 " + Formatting.countdown(eta), textColor: textColor, borderColor: borderColor,
-                           font: font, verticalPadding: verticalPadding)
+                            font: font, verticalPadding: verticalPadding)
             }
             return pill(text: Formatting.percent(remaining), textColor: textColor, borderColor: borderColor,
-                       font: font, verticalPadding: verticalPadding)
+                        font: font, verticalPadding: verticalPadding)
 
         case .mood:
             return pill(text: "\(Personality.moodEmoji(remaining: remaining)) \(Formatting.percent(remaining))",
@@ -56,7 +56,7 @@ enum MenuBarLabel {
         case .pet:
             let pet = Personality.petEmoji(Personality.petState(remaining: remaining))
             return pill(text: "\(pet) \(Formatting.percent(remaining))", textColor: textColor, borderColor: borderColor,
-                       font: font, verticalPadding: verticalPadding)
+                        font: font, verticalPadding: verticalPadding)
 
         case .fuelGauge:
             return fuelGauge(remaining: remaining)
@@ -65,9 +65,9 @@ enum MenuBarLabel {
 
     private static func color(forRemaining remaining: Double) -> NSColor {
         switch remaining {
-        case ..<10: return .systemRed
-        case ..<25: return .systemOrange
-        default: return .labelColor
+        case ..<10: .systemRed
+        case ..<25: .systemOrange
+        default: .labelColor
         }
     }
 
@@ -94,7 +94,8 @@ enum MenuBarLabel {
                 // `pill`/`gaugePill` draw with `ceil(textSize.height)`, so the clamp must
                 // validate the same ceiled value or the pill could exceed the bar's thickness.
                 return Double(ceil(height))
-            })
+            },
+        )
         return (NSFont.monospacedDigitSystemFont(ofSize: CGFloat(clamped.font), weight: .regular),
                 CGFloat(clamped.padding))
     }
@@ -180,8 +181,8 @@ enum MenuBarLabel {
         let width: CGFloat = 40, height: CGFloat = 18
         let pivot = NSPoint(x: width / 2, y: 4)
         let radius: CGFloat = 12.5
-        let startAngle: CGFloat = 150   // E, upper-left
-        let endAngle: CGFloat = 30      // F, upper-right
+        let startAngle: CGFloat = 150 // E, upper-left
+        let endAngle: CGFloat = 30 // F, upper-right
         let level = CGFloat(min(100, max(0, remaining)))
         let needleColor: NSColor = remaining < 10 ? .systemRed : (remaining < 25 ? .systemOrange : .systemGreen)
 
@@ -192,7 +193,13 @@ enum MenuBarLabel {
 
         return draw(width: width, height: height) {
             let track = NSBezierPath()
-            track.appendArc(withCenter: pivot, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+            track.appendArc(
+                withCenter: pivot,
+                radius: radius,
+                startAngle: startAngle,
+                endAngle: endAngle,
+                clockwise: true,
+            )
             track.lineWidth = 1.3
             NSColor.labelColor.withAlphaComponent(0.5).setStroke()
             track.stroke()

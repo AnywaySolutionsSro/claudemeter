@@ -68,7 +68,7 @@ final class LoopbackCallbackServer: @unchecked Sendable {
             didResumePort = true
             portContinuation?.resume(returning: port)
             portContinuation = nil
-        case .failed(let error):
+        case let .failed(error):
             guard !didResumePort else { return }
             didResumePort = true
             portContinuation?.resume(throwing: error)
@@ -131,7 +131,7 @@ final class LoopbackCallbackServer: @unchecked Sendable {
 
         return Dictionary(
             items.compactMap { item in item.value.map { (item.name, $0) } },
-            uniquingKeysWith: { first, _ in first }
+            uniquingKeysWith: { first, _ in first },
         )
     }
 }

@@ -45,7 +45,7 @@ public struct SessionAccumulator: Equatable, Sendable {
     public mutating func fold(_ record: AssistantUsageRecord) {
         if let id = record.messageID, !seenMessageIDs.insert(id).inserted { return }
 
-        tokens = tokens + record.tokens
+        tokens += record.tokens
         if let model = record.model {
             models.insert(model)
             if lastModelStamp == nil || record.timestamp >= lastModelStamp! {
@@ -81,8 +81,8 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.tokens = tokens + other.tokens
         result.models = models.union(other.models)
         result.messageCount = messageCount + other.messageCount
-        result.firstTimestamp = [firstTimestamp, other.firstTimestamp].compactMap { $0 }.min()
-        result.lastTimestamp = [lastTimestamp, other.lastTimestamp].compactMap { $0 }.max()
+        result.firstTimestamp = [firstTimestamp, other.firstTimestamp].compactMap(\.self).min()
+        result.lastTimestamp = [lastTimestamp, other.lastTimestamp].compactMap(\.self).max()
         result.lastCwd = lastCwd ?? other.lastCwd
         result.lastCwdStamp = lastCwd != nil ? lastCwdStamp : other.lastCwdStamp
         result.seenMessageIDs = seenMessageIDs.union(other.seenMessageIDs)
@@ -100,7 +100,7 @@ public struct SessionAccumulator: Equatable, Sendable {
         projectPath: String,
         origin: SessionOrigin,
         title: String?,
-        now: Date
+        now: Date,
     ) -> SessionUsage? {
         guard messageCount > 0 else { return nil }
 
@@ -120,7 +120,7 @@ public struct SessionAccumulator: Equatable, Sendable {
             messageCount: messageCount,
             firstActivity: firstTimestamp ?? now,
             lastActivity: lastTimestamp ?? now,
-            burnRate: burnRate
+            burnRate: burnRate,
         )
     }
 }

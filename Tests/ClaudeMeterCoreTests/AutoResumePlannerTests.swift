@@ -1,19 +1,22 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
 /// The planner is the pure decision core of auto-resume: given a usage reading,
 /// the armed set, live processes and transcript tails, it decides which sessions
 /// to nudge *now* and carries a time-bounded retry window so a one-shot refill
 /// keeps retrying until each armed session is actually eligible (or the window
 /// closes). These tests pin that behavior without a GUI or real processes.
-@Suite struct AutoResumePlannerTests {
+struct AutoResumePlannerTests {
     private let base = Date(timeIntervalSince1970: 1_000_000)
     private let windowSeconds: Double = 300
 
     // Transcript tails.
+    // JSONL fixture on one line, as in a real transcript.
+    // swiftlint:disable line_length
     private let cutoff = #"{"type":"assistant","isApiErrorMessage":true,"message":{"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your session limit · resets 4:30am (Europe/Bratislava)"}]}}"#
     private let clean = #"{"type":"assistant","message":{"model":"claude-opus-4-8","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"All done."}]}}"#
+    // swiftlint:enable line_length
 
     private func session(_ id: String, path: String) -> SessionUsage {
         SessionUsage(id: id, origin: .cli, projectPath: path, models: ["m"],
@@ -27,7 +30,10 @@ import Testing
     }
 
     private let iTerm: (Int32) -> String? = { _ in "/Applications/iTerm.app/Contents/MacOS/iTerm2" }
-    private let terminalApp: (Int32) -> String? = { _ in "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" }
+    private let terminalApp: (Int32) -> String? = { _ in
+        "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
+    }
+
     private let rootParent: (Int32) -> Int32 = { _ in 1 }
 
     private func plan(
@@ -40,7 +46,7 @@ import Testing
         sessions: [SessionUsage],
         processes: [LiveProcess],
         tail: @escaping (String) -> [String],
-        exec: ((Int32) -> String?)? = nil
+        exec: ((Int32) -> String?)? = nil,
     ) -> ResumePlan {
         AutoResumePlanner.plan(
             now: now ?? base,
@@ -54,7 +60,8 @@ import Testing
             processes: processes,
             transcriptTail: tail,
             executablePath: exec ?? iTerm,
-            parentPID: rootParent)
+            parentPID: rootParent,
+        )
     }
 
     // MARK: - Detection / window opening

@@ -1,0 +1,124 @@
+# Quality gates for every PR and for main. The four jobs are the required status
+# checks in the "main: tests" ruleset (no bypass): tests, lint, build-app, scripts.
+#
+#   tests      swift build/test with warnings-as-errors + ClaudeMeterCore
+#              line coverage >= 80% (scripts/coverage-gate.sh)
+#   lint       swiftlint --strict and swiftformat --lint (.swiftlint.yml, .swiftformat)
+#   build-app  the real app + widget via XcodeGen/xcodebuild, unsigned,
+#              warnings-as-errors — `swift build` never compiles the widget
+#   scripts    shellcheck for build.sh + scripts/, actionlint for workflows
+#
+# The package targets macOS 26 / swift-tools 6.2 => macos-26 runner (Xcode 26).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select newest Xcode 26
+        run: |
+          set -euo pipefail
+          xcode="$(for d in /Applications/Xcode_26*.app; do echo "$d"; done | sort -V | tail -1)"
+          [ -d "$xcode" ] || { echo "::error::No Xcode_26*.app on this runner image"; exit 1; }
+          echo "Using $xcode"
+          sudo xcode-select -s "$xcode"
+          swift --version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build (warnings are errors)
+        run: swift build -Xswiftc -warnings-as-errors
+
+      - name: Test with coverage gate
+        env:
+          SWIFT_TEST_FLAGS: -Xswiftc -warnings-as-errors
+          COVERAGE_THRESHOLD: "80"
+        run: scripts/coverage-gate.sh
+
+  lint:
+    name: lint
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install SwiftLint and SwiftFormat
+        run: brew install swiftlint swiftformat
+
+      - name: swiftlint --strict
+        run: swiftlint lint --strict --reporter github-actions-logging
+
+      - name: swiftformat --lint
+        run: swiftformat . --lint
+
+  build-app:
+    name: build-app
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select newest Xcode 26
+        run: |
+          set -euo pipefail
+          xcode="$(for d in /Applications/Xcode_26*.app; do echo "$d"; done | sort -V | tail -1)"
+          [ -d "$xcode" ] || { echo "::error::No Xcode_26*.app on this runner image"; exit 1; }
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build app + widget (unsigned, warnings are errors)
+        env:
+          BUILD_UNSIGNED: "1"
+          WARNINGS_AS_ERRORS: "1"
+        run: ./build.sh
+
+      - name: Check the bundle
+        run: |
+          set -euo pipefail
+          test -d dist/ClaudeMeter.app/Contents/PlugIns/ClaudeMeterWidget.appex
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/ClaudeMeter.app/Contents/Info.plist
+
+  scripts:
+    name: scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: shellcheck --version && shellcheck build.sh scripts/*.sh
+
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -version
+          /tmp/actionlint -color

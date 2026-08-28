@@ -1,7 +1,7 @@
-import Testing
 @testable import ClaudeMeterCore
+import Testing
 
-@Suite struct SessionEnumsTests {
+struct SessionEnumsTests {
     @Test func originRoundTripsRawValue() {
         #expect(SessionOrigin(rawValue: "cli") == .cli)
         #expect(SessionOrigin(rawValue: "desktop") == .desktop)

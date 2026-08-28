@@ -17,7 +17,7 @@ public struct RunningResolver: Sendable {
         liveCwdCounts: [String: Int],
         desktopAppRunning: Bool,
         activityAt: [String: Date] = [:],
-        now: Date
+        now: Date,
     ) -> [SessionUsage] {
         func activity(_ session: SessionUsage) -> Date {
             activityAt[session.id] ?? session.lastActivity

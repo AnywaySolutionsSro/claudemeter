@@ -1,13 +1,16 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct TranscriptParserTests {
+struct TranscriptParserTests {
     private let parser = TranscriptParser()
 
+    // JSONL fixture on one line, as in a real transcript.
+    // swiftlint:disable line_length
     private let assistantLine = #"""
     {"type":"assistant","timestamp":"2026-06-28T17:49:06.352Z","cwd":"/Users/x/code","message":{"id":"msg_01ABC","model":"claude-opus-4-8","usage":{"input_tokens":28046,"cache_creation_input_tokens":19109,"cache_read_input_tokens":15840,"output_tokens":414}}}
     """#
+    // swiftlint:enable line_length
 
     @Test func parsesAssistantUsage() throws {
         let r = try #require(parser.parseLine(assistantLine))
@@ -50,8 +53,11 @@ import Testing
     // not real API usage: never a record, never "malformed" — they'd otherwise
     // pollute the models list, lastActivity, and the malformed-line telemetry.
     @Test func syntheticEntriesAreSkippedNotMalformed() {
+        // JSONL fixture on one line, as in a real transcript.
+        // swiftlint:disable line_length
         let noUsage = #"{"type":"assistant","isApiErrorMessage":true,"message":{"model":"<synthetic>","content":[{"type":"text","text":"You've hit your limit"}]}}"#
         let zeroUsage = #"{"type":"assistant","message":{"id":"msg_s","model":"<synthetic>","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}"#
+        // swiftlint:enable line_length
         #expect(parser.parseLine(noUsage) == nil)
         #expect(parser.parseLine(zeroUsage) == nil)
         let parsed = parser.parse([noUsage, zeroUsage])
@@ -62,9 +68,9 @@ import Testing
     @Test func parseCollectsRecordsAndCountsMalformed() {
         let lines = [
             assistantLine,
-            "",                                                  // blank: ignored, not malformed
-            #"{"type":"user"}"#,                                 // non-assistant: ignored, not malformed
-            #"{"type":"assistant","message":{"model":"m"}}"#,   // assistant w/o usage: malformed
+            "", // blank: ignored, not malformed
+            #"{"type":"user"}"#, // non-assistant: ignored, not malformed
+            #"{"type":"assistant","message":{"model":"m"}}"#, // assistant w/o usage: malformed
             assistantLine,
         ]
         let parsed = parser.parse(lines)

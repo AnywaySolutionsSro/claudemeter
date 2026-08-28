@@ -9,7 +9,7 @@ public enum UsageStats {
         var rates: [Double] = []
 
         for (a, b) in zip(sorted, sorted.dropFirst()) {
-            guard a.sessionResetsAt == b.sessionResetsAt else { continue }   // same window only
+            guard a.sessionResetsAt == b.sessionResetsAt else { continue } // same window only
             let hours = b.timestamp.timeIntervalSince(a.timestamp) / 3600
             guard hours > 0 else { continue }
             let rate = (b.sessionUtilization - a.sessionUtilization) / hours
@@ -32,7 +32,7 @@ public enum UsageStats {
     public static func crossedThresholds(
         previous: Double?,
         current: Double,
-        thresholds: [Double]
+        thresholds: [Double],
     ) -> [Double] {
         let previous = previous ?? -1
         return thresholds.filter { $0 > previous && $0 <= current }.sorted()
@@ -43,7 +43,7 @@ public enum UsageStats {
     public static func didRefill(
         previousUtilization: Double?,
         currentUtilization: Double,
-        dropThreshold: Double = 25
+        dropThreshold: Double = 25,
     ) -> Bool {
         guard let previous = previousUtilization else { return false }
         return previous - currentUtilization >= dropThreshold
@@ -53,12 +53,12 @@ public enum UsageStats {
     public static func maxedWindows(
         samples: [UsageSample],
         since: Date,
-        maxedAt: Double = 95
+        maxedAt: Double = 95,
     ) -> Int {
         let reset = Set(
             samples
                 .filter { $0.timestamp >= since && $0.sessionUtilization >= maxedAt }
-                .compactMap { $0.sessionResetsAt }
+                .compactMap(\.sessionResetsAt),
         )
         return reset.count
     }

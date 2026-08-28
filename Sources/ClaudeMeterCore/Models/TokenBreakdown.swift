@@ -27,7 +27,11 @@ public struct TokenBreakdown: Equatable, Sendable, Codable {
             input: lhs.input + rhs.input,
             output: lhs.output + rhs.output,
             cacheCreation: lhs.cacheCreation + rhs.cacheCreation,
-            cacheRead: lhs.cacheRead + rhs.cacheRead
+            cacheRead: lhs.cacheRead + rhs.cacheRead,
         )
+    }
+
+    public static func += (lhs: inout TokenBreakdown, rhs: TokenBreakdown) {
+        lhs = lhs + rhs
     }
 }

@@ -15,7 +15,7 @@ public struct UsageSample: Codable, Equatable, Sendable {
         timestamp: Date,
         sessionUtilization: Double,
         sessionResetsAt: Date?,
-        weeklyUtilization: Double?
+        weeklyUtilization: Double?,
     ) {
         self.timestamp = timestamp
         self.sessionUtilization = sessionUtilization
@@ -32,7 +32,7 @@ public extension UsageSnapshot {
             timestamp: timestamp,
             sessionUtilization: session.utilization,
             sessionResetsAt: session.resetsAt,
-            weeklyUtilization: sevenDay?.utilization
+            weeklyUtilization: sevenDay?.utilization,
         )
     }
 }

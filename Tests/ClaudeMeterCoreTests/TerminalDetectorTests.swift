@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct TerminalDetectorTests {
+struct TerminalDetectorTests {
     private let detector = TerminalDetector()
 
     /// Build closures over a synthetic process tree: pid -> (path, ppid).
@@ -25,7 +25,8 @@ import Testing
             10: ("/claude/versions/x/claude", 9),
             9: ("/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", 1),
         ])
-        #expect(detector.detect(startPID: 10, executablePathForPID: t.paths, parentPIDForPID: t.parents) == .appleTerminal)
+        #expect(detector
+            .detect(startPID: 10, executablePathForPID: t.paths, parentPIDForPID: t.parents) == .appleTerminal)
     }
 
     @Test func unknownWhenChainEndsAtLaunchd() {

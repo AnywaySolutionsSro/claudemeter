@@ -1,5 +1,5 @@
-import SwiftUI
 import ClaudeMeterCore
+import SwiftUI
 
 /// The dedicated Settings window content. Split into native macOS preference
 /// tabs so each pane fits without scrolling.
@@ -75,7 +75,7 @@ struct SettingsView: View {
                 Toggle(isOn: $settings.notificationsEnabled) {
                     Label("Usage notifications", systemImage: "bell")
                 }
-                .onChange(of: settings.notificationsEnabled) { enabled in
+                .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
                 }
             }
@@ -109,10 +109,17 @@ struct SettingsView: View {
                     TextField("continue", text: $settings.autoResumeContinueText)
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                 }
-                Text("Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.")
-                    .font(scale.font(10)).foregroundStyle(.secondary)
-                Text("Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed with an external display and power connected).")
-                    .font(scale.font(10)).foregroundStyle(.secondary)
+                Text(
+                    "Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the "
+                        + "Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.",
+                )
+                .font(scale.font(10)).foregroundStyle(.secondary)
+                Text(
+                    "Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that "
+                        + "keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed "
+                        + "with an external display and power connected).",
+                )
+                .font(scale.font(10)).foregroundStyle(.secondary)
             }
 
             Section(header: sectionHeader("iTerm2 Permission", "lock.shield.fill", .green)) {
@@ -129,18 +136,22 @@ struct SettingsView: View {
                             .foregroundStyle(status.color)
                     }
                 }
-                if case .some(let status) = authStatus, status.showsSettingsLink {
+                if case let .some(status) = authStatus, status.showsSettingsLink {
                     // A recorded denial can only be undone in System Settings —
                     // deep-link straight to the Automation pane.
                     Button {
                         NSWorkspace.shared.open(
-                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!,
+                        )
                     } label: {
                         Label("Open Automation settings…", systemImage: "gearshape")
                     }
                 }
-                Text("Grants macOS Automation permission now (iTerm2 must be running) so the first resume can fire unattended.")
-                    .font(scale.font(10)).foregroundStyle(.secondary)
+                Text(
+                    "Grants macOS Automation permission now (iTerm2 must be running) "
+                        + "so the first resume can fire unattended.",
+                )
+                .font(scale.font(10)).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -178,7 +189,7 @@ struct SettingsView: View {
             authStatus = AuthStatus(text: "Authorized ✓", color: .green)
         case .notRunning:
             authStatus = AuthStatus(text: "Start iTerm2 first", color: .orange)
-        case .denied(let message):
+        case let .denied(message):
             authStatus = AuthStatus(text: "Denied — \(message)", color: .red, showsSettingsLink: true)
         }
     }

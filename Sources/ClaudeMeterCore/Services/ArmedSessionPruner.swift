@@ -29,13 +29,13 @@ public struct ArmedSessionPruner: Sendable {
     public func plan(
         armed: Set<String>,
         runningIDs: Set<String>,
-        previousMisses: [String: Int]
+        previousMisses: [String: Int],
     ) -> ArmedPrunePlan {
         var disarm: Set<String> = []
         var misses: [String: Int] = [:]
 
         for id in armed {
-            if runningIDs.contains(id) { continue }   // alive: count resets by omission
+            if runningIDs.contains(id) { continue } // alive: count resets by omission
             let count = (previousMisses[id] ?? 0) + 1
             if count >= missThreshold {
                 disarm.insert(id)

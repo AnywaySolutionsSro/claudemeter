@@ -1,5 +1,9 @@
 # ClaudeMeter
 
+[![ci](https://github.com/AnywaySolutionsSro/claudemeter/actions/workflows/ci.yml/badge.svg)](https://github.com/AnywaySolutionsSro/claudemeter/actions/workflows/ci.yml)
+[![release](https://github.com/AnywaySolutionsSro/claudemeter/actions/workflows/release.yml/badge.svg)](https://github.com/AnywaySolutionsSro/claudemeter/releases/latest)
+[![codeql](https://github.com/AnywaySolutionsSro/claudemeter/actions/workflows/codeql.yml/badge.svg)](https://github.com/AnywaySolutionsSro/claudemeter/security/code-scanning)
+
 A tiny native macOS **menu-bar** app that shows your Claude subscription usage at a glance:
 **percent remaining** and **time until reset**, read live from Anthropic.
 

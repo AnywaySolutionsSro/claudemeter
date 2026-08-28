@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct ArmedSessionsStoreTests {
+struct ArmedSessionsStoreTests {
     private let store = ArmedSessionsStore()
 
     private func tmp(_ name: String) -> URL {

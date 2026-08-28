@@ -1,5 +1,5 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 
 /// Drives the OAuth authorization-code + PKCE login: builds the authorize URL the user opens
 /// in a browser, then exchanges the pasted code for tokens.
@@ -58,7 +58,7 @@ struct OAuthLoginService {
 
         let (data, response) = try await session.data(for: httpRequest)
         guard let http = response as? HTTPURLResponse else { throw AuthError.invalidResponse }
-        guard (200..<300).contains(http.statusCode) else { throw AuthError.exchangeFailed(http.statusCode) }
+        guard (200 ..< 300).contains(http.statusCode) else { throw AuthError.exchangeFailed(http.statusCode) }
 
         guard
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -69,6 +69,10 @@ struct OAuthLoginService {
 
         let refresh = json["refresh_token"] as? String
         let expiresIn = (json["expires_in"] as? NSNumber)?.doubleValue
-        return AuthTokens(accessToken: access, refreshToken: refresh, expiresAt: expiresIn.map { now.addingTimeInterval($0) })
+        return AuthTokens(
+            accessToken: access,
+            refreshToken: refresh,
+            expiresAt: expiresIn.map { now.addingTimeInterval($0) },
+        )
     }
 }

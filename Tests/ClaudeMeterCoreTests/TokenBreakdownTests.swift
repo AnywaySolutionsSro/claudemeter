@@ -1,7 +1,7 @@
-import Testing
 @testable import ClaudeMeterCore
+import Testing
 
-@Suite struct TokenBreakdownTests {
+struct TokenBreakdownTests {
     @Test func totalExcludesCacheRead() {
         let t = TokenBreakdown(input: 100, output: 20, cacheCreation: 5, cacheRead: 9_000)
         #expect(t.total == 125)

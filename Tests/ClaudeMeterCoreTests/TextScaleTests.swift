@@ -1,7 +1,7 @@
-import Testing
 @testable import ClaudeMeterCore
+import Testing
 
-@Suite struct TextScaleTests {
+struct TextScaleTests {
     /// `NSFont.monospacedDigitSystemFont` line heights measured on macOS 26.
     /// Measured: 11→14, 13→16, 15→19, 17→20. The 12/14/16 rows are plausible
     /// fill-ins so the step-down path is exercised; the real values are supplied
@@ -31,10 +31,10 @@ import Testing
 
     @Test func scaledRoundsToWholePointsHalfAwayFromZero() {
         #expect(TextScale.standard.scaled(11) == 11)
-        #expect(TextScale.largest.scaled(11) == 17)   // 16.5 rounds up
-        #expect(TextScale.large.scaled(10) == 12)     // 11.5 rounds up
-        #expect(TextScale.larger.scaled(10) == 13)    // 13.0 exactly
-        #expect(TextScale.larger.scaled(11) == 14)    // 14.3 rounds down
+        #expect(TextScale.largest.scaled(11) == 17) // 16.5 rounds up
+        #expect(TextScale.large.scaled(10) == 12) // 11.5 rounds up
+        #expect(TextScale.larger.scaled(10) == 13) // 13.0 exactly
+        #expect(TextScale.larger.scaled(11) == 14) // 14.3 rounds down
     }
 
     @Test func fromStoredFallsBackToStandard() {
@@ -66,12 +66,12 @@ import Testing
         }
     }
 
-    @Test func menuBarFontIsMonotonicInScale() {
+    @Test func menuBarFontIsMonotonicInScale() throws {
         let fonts = TextScale.allCases.map { metrics($0).font }
         #expect(fonts == fonts.sorted())
         // Sortedness alone also holds if every scale collapsed to the base font,
         // so assert the ladder actually climbs.
-        #expect(fonts.first! < fonts.last!)
+        #expect(try #require(fonts.first) < fonts.last!)
     }
 
     @Test func neverReturnsBelowBaseEvenWhenNothingFits() {

@@ -1,5 +1,5 @@
-import Foundation
 import ClaudeMeterCore
+import Foundation
 import os
 
 /// Watches for quota refreshes and, for each armed + eligible + iTerm2 session,
@@ -85,12 +85,13 @@ final class AutoResumeCoordinator {
             return
         }
         log.notice("TEST resume: typing into \(name, privacy: .public) on \(tty, privacy: .public)")
-        notifiedFailures.remove(session.id)   // a test always reports its outcome
+        notifiedFailures.remove(session.id) // a test always reports its outcome
         scheduleResume(
             ResumeTarget(sessionID: session.id, tty: tty,
                          continueText: settings.normalizedContinueText,
                          expectedPID: proc.pid, expectedCwd: proc.cwd),
-            after: 0, projectName: name)
+            after: 0, projectName: name,
+        )
     }
 
     /// Resolve the owning terminal for a session's cwd (for the UI's arm toggle).
@@ -108,7 +109,7 @@ final class AutoResumeCoordinator {
         processes: [LiveProcess],
         transcriptTail: (String) -> [String],
         paths: @escaping (Int32) -> String?,
-        parents: @escaping (Int32) -> Int32
+        parents: @escaping (Int32) -> Int32,
     ) {
         guard settings.autoResumeEnabled else {
             log.debug("skip: master switch off")
@@ -135,16 +136,20 @@ final class AutoResumeCoordinator {
             processes: processes,
             transcriptTail: transcriptTail,
             executablePath: paths,
-            parentPID: parents)
+            parentPID: parents,
+        )
 
         lastUtilization = current
         window = plan.window
 
         if plan.refillDetected {
             let armedCount = sessions.filter { self.armed.isArmed($0.id) }.count
-            log.notice("refill detected (\(previous ?? -1, format: .fixed(precision: 1)) -> \(current, format: .fixed(precision: 1))%); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)")
+            log
+                .notice(
+                    "refill detected (\(previous ?? -1, format: .fixed(precision: 1)) -> \(current, format: .fixed(precision: 1))%); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)",
+                )
             lastRefillAt = now()
-            notifiedFailures.removeAll()   // a fresh window may notify each session once again
+            notifiedFailures.removeAll() // a fresh window may notify each session once again
         }
 
         // Diagnostic: every armed session not fired this cycle, with its reason.
@@ -155,12 +160,16 @@ final class AutoResumeCoordinator {
         // Schedule each eligible session, staggered.
         var delay = 0.0
         for target in plan.targets {
-            log.notice("\(target.projectName, privacy: .public): eligible — scheduling resume on \(target.tty, privacy: .public) in \(delay, format: .fixed(precision: 1))s")
+            log
+                .notice(
+                    "\(target.projectName, privacy: .public): eligible — scheduling resume on \(target.tty, privacy: .public) in \(delay, format: .fixed(precision: 1))s",
+                )
             scheduleResume(
                 ResumeTarget(sessionID: target.sessionID, tty: target.tty,
                              continueText: continueText, expectedPID: target.pid,
                              expectedCwd: target.cwd),
-                after: delay, projectName: target.projectName)
+                after: delay, projectName: target.projectName,
+            )
             delay += staggerSeconds
         }
 
@@ -169,7 +178,9 @@ final class AutoResumeCoordinator {
             let missed = armed.armed.subtracting(firedBefore).count
             if missed > 0 {
                 log.notice("resume window closed — \(missed, format: .decimal) armed session(s) never became eligible")
-                notify("Auto-resume window ended — \(missed) armed session(s) never became eligible (limit cutoff not detected).")
+                notify(
+                    "Auto-resume window ended — \(missed) armed session(s) never became eligible (limit cutoff not detected).",
+                )
             }
         }
     }
@@ -181,8 +192,11 @@ final class AutoResumeCoordinator {
             let live = LibprocProcessProbe().liveClaudeProcesses()
             let onTTY = live.filter { $0.tty == target.tty }
             guard onTTY.count == 1, onTTY[0].pid == target.expectedPID, onTTY[0].cwd == target.expectedCwd else {
-                self.log.notice("\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense); will retry within window")
-                self.window?.fired.remove(target.sessionID)   // allow a later scan to retry
+                self.log
+                    .notice(
+                        "\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense); will retry within window",
+                    )
+                self.window?.fired.remove(target.sessionID) // allow a later scan to retry
                 return
             }
             do {
@@ -193,10 +207,16 @@ final class AutoResumeCoordinator {
                 // Most likely on the first ever fire: macOS Automation (TCC) permission
                 // not yet granted. Un-mark so the window keeps retrying — but notify
                 // only once per session per window (retries log every attempt).
-                self.log.error("\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)")
+                self.log
+                    .error(
+                        "\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)",
+                    )
                 self.window?.fired.remove(target.sessionID)
                 if self.notifiedFailures.insert(target.sessionID).inserted {
-                    self.notify("Couldn't resume \(projectName): \(String(describing: error)) — retrying quietly; check System Settings → Privacy & Security → Automation if this persists.")
+                    self
+                        .notify(
+                            "Couldn't resume \(projectName): \(String(describing: error)) — retrying quietly; check System Settings → Privacy & Security → Automation if this persists.",
+                        )
                 }
             }
         }

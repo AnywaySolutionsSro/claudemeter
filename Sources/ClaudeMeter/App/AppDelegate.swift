@@ -1,7 +1,7 @@
 import AppKit
-import SwiftUI
-import Combine
 import ClaudeMeterCore
+import Combine
+import SwiftUI
 
 /// Owns the status-bar item and popover. See inline notes on the near-zero-idle design.
 @MainActor
@@ -21,15 +21,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 session: session,
                 processes: self.sessionMonitor.latestProcesses,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
-                parents: { LibprocProcessProbe.parentPIDForPID($0) })
-        })
+                parents: { LibprocProcessProbe.parentPIDForPID($0) },
+            )
+        },
+    )
     private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
     private let armedSessions = ArmedSessions()
     private let sleepInhibitor = SleepInhibitor()
     private lazy var autoResume = AutoResumeCoordinator(
         armed: armedSessions,
         settings: settings,
-        notify: { [weak self] message in self?.notifications.notify("ClaudeMeter", message) }
+        notify: { [weak self] message in self?.notifications.notify("ClaudeMeter", message) },
     )
 
     private var statusItem: NSStatusItem!
@@ -38,14 +40,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var outsideClickMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         LoginItem.enableOnFirstLaunchIfNeeded()
         installEditMenu()
         if settings.notificationsEnabled { notifications.requestAuthorization() }
 
         // Fixed width (content centered) so switching modes / changing the countdown never
         // resizes the item — that would shift the button and misalign the open popover.
-        statusItem = NSStatusBar.system.statusItem(withLength: MenuBarLabel.recommendedSlotWidth(for: settings.textScale))
+        statusItem = NSStatusBar.system
+            .statusItem(withLength: MenuBarLabel.recommendedSlotWidth(for: settings.textScale))
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
@@ -109,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 processes: inputs.processes,
                 transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
-                parents: { LibprocProcessProbe.parentPIDForPID($0) }
+                parents: { LibprocProcessProbe.parentPIDForPID($0) },
             )
         }
         // React to arming changes immediately (sleep assertion + republish).
@@ -143,11 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleWake),
-            name: NSWorkspace.didWakeNotification, object: nil
+            name: NSWorkspace.didWakeNotification, object: nil,
         )
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(handleThemeChange),
-            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil,
         )
     }
 
@@ -165,11 +168,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             UserDefaults.standard.set(true, forKey: key)
             notifications.notify("ClaudeMeter", "iTerm2 control authorized — auto-resume is ready.")
         case .denied:
-            UserDefaults.standard.set(true, forKey: key)   // answered; don't nag again
+            UserDefaults.standard.set(true, forKey: key) // answered; don't nag again
             notifications.notify("ClaudeMeter",
-                "iTerm2 control was denied — auto-resume can't type into sessions. Re-enable in System Settings → Privacy & Security → Automation, or Settings → Authorize iTerm2 control.")
+                                 "iTerm2 control was denied — auto-resume can't type into sessions. "
+                                     + "Re-enable in System Settings → Privacy & Security → Automation, "
+                                     + "or Settings → Authorize iTerm2 control.")
         case .notRunning:
-            break   // try again on a later launch or when a session is first armed
+            break // try again on a later launch or when a session is first armed
         }
     }
 
@@ -177,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         switch event {
         case .reset:
             if settings.notificationsEnabled { notifications.notifyRefill() }
-        case .crossedThreshold(let threshold, let remaining, let eta):
+        case let .crossedThreshold(threshold, remaining, eta):
             if settings.notificationsEnabled {
                 notifications.notifyThreshold(threshold, remaining: remaining, etaToReset: eta)
             }
@@ -224,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
             image = MenuBarLabel.image(
                 mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
-                errorMessage: error, now: now, scale: scale
+                errorMessage: error, now: now, scale: scale,
             )
         }
         button.image = image
@@ -243,12 +248,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let content = MenuContentView(
             onOpenSessions: { [weak self] in self?.openSessions() },
-            onOpenSettings: { [weak self] in self?.openSettings() }
+            onOpenSettings: { [weak self] in self?.openSettings() },
         )
-            .environmentObject(store)
-            .environmentObject(auth)
-            .environmentObject(settings)
-            .environment(\.textScale, settings.textScale)
+        .environmentObject(store)
+        .environmentObject(auth)
+        .environmentObject(settings)
+        .environment(\.textScale, settings.textScale)
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
@@ -258,7 +263,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController?.view.window?.makeKey()
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown],
         ) { [weak self] _ in
             Task { @MainActor in self?.closePopover() }
         }
@@ -290,7 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    func popoverDidClose(_ notification: Notification) {
+    func popoverDidClose(_: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
     }

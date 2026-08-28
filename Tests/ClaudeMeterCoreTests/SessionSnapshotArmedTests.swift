@@ -1,8 +1,8 @@
+@testable import ClaudeMeterCore
 import Foundation
 import Testing
-@testable import ClaudeMeterCore
 
-@Suite struct SessionSnapshotArmedTests {
+struct SessionSnapshotArmedTests {
     private func session(_ id: String) -> SessionUsage {
         SessionUsage(id: id, origin: .cli, projectPath: "/p/\(id)", models: ["m"],
                      tokens: TokenBreakdown(input: 1), messageCount: 1,
@@ -13,7 +13,8 @@ import Testing
     @Test func makeCarriesArmedAndArmableIDs() {
         let snap = SessionSnapshot.make(
             from: [session("a"), session("b")], now: Date(timeIntervalSince1970: 0),
-            armedSessionIDs: ["a"], armableSessionIDs: ["a", "b"])
+            armedSessionIDs: ["a"], armableSessionIDs: ["a", "b"],
+        )
         #expect(snap.armedSessionIDs == ["a"])
         #expect(snap.armableSessionIDs == ["a", "b"])
     }

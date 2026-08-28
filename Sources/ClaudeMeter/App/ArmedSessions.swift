@@ -1,6 +1,6 @@
-import Foundation
-import Combine
 import ClaudeMeterCore
+import Combine
+import Foundation
 
 /// The set of armed session UUIDs, persisted to Application Support and mirrored
 /// from widget-issued disarm commands. The single source of truth in the app.
@@ -23,6 +23,7 @@ final class ArmedSessions: ObservableObject {
     }
 
     var count: Int { armed.count }
+    var isEmpty: Bool { armed.isEmpty }
     func isArmed(_ id: String) -> Bool { armed.contains(id) }
 
     func setArmed(_ id: String, _ value: Bool) {
