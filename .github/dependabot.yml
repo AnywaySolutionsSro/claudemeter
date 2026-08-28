@@ -1,0 +1,10 @@
+# The only dependencies this repo has are GitHub Actions (no SwiftPM packages).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

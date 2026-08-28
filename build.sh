@@ -25,6 +25,7 @@
 # Release CI (.github/workflows/release.yml) additionally sets:
 #
 #   BUILD_UNSIGNED=1           build without dev-team signing (Developer ID signs later)
+#   WARNINGS_AS_ERRORS=1       fail on any compiler warning (the build-app CI job)
 #   MARKETING_VERSION          from the tag, e.g. 01.02.03
 #   CURRENT_PROJECT_VERSION    build number (the workflow run number)
 #
@@ -61,6 +62,13 @@ else
 	XCODEBUILD_SIGNING=(-allowProvisioningUpdates "DEVELOPMENT_TEAM=${TEAM}")
 fi
 
+# WARNINGS_AS_ERRORS=1 (the `build-app` CI job) makes any compiler warning in
+# the app or widget fail the build; `swift build` gets the same via -Xswiftc.
+XCODEBUILD_WARNINGS=()
+if [ "${WARNINGS_AS_ERRORS:-0}" = "1" ]; then
+	XCODEBUILD_WARNINGS=(SWIFT_TREAT_WARNINGS_AS_ERRORS=YES GCC_TREAT_WARNINGS_AS_ERRORS=YES)
+fi
+
 # Full app + widget via the XcodeGen project. The result lands in dist/ already
 # dev-team signed (stable signature -> the Keychain "Always Allow" persists).
 build_app() {
@@ -72,6 +80,7 @@ build_app() {
 		-configuration Release -destination 'platform=macOS' \
 		"${XCODEBUILD_SIGNING[@]}" \
 		${XCODEBUILD_VERSION[@]+"${XCODEBUILD_VERSION[@]}"} \
+		${XCODEBUILD_WARNINGS[@]+"${XCODEBUILD_WARNINGS[@]}"} \
 		build
 
 	local built

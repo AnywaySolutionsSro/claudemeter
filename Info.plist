@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>26.0</string>
 	<!-- Menu-bar agent: no Dock icon, no main window.
 	     NB: removing LSUIElement (relying only on the runtime .accessory policy) does
 	     NOT make the macOS 26 widget gallery render the app's sidebar chip icon — it
