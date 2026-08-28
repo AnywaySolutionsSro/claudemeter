@@ -35,6 +35,9 @@ jobs:
   release:
     name: release
     runs-on: macos-26
+    # notarytool --wait occasionally stalls; don't hold the runner (and this
+    # tag's concurrency slot) for GitHub's 6-hour default.
+    timeout-minutes: 45
     steps:
       - name: Resolve version from tag
         id: version
@@ -52,13 +55,21 @@ jobs:
           version="${BASH_REMATCH[1]}"
           prerelease="false"; [ -n "${BASH_REMATCH[2]}" ] && prerelease="true"
 
-          # Releases must move forward: refuse a tag that is not newer than the
-          # latest published (non-draft, non-prerelease) release.
+          if [ "$REBUILD" = "true" ] && ! gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag '$TAG' does not exist in $GH_REPO."
+            exit 1
+          fi
+
+          # Releases must move forward: the numeric part of the tag must be newer
+          # than the latest published (non-draft, non-prerelease) release. Compared
+          # without any -rcN suffix, because `sort -V` ranks v01.02.00-rc1 ABOVE
+          # v01.02.00 — an rc for an already-shipped version must still be refused.
           latest="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 \
             --json tagName -q '.[0].tagName // empty')"
           if [ -n "$latest" ] && [ "$REBUILD" != "true" ]; then
-            newest="$(printf '%s\n%s\n' "$latest" "$TAG" | sort -V | tail -1)"
-            if [ "$newest" != "$TAG" ] || [ "$latest" = "$TAG" ]; then
+            latest_base="${latest%%-rc*}"
+            newest="$(printf '%s\n%s\n' "$latest_base" "v$version" | sort -V | tail -1)"
+            if [ "$newest" != "v$version" ] || [ "$latest_base" = "v$version" ]; then
               echo "::error::Tag '$TAG' is not newer than the latest release '$latest'."
               exit 1
             fi
@@ -98,6 +109,11 @@ jobs:
         run: |
           set -euo pipefail
           xcode="$(for d in /Applications/Xcode_26*.app; do echo "$d"; done | sort -V | tail -1)"
+          if [ ! -d "$xcode" ]; then
+            echo "::error::No Xcode_26*.app on this runner image — the package needs the macOS 26 SDK."
+            find /Applications -maxdepth 1 -name 'Xcode*' || true
+            exit 1
+          fi
           echo "Using $xcode"
           sudo xcode-select -s "$xcode"
           xcodebuild -version
@@ -162,7 +178,12 @@ jobs:
           set -euo pipefail
           app=dist/ClaudeMeter.app
           codesign --verify --deep --strict --verbose=2 "$app"
-          spctl -a -vvv -t install "$app" 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID"
+          assessment="$(spctl -a -vvv -t install "$app" 2>&1 || true)"
+          echo "$assessment"
+          if ! grep -q "source=Notarized Developer ID" <<<"$assessment"; then
+            echo "::error::spctl did not accept the app as Notarized Developer ID (see output above)."
+            exit 1
+          fi
           xcrun stapler validate "$app"
           built="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
           [ "$built" = "$VERSION" ] || { echo "::error::Built version '$built' != tag version '$VERSION'"; exit 1; }

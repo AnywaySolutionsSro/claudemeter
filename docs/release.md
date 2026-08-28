@@ -110,6 +110,7 @@ All modes except `--spm` build the **full app + widget extension** via the Xcode
 | `./build.sh`         | dev team                        | local only                              |
 | `./build.sh --install` | dev team, installs to /Applications | local only; stable signature (Keychain prompts once) |
 | `./build.sh --release` | Developer ID + hardened runtime | yes — notarized if a notary profile exists |
+| `./build.sh --notarize` | Developer ID + hardened runtime | yes — **what CI runs**: notarization mandatory (fails otherwise), zip + `.sha256` in `dist/` |
 | `./build.sh --spm`   | ad-hoc (`-`), **no widget**     | local fallback for Xcode-less toolchains |
 
 Release signing is **inside-out and per-bundle** (appex with `ClaudeMeterWidget.entitlements`,

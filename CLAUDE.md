@@ -90,6 +90,7 @@ swift build -c release          # compile (SwiftPM targets only, quick check)
 swift test                      # core unit tests (keep these green)
 ./build.sh --install            # app + widget → /Applications + launch (dev-team signed)
 ./build.sh --release            # app + widget, signed + notarized zip to ~/Desktop (env vars below)
+./build.sh --notarize           # same, notarization mandatory; zip + .sha256 in dist/ (what CI runs)
 ./build.sh --spm                # widget-less SwiftPM fallback (no Xcode needed)
 swift Resources/make_icon.swift && iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
 ```
