@@ -86,9 +86,11 @@ automatically. A manual "paste the code" fallback is available if loopback is ev
 - **RAM:** a single lightweight `NSStatusItem`; no Dock icon, no window, no Cmd-Tab entry.
 - **Resilience:** the last reading is cached on disk and shown instantly on launch.
 
-## Install (from a release build)
+## Install
 
-A notarized `ClaudeMeter.zip`:
+Download `ClaudeMeter.zip` from the
+[latest release](https://github.com/AnywaySolutionsSro/claudemeter/releases/latest) — every
+release is Developer ID signed and notarized by Apple, so it opens with a normal double-click.
 
 1. Unzip → drag **ClaudeMeter.app** to `/Applications`.
 2. Double-click to open.

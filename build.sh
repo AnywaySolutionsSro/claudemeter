@@ -20,6 +20,13 @@
 #                     xcrun notarytool store-credentials ClaudeMeterNotary \
 #                       --apple-id you@example.com --team-id TEAMID \
 #                       --password <app-specific-password>
+#   NOTARY_KEYCHAIN Optional keychain path holding that profile (CI uses a temp keychain)
+#
+# Release CI (.github/workflows/release.yml) additionally sets:
+#
+#   BUILD_UNSIGNED=1           build without dev-team signing (Developer ID signs later)
+#   MARKETING_VERSION          from the tag, e.g. 01.02.03
+#   CURRENT_PROJECT_VERSION    build number (the workflow run number)
 #
 set -euo pipefail
 
@@ -32,6 +39,28 @@ TEAM="${DEVELOPMENT_TEAM:-72K9YQF24J}"
 LSREG="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 MODE="${1:-}"
 
+# Release CI derives the version from the git tag and the build number from the
+# run number; unset means the project.yml values. Arrays are expanded with the
+# ${arr[@]+"${arr[@]}"} idiom because macOS ships bash 3.2, where an empty
+# array under `set -u` is an error.
+XCODEBUILD_VERSION=()
+if [ -n "${MARKETING_VERSION:-}" ]; then
+	XCODEBUILD_VERSION+=("MARKETING_VERSION=${MARKETING_VERSION}")
+fi
+if [ -n "${CURRENT_PROJECT_VERSION:-}" ]; then
+	XCODEBUILD_VERSION+=("CURRENT_PROJECT_VERSION=${CURRENT_PROJECT_VERSION}")
+fi
+
+# BUILD_UNSIGNED=1 skips xcodebuild's automatic dev-team signing. CI has no
+# Apple Development certificate or signed-in Xcode account, so the only
+# signature on a CI build is the Developer ID one applied by sign_developer_id
+# (which locally re-signs over the dev-team signature anyway).
+if [ "${BUILD_UNSIGNED:-0}" = "1" ]; then
+	XCODEBUILD_SIGNING=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="")
+else
+	XCODEBUILD_SIGNING=(-allowProvisioningUpdates "DEVELOPMENT_TEAM=${TEAM}")
+fi
+
 # Full app + widget via the XcodeGen project. The result lands in dist/ already
 # dev-team signed (stable signature -> the Keychain "Always Allow" persists).
 build_app() {
@@ -41,7 +70,9 @@ build_app() {
 	echo "==> Building Release (app + widget, team ${TEAM})"
 	xcodebuild -project "${ROOT}/${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" \
 		-configuration Release -destination 'platform=macOS' \
-		-allowProvisioningUpdates DEVELOPMENT_TEAM="${TEAM}" build
+		"${XCODEBUILD_SIGNING[@]}" \
+		${XCODEBUILD_VERSION[@]+"${XCODEBUILD_VERSION[@]}"} \
+		build
 
 	local built
 	built="$(find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products/Release \
@@ -59,6 +90,18 @@ build_app() {
 	fi
 }
 
+# Info.plist carries $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION) for xcodebuild
+# to substitute; the SwiftPM fallback copies it raw, so stamp the values here
+# (env override, else the project.yml fallback).
+stamp_version() {
+	local plist="$1"
+	local version build
+	version="${MARKETING_VERSION:-$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)".*/\1/p' "${ROOT}/project.yml" | head -1)}"
+	build="${CURRENT_PROJECT_VERSION:-$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *"\(.*\)".*/\1/p' "${ROOT}/project.yml" | head -1)}"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version}" "${plist}"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${build}" "${plist}"
+}
+
 # Widget-less SwiftPM fallback for machines without Xcode/xcodegen/a team.
 build_spm() {
 	echo "==> Building widget-less SwiftPM binary (fallback)"
@@ -71,6 +114,7 @@ build_spm() {
 	mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 	cp "${bin_dir}/${APP_NAME}" "${APP}/Contents/MacOS/${APP_NAME}"
 	cp "${ROOT}/Info.plist" "${APP}/Contents/Info.plist"
+	stamp_version "${APP}/Contents/Info.plist"
 	if [ -f "${ROOT}/Resources/AppIcon.icns" ]; then
 		cp "${ROOT}/Resources/AppIcon.icns" "${APP}/Contents/Resources/AppIcon.icns"
 	fi
@@ -150,7 +194,8 @@ notarize_and_package() {
 	/usr/bin/ditto -c -k --keepParent "${APP}" "${zip}"
 
 	echo "==> Submitting to Apple notary service (this can take a few minutes)"
-	xcrun notarytool submit "${zip}" --keychain-profile "${profile}" --wait
+	xcrun notarytool submit "${zip}" --keychain-profile "${profile}" \
+		${NOTARY_KEYCHAIN:+--keychain "${NOTARY_KEYCHAIN}"} --wait
 
 	echo "==> Stapling ticket"
 	xcrun stapler staple "${APP}"
@@ -159,6 +204,7 @@ notarize_and_package() {
 	echo "==> Repackaging stapled app"
 	rm -f "${zip}"
 	/usr/bin/ditto -c -k --keepParent "${APP}" "${zip}"
+	(cd "${DIST}" && shasum -a 256 "${APP_NAME}.zip" > "${APP_NAME}.zip.sha256")
 
 	echo "==> Done. Share this with friends: ${zip}"
 	echo "    They unzip it, drag ${APP_NAME}.app to /Applications, and open it normally."

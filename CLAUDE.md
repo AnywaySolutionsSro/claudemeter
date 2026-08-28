@@ -98,6 +98,16 @@ Release env vars: `CODESIGN_ID="Developer ID Application: Jakub Zak (72K9YQF24J)
 `NOTARY_PROFILE="mbx-notary"` (an account-level notarytool keychain profile; reusable across
 projects — it authenticates the Apple **team**, not the app). See [docs/release.md](docs/release.md).
 
+**Official releases come from CI, not `--release`:** pushing a tag `vMM.mm.pp` (two-digit,
+e.g. `v01.02.03`; `-rcN` = pre-release) runs `.github/workflows/release.yml`, which builds,
+notarizes and publishes `ClaudeMeter.zip` to GitHub Releases. Versioning: major = major new
+feature, minor = any new feature, patch = any fix. The version comes from the tag — don't
+hand-edit `MARKETING_VERSION` in `project.yml` for a release.
+
+**Branch rules:** `main` takes PRs only — the `tests` check must pass (no bypass) and a
+code-owner approval is required (repo admins — Jakub — can bypass). Never push to `main`
+directly; branch, open a PR, let Jakub merge.
+
 ## Conventions
 
 - Swift style per the user's global rules: prefer `let`, value types, small focused files
