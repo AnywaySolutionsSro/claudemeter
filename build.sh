@@ -168,7 +168,9 @@ consolidate_widget_registration() {
 		-exec rm -rf {} + 2>/dev/null || true
 
 	while IFS= read -r staleApp; do
-		[ -n "${staleApp}" ] && "${LSREG}" -u "${staleApp}" 2>/dev/null || true
+		if [ -n "${staleApp}" ]; then
+			"${LSREG}" -u "${staleApp}" 2>/dev/null || true
+		fi
 	done < <(find ~/Library/Developer/Xcode/DerivedData "${ROOT}/.build" \
 		-maxdepth 6 -name "${APP_NAME}.app" 2>/dev/null)
 
