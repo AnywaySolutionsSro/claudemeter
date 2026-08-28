@@ -94,6 +94,36 @@ struct ModelWeeklyLimitTests {
         #expect(snap.gauges.map(\.label) == ["Weekly", "opus", "Sonnet"])
     }
 
+    @Test func surfaceScopedWindowsGetDistinctLabelsAndDuplicatesCollapse() throws {
+        let json = Data("""
+        { "limits": [
+          { "kind": "weekly_scoped", "percent": 68, "is_active": true,
+            "scope": { "model": { "display_name": "Fable" }, "surface": null } },
+          { "kind": "weekly_scoped", "percent": 12,
+            "scope": { "model": { "display_name": "Fable" }, "surface": "Cowork" } },
+          { "kind": "weekly_scoped", "percent": 99,
+            "scope": { "model": { "display_name": "fable" }, "surface": "" } }
+        ] }
+        """.utf8)
+        let snap = try decoder.decode(json, fetchedAt: fetchedAt)
+        // Row/gauge identity is the label, so labels must be unique: the surface is
+        // folded in, and an exact duplicate (case-insensitive) keeps the first entry.
+        #expect(snap.allModelWeekly.map(\.label) == ["Fable", "Fable · Cowork"])
+        #expect(snap.allModelWeekly.map(\.bucket.utilization) == [68, 12])
+        #expect(Set(snap.allBuckets.map(\.id)).count == snap.allBuckets.count)
+        #expect(Set(snap.gauges.map(\.id)).count == snap.gauges.count)
+    }
+
+    @Test func legacyDedupeMatchesRenamedScopedLabels() throws {
+        let json = Data("""
+        { "seven_day_opus": { "utilization": 30 }, "seven_day_sonnet": { "utilization": 5 },
+          "limits": [ { "kind": "weekly_scoped", "percent": 31,
+                        "scope": { "model": { "display_name": "Claude Opus" }, "surface": "Code" } } ] }
+        """.utf8)
+        let snap = try decoder.decode(json, fetchedAt: fetchedAt)
+        #expect(snap.allModelWeekly.map(\.label) == ["Claude Opus · Code", "Sonnet"])
+    }
+
     @Test func widgetGaugesIncludeTheModelWeeklyRing() throws {
         let snap = try decoder.decode(observed, fetchedAt: fetchedAt)
         #expect(snap.gauges.map(\.label) == ["Session", "Weekly", "Fable"])

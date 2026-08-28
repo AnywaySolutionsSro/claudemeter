@@ -28,21 +28,28 @@ public struct UsageSnapshot: Equatable, Sendable {
 
     /// The legacy `seven_day_opus` / `seven_day_sonnet` buckets, unless `limits[]`
     /// already carries a window for that model (then the scoped entry wins, so the
-    /// same model never shows twice).
+    /// same model never shows twice). Matched by substring, because the scoped
+    /// label is server-controlled ("Opus", "Claude Opus", "Opus · Cowork" …).
     var legacyModelWeekly: [ModelWeeklyLimit] {
-        let scoped = Set(modelWeekly.map { $0.label.lowercased() })
+        let scoped = modelWeekly.map { $0.label.lowercased() }
+        func isScoped(_ model: String) -> Bool { scoped.contains { $0.contains(model) } }
         var rows: [ModelWeeklyLimit] = []
-        if let b = sevenDayOpus, !scoped.contains("opus") {
+        if let b = sevenDayOpus, !isScoped("opus") {
             rows.append(ModelWeeklyLimit(label: "Opus", bucket: b, isActive: false))
         }
-        if let b = sevenDaySonnet, !scoped.contains("sonnet") {
+        if let b = sevenDaySonnet, !isScoped("sonnet") {
             rows.append(ModelWeeklyLimit(label: "Sonnet", bucket: b, isActive: false))
         }
         return rows
     }
 
     /// Every per-model weekly window to display: scoped ones first, then legacy.
-    public var allModelWeekly: [ModelWeeklyLimit] { modelWeekly + legacyModelWeekly }
+    /// Labels are unique (first occurrence wins) because they double as the
+    /// SwiftUI identity of dropdown rows and widget gauges.
+    public var allModelWeekly: [ModelWeeklyLimit] {
+        var seen = Set<String>()
+        return (modelWeekly + legacyModelWeekly).filter { seen.insert($0.label.lowercased()).inserted }
+    }
 
     /// The window shown in the menu bar by default: the frequently-resetting 5-hour
     /// session limit, falling back to the weekly window if the session bucket is absent.
