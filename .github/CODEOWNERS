@@ -1,0 +1,3 @@
+# Every PR into main needs a review from a code owner (enforced by the
+# "main: review" ruleset). Repository admins can bypass that rule.
+* @JakubZak1988
