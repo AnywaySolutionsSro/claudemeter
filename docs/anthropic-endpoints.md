@@ -33,8 +33,26 @@ Accept: application/json
   seconds (the CLI's own doc comment is wrong about this). `ISODate` strips fractional seconds
   before parsing because `ISO8601DateFormatter` only handles milliseconds.
 - Buckets may be `null` (plan doesn't have them) or absent. ClaudeMeter consumes `five_hour`,
-  `seven_day`, `seven_day_opus`, `seven_day_sonnet`.
-- Other bucket keys exist (`seven_day_oauth_apps`, `seven_day_cowork`, codenamed ones); ignored.
+  `seven_day`, `seven_day_opus`, `seven_day_sonnet`, and the `limits` array.
+- Other bucket keys exist (`seven_day_oauth_apps`, `seven_day_cowork`, codenamed ones such as
+  `nimbus_quill`, `cinder_cove`); ignored.
+- **`limits[]`** (observed 2026-08-28) is the structured view of the same windows and the only
+  place per-model weekly limits appear for current plans (`seven_day_opus/sonnet` are `null`):
+
+  ```json
+  { "kind": "session",       "group": "session", "percent": 17, "severity": "normal",
+    "resets_at": "…", "scope": null, "is_active": false },
+  { "kind": "weekly_all",    "group": "weekly",  "percent": 44, "…": "…" },
+  { "kind": "weekly_scoped", "group": "weekly",  "percent": 68, "severity": "normal",
+    "resets_at": "…", "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null },
+    "is_active": true }
+  ```
+
+  `UsageResponseDecoder` turns every `weekly_scoped` entry with a `scope.model.display_name`
+  into a `ModelWeeklyLimit` (label = the server-supplied name, so new tiers need no code
+  change; `percent` = utilization; `is_active` = the binding window). The Claude Code binary
+  describes it as "Server-supplied label for the model bucket (e.g. 'Fable')". If `limits[]`
+  and a legacy `seven_day_<model>` bucket name the same model, the scoped entry wins.
 - HTTP **429** is returned when polling too often; honor `Retry-After`.
 
 ## OAuth (authorization code + PKCE)
