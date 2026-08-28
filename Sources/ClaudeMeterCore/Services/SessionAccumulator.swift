@@ -72,7 +72,10 @@ public struct SessionAccumulator: Equatable, Sendable {
 
     /// Combine two accumulators (parent transcript + a subagent transcript).
     /// `self` is the primary: its cwd wins, because the parent transcript's cwd
-    /// is what the process probe matches against.
+    /// is what the process probe matches against, and its `lastModel` wins,
+    /// because the headline model is what the main conversation runs on —
+    /// subagents are routinely cheaper models whose newer records must not
+    /// relabel the session. The subagent's model is only a fallback.
     public func merged(with other: SessionAccumulator) -> SessionAccumulator {
         var result = self
         result.tokens = tokens + other.tokens
@@ -84,7 +87,7 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.lastCwdStamp = lastCwd != nil ? lastCwdStamp : other.lastCwdStamp
         result.seenMessageIDs = seenMessageIDs.union(other.seenMessageIDs)
         result.burnEvents = burnEvents + other.burnEvents
-        if (other.lastModelStamp ?? .distantPast) > (lastModelStamp ?? .distantPast) {
+        if lastModel == nil {
             result.lastModel = other.lastModel
             result.lastModelStamp = other.lastModelStamp
         }

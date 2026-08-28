@@ -109,14 +109,29 @@ import Testing
         #expect(u.lastModel == "claude-opus-4-8")
     }
 
-    @Test func mergedLastModelComesFromTheNewerSide() throws {
+    // The headline model is the one the *main conversation* runs on. Subagents
+    // (Agent tool / workflows) are routinely cheaper models and often write their
+    // last record after the parent's, so "newest record wins" relabelled a
+    // fable-5 session as sonnet-5 whenever a worker was still running.
+    @Test func mergedLastModelIsTheParentsEvenWhenASubagentIsNewer() throws {
         var parent = SessionAccumulator()
-        parent.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-opus-4-8"))
+        parent.fold(rec(9_000, TokenBreakdown(input: 1), model: "claude-fable-5"))
         var sub = SessionAccumulator()
-        sub.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-haiku-4-5"))
+        sub.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-sonnet-5"))
         let u = try #require(parent.merged(with: sub)
             .usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
-        #expect(u.lastModel == "claude-haiku-4-5")
+        #expect(u.lastModel == "claude-fable-5")
+        #expect(u.models == ["claude-fable-5", "claude-sonnet-5"])
+    }
+
+    @Test func mergedLastModelFallsBackToTheSubagentWhenTheParentHasNone() throws {
+        var parent = SessionAccumulator()
+        parent.fold(rec(9_000, TokenBreakdown(input: 1), model: nil))
+        var sub = SessionAccumulator()
+        sub.fold(rec(9_500, TokenBreakdown(input: 1), model: "claude-sonnet-5"))
+        let u = try #require(parent.merged(with: sub)
+            .usage(id: "s", projectPath: "/p", origin: .cli, title: nil, now: now))
+        #expect(u.lastModel == "claude-sonnet-5")
     }
 
     @Test func mergedCombinesParentAndSubagentUsage() throws {
