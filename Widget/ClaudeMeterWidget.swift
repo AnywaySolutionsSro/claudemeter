@@ -322,8 +322,10 @@ struct ClaudeMeterWidgetEntryView: View {
         if gauges.isEmpty {
             HStack { Spacer(); noGaugeData; Spacer() }.frame(maxHeight: .infinity)
         } else {
+            // Rings are a fixed 58pt; systemMedium fits four. Session and Weekly come
+            // first, so the cap only ever drops surplus per-model windows.
             HStack(alignment: .center, spacing: 0) {
-                ForEach(gauges) { gauge in
+                ForEach(gauges.prefix(4)) { gauge in
                     GaugeRingView(gauge: gauge, size: 58).frame(maxWidth: .infinity)
                 }
             }
