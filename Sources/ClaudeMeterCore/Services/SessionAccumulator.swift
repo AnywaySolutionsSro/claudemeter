@@ -45,7 +45,7 @@ public struct SessionAccumulator: Equatable, Sendable {
     public mutating func fold(_ record: AssistantUsageRecord) {
         if let id = record.messageID, !seenMessageIDs.insert(id).inserted { return }
 
-        tokens = tokens + record.tokens
+        tokens += record.tokens
         if let model = record.model {
             models.insert(model)
             if lastModelStamp == nil || record.timestamp >= lastModelStamp! {

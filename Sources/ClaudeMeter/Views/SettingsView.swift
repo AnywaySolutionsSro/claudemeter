@@ -75,7 +75,7 @@ struct SettingsView: View {
                 Toggle(isOn: $settings.notificationsEnabled) {
                     Label("Usage notifications", systemImage: "bell")
                 }
-                .onChange(of: settings.notificationsEnabled) { enabled in
+                .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
                 }
             }
@@ -110,11 +110,14 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder).frame(width: 160)
                 }
                 Text(
-                    "Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.",
+                    "Enable this first — it sets up the iTerm2 permission. Then arm individual sessions in the "
+                        + "Sessions window; only iTerm2 tabs cut off by the usage limit are nudged on quota refresh.",
                 )
                 .font(scale.font(10)).foregroundStyle(.secondary)
                 Text(
-                    "Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed with an external display and power connected).",
+                    "Sleep is handled for you: while any session is armed, ClaudeMeter holds a power assertion that "
+                        + "keeps the Mac awake — no Energy settings to change. Just leave the lid open (or run closed "
+                        + "with an external display and power connected).",
                 )
                 .font(scale.font(10)).foregroundStyle(.secondary)
             }
@@ -145,7 +148,8 @@ struct SettingsView: View {
                     }
                 }
                 Text(
-                    "Grants macOS Automation permission now (iTerm2 must be running) so the first resume can fire unattended.",
+                    "Grants macOS Automation permission now (iTerm2 must be running) "
+                        + "so the first resume can fire unattended.",
                 )
                 .font(scale.font(10)).foregroundStyle(.secondary)
             }

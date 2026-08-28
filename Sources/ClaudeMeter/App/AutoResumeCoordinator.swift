@@ -46,8 +46,7 @@ final class AutoResumeCoordinator {
          staggerSeconds: Double = 1.5,
          resumeWindowSeconds: Double = 300,
          now: @escaping () -> Date = Date.init,
-         notify: @escaping (String) -> Void)
-    {
+         notify: @escaping (String) -> Void) {
         self.armed = armed
         self.settings = settings
         self.driver = driver
@@ -65,8 +64,7 @@ final class AutoResumeCoordinator {
     func testResume(session: SessionUsage,
                     processes: [LiveProcess],
                     paths: @escaping (Int32) -> String?,
-                    parents: @escaping (Int32) -> Int32)
-    {
+                    parents: @escaping (Int32) -> Int32) {
         let name = session.projectName
         let index = SessionProcessIndex(processes: processes)
         guard let proc = index.process(forCwd: session.projectPath) else {
@@ -100,8 +98,7 @@ final class AutoResumeCoordinator {
     func terminalKind(forCwd cwd: String,
                       processes: [LiveProcess],
                       paths: @escaping (Int32) -> String?,
-                      parents: @escaping (Int32) -> Int32) -> TerminalKind
-    {
+                      parents: @escaping (Int32) -> Int32) -> TerminalKind {
         SessionProcessIndex(processes: processes)
             .terminalKind(forCwd: cwd, detector: terminalDetector, paths: paths, parents: parents)
     }

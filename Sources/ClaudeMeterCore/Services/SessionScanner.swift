@@ -12,8 +12,7 @@ public struct ScanResult: Sendable, Equatable {
     public let armableSessionIDs: [String]
 
     public init(sessions: [SessionUsage], snapshot: SessionSnapshot,
-                processes: [LiveProcess] = [], armableSessionIDs: [String] = [])
-    {
+                processes: [LiveProcess] = [], armableSessionIDs: [String] = []) {
         self.sessions = sessions
         self.snapshot = snapshot
         self.processes = processes
@@ -79,7 +78,7 @@ public actor SessionScanner {
     public static let realPath: @Sendable (String) -> String = { path in
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
         guard realpath(path, &buffer) != nil else { return path }
-        return String(cString: buffer)
+        return String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 
     public func scan(now: Date) -> ScanResult {

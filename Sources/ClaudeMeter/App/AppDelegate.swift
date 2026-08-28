@@ -170,7 +170,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .denied:
             UserDefaults.standard.set(true, forKey: key) // answered; don't nag again
             notifications.notify("ClaudeMeter",
-                                 "iTerm2 control was denied — auto-resume can't type into sessions. Re-enable in System Settings → Privacy & Security → Automation, or Settings → Authorize iTerm2 control.")
+                                 "iTerm2 control was denied — auto-resume can't type into sessions. "
+                                     + "Re-enable in System Settings → Privacy & Security → Automation, "
+                                     + "or Settings → Authorize iTerm2 control.")
         case .notRunning:
             break // try again on a later launch or when a session is first armed
         }

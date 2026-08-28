@@ -7,8 +7,7 @@ struct TerminalDetectorTests {
 
     /// Build closures over a synthetic process tree: pid -> (path, ppid).
     private func tree(_ nodes: [Int32: (String, Int32)])
-        -> (paths: (Int32) -> String?, parents: (Int32) -> Int32)
-    {
+        -> (paths: (Int32) -> String?, parents: (Int32) -> Int32) {
         ({ nodes[$0]?.0 }, { nodes[$0]?.1 ?? 0 })
     }
 

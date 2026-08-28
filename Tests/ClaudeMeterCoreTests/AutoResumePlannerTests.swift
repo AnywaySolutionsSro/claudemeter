@@ -12,8 +12,11 @@ struct AutoResumePlannerTests {
     private let windowSeconds: Double = 300
 
     // Transcript tails.
+    // JSONL fixture on one line, as in a real transcript.
+    // swiftlint:disable line_length
     private let cutoff = #"{"type":"assistant","isApiErrorMessage":true,"message":{"model":"<synthetic>","role":"assistant","stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your session limit · resets 4:30am (Europe/Bratislava)"}]}}"#
     private let clean = #"{"type":"assistant","message":{"model":"claude-opus-4-8","role":"assistant","stop_reason":"end_turn","content":[{"type":"text","text":"All done."}]}}"#
+    // swiftlint:enable line_length
 
     private func session(_ id: String, path: String) -> SessionUsage {
         SessionUsage(id: id, origin: .cli, projectPath: path, models: ["m"],

@@ -16,14 +16,14 @@ final class ArmedSessions: ObservableObject {
     private var pruneMisses: [String: Int] = [:]
 
     init(armedURL: URL = ArmedSessions.defaultArmedURL(),
-         commandURL: URL = ArmedSessions.commandInboxURL())
-    {
+         commandURL: URL = ArmedSessions.commandInboxURL()) {
         self.armedURL = armedURL
         self.commandURL = commandURL
         self.armed = store.read(from: armedURL)
     }
 
     var count: Int { armed.count }
+    var isEmpty: Bool { armed.isEmpty }
     func isArmed(_ id: String) -> Bool { armed.contains(id) }
 
     func setArmed(_ id: String, _ value: Bool) {

@@ -6,14 +6,14 @@ final class UsageResponseDecoderTests: XCTestCase {
     private let fetchedAt = Date(timeIntervalSince1970: 1_782_000_000)
 
     func testDecodesAllBuckets() throws {
-        let json = """
+        let json = Data("""
         {
           "five_hour":       { "utilization": 63, "resets_at": 1782001800 },
           "seven_day":       { "utilization": 21.5, "resets_at": 1782400000 },
           "seven_day_opus":  { "utilization": 80, "resets_at": 1782400000 },
           "seven_day_sonnet":{ "utilization": 5, "resets_at": 1782400000 }
         }
-        """.data(using: .utf8)!
+        """.utf8)
 
         let snap = try decoder.decode(json, fetchedAt: fetchedAt)
 
@@ -27,7 +27,7 @@ final class UsageResponseDecoderTests: XCTestCase {
     }
 
     func testMissingBucketsBecomeNil() throws {
-        let json = #"{ "five_hour": { "utilization": 10, "resets_at": 1782001800 } }"#.data(using: .utf8)!
+        let json = Data(#"{ "five_hour": { "utilization": 10, "resets_at": 1782001800 } }"#.utf8)
         let snap = try decoder.decode(json, fetchedAt: fetchedAt)
 
         XCTAssertNotNil(snap.fiveHour)
@@ -37,12 +37,12 @@ final class UsageResponseDecoderTests: XCTestCase {
     }
 
     func testUnknownFieldsAreIgnored() throws {
-        let json = """
+        let json = Data("""
         {
           "five_hour": { "utilization": 50, "resets_at": 1782001800, "status": "allowed_warning", "extra": 1 },
           "brand_new_bucket": { "utilization": 99 }
         }
-        """.data(using: .utf8)!
+        """.utf8)
         let snap = try decoder.decode(json, fetchedAt: fetchedAt)
 
         XCTAssertEqual(snap.fiveHour?.status, "allowed_warning")
@@ -50,14 +50,14 @@ final class UsageResponseDecoderTests: XCTestCase {
     }
 
     func testMalformedBodyThrows() {
-        let json = "not json".data(using: .utf8)!
+        let json = Data("not json".utf8)
         XCTAssertThrowsError(try decoder.decode(json, fetchedAt: fetchedAt))
     }
 
     func testParsesRealApiShapeWithISO8601Resets() throws {
         // Mirrors the live response: ISO-8601 reset strings with microsecond precision,
         // null buckets, and extra dollar fields.
-        let json = """
+        let json = Data("""
         {
           "five_hour": {
             "utilization": 55.0,
@@ -71,7 +71,7 @@ final class UsageResponseDecoderTests: XCTestCase {
           "seven_day_opus": null,
           "seven_day_sonnet": { "utilization": 0.0, "resets_at": "2026-07-04T04:59:59.398543+00:00" }
         }
-        """.data(using: .utf8)!
+        """.utf8)
 
         let snap = try decoder.decode(json, fetchedAt: fetchedAt)
 
@@ -97,13 +97,13 @@ final class UsageResponseDecoderTests: XCTestCase {
     }
 
     func testMostConstrainedPicksHighestUtilization() throws {
-        let json = """
+        let json = Data("""
         {
           "five_hour":      { "utilization": 30 },
           "seven_day":      { "utilization": 72 },
           "seven_day_opus": { "utilization": 55 }
         }
-        """.data(using: .utf8)!
+        """.utf8)
         let snap = try decoder.decode(json, fetchedAt: fetchedAt)
         XCTAssertEqual(snap.mostConstrained?.utilization, 72)
     }

@@ -14,8 +14,7 @@ final class SessionsWindowController: NSObject {
     private var window: NSWindow?
 
     init(monitor: SessionMonitor, armed: ArmedSessions, settings: Settings,
-         onTestResume: @escaping (SessionUsage) -> Void = { _ in })
-    {
+         onTestResume: @escaping (SessionUsage) -> Void = { _ in }) {
         self.monitor = monitor
         self.armed = armed
         self.settings = settings

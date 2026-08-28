@@ -86,6 +86,9 @@ public struct ResumePlan: Equatable, Sendable {
 /// libproc: the PID→path / PID→parent lookups and transcript tail are injected,
 /// exactly like `TerminalDetector`, so the whole policy is unit-testable.
 public enum AutoResumePlanner {
+    // Every input is an injected dependency so the policy stays a pure function;
+    // bundling them into a struct would only move the same eleven names around.
+    // swiftlint:disable:next function_parameter_count
     public static func plan(
         now: Date,
         previousUtilization: Double?,

@@ -17,5 +17,8 @@
 #   redundantSelf — stripped a `self.` that Swift 6 capture semantics require
 #     (AutoResumeCoordinator) and broke the build; not worth the risk.
 --disable redundantSelf
+#   wrapMultilineStatementBraces — SwiftLint's opening_brace rejects `{` on its
+#     own line after a multi-line `if`/`guard`; SwiftLint wins on this one.
+--disable wrapMultilineStatementBraces
 
 --exclude .build,dist,DerivedData,ClaudeMeter.xcodeproj

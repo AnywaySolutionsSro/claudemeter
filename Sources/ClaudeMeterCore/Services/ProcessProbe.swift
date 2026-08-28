@@ -95,7 +95,7 @@ public struct LibprocProcessProbe: ProcessProbing {
         var buf = [CChar](repeating: 0, count: Int(4 * MAXPATHLEN))
         let code = proc_pidpath(pid, &buf, UInt32(buf.count))
         guard code > 0 else { return nil }
-        return String(cString: buf)
+        return String(decoding: buf.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
     }
 
     /// The current working directory for `pid`, or `nil` if it cannot be read.

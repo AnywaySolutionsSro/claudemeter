@@ -12,8 +12,7 @@ public struct AssistantUsageRecord: Equatable, Sendable {
     public let messageID: String?
 
     public init(timestamp: Date, model: String?, cwd: String?, tokens: TokenBreakdown,
-                messageID: String? = nil)
-    {
+                messageID: String? = nil) {
         self.timestamp = timestamp
         self.model = model
         self.cwd = cwd

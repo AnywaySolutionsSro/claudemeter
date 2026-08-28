@@ -101,8 +101,7 @@ enum MenuBarLabel {
     }
 
     private static func pill(text: String, textColor: NSColor, borderColor: NSColor,
-                             font: NSFont, verticalPadding: CGFloat) -> NSImage
-    {
+                             font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let textSize = (text as NSString).size(withAttributes: attributes)
         let width = ceil(textSize.width) + horizontalPadding * 2
@@ -135,8 +134,7 @@ enum MenuBarLabel {
     /// Classic pill whose border is a receding "fuel ring": a faint full track plus a coloured
     /// arc spanning the remaining fraction (green ≥50 %, yellow ≥20 %, red below).
     private static func gaugePill(text: String, remaining: Double,
-                                  font: NSFont, verticalPadding: CGFloat) -> NSImage
-    {
+                                  font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
         let textSize = (text as NSString).size(withAttributes: attributes)
         let width = ceil(textSize.width) + horizontalPadding * 2
@@ -238,8 +236,7 @@ enum MenuBarLabel {
     }
 
     private static func glyph(_ glyph: String, color: NSColor,
-                              font: NSFont, verticalPadding: CGFloat) -> NSImage
-    {
+                              font: NSFont, verticalPadding: CGFloat) -> NSImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         let size = (glyph as NSString).size(withAttributes: attributes)
         return draw(width: ceil(size.width) + 4, height: ceil(size.height) + verticalPadding * 2) {

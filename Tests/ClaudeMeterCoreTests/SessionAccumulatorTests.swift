@@ -10,8 +10,7 @@ struct SessionAccumulatorTests {
     private let now = Date(timeIntervalSince1970: 10_000)
 
     private func rec(_ ts: TimeInterval, _ t: TokenBreakdown, model: String? = "m",
-                     cwd: String? = "/c/proj", messageID: String? = nil) -> AssistantUsageRecord
-    {
+                     cwd: String? = "/c/proj", messageID: String? = nil) -> AssistantUsageRecord {
         AssistantUsageRecord(timestamp: Date(timeIntervalSince1970: ts), model: model, cwd: cwd,
                              tokens: t, messageID: messageID)
     }

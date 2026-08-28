@@ -12,6 +12,10 @@ excluded:
 
 disabled_rules:
   - trailing_comma        # SwiftFormat adds them (trailingCommas); don't fight it
+  # Flags `String(decoding:as:)`, which is exactly what the compiler's
+  # `String(cString:)` deprecation tells us to use; lossy decoding of transcript
+  # lines and C buffers is deliberate here.
+  - optional_data_string_conversion
 
 opt_in_rules:
   - closure_spacing
@@ -35,6 +39,11 @@ identifier_name:
   min_length: 1
   max_length: 50
   validates_start_with_lowercase: error
+
+# SwiftFormat (wrapMultilineStatementBraces) puts the `{` of a multi-line
+# declaration on its own line; that's the one layout SwiftLint must accept.
+opening_brace:
+  allow_multiline_func: true
 
 line_length:
   warning: 120

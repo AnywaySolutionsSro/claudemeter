@@ -13,8 +13,7 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
 
     public init(generatedAt: Date, sessions: [SessionUsage], totalTokens: Int,
                 runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = [],
-                usageGauges: [UsageGauge] = [])
-    {
+                usageGauges: [UsageGauge] = []) {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalTokens = totalTokens

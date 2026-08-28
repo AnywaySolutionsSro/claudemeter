@@ -72,7 +72,7 @@ struct SessionsView: View {
                 Text(summary).font(scale.font(10)).foregroundColor(.secondary)
             }
             Spacer()
-            if armed.count > 0 {
+            if !armed.isEmpty {
                 HStack(spacing: scale.pt(3)) {
                     Image(systemName: "bolt.fill").font(scale.font(10))
                     Text("\(armed.count) armed").font(scale.font(11, weight: .semibold))

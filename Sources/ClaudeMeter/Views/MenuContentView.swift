@@ -106,8 +106,7 @@ struct MenuContentView: View {
 
     @ViewBuilder private var cooldownBox: some View {
         if let bucket = store.snapshot?.primary, bucket.percentRemaining <= 0.5,
-           let reset = bucket.timeUntilReset(now: now)
-        {
+           let reset = bucket.timeUntilReset(now: now) {
             VStack(alignment: .leading, spacing: scale.pt(6)) {
                 Text("Cooling down")
                     .font(scale.font(12, weight: .semibold))

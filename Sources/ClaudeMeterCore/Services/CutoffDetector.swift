@@ -21,8 +21,7 @@ public struct CutoffDetector: Sendable {
             switch entry.type {
             case "assistant":
                 if entry.isApiErrorMessage, entry.model == "<synthetic>",
-                   entry.text.localizedCaseInsensitiveContains("limit")
-                {
+                   entry.text.localizedCaseInsensitiveContains("limit") {
                     return .eligibleCutoff
                 }
                 switch entry.stopReason {

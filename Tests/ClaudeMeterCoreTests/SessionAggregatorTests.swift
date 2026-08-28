@@ -6,8 +6,7 @@ struct SessionAggregatorTests {
     private let now = Date(timeIntervalSince1970: 10_000)
 
     private func rec(_ ts: TimeInterval, _ model: String?, _ t: TokenBreakdown,
-                     messageID: String? = nil) -> AssistantUsageRecord
-    {
+                     messageID: String? = nil) -> AssistantUsageRecord {
         AssistantUsageRecord(timestamp: Date(timeIntervalSince1970: ts), model: model, cwd: "/c/proj",
                              tokens: t, messageID: messageID)
     }

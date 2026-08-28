@@ -20,8 +20,7 @@ public struct TranscriptRef: Sendable, Equatable, Identifiable {
     public let parentID: String?
 
     public init(id: String, url: URL, origin: SessionOrigin, title: String?, modifiedAt: Date,
-                parentID: String? = nil)
-    {
+                parentID: String? = nil) {
         self.id = id
         self.url = url
         self.origin = origin
@@ -64,8 +63,9 @@ public protocol TranscriptDiscovering: Sendable {
 ///
 /// In both cases, files under a `/subagents/` path component are ignored, and a
 /// missing root simply contributes nothing (never crashes).
-// FileManager is not `Sendable`, but we only use it for read-only enumeration and
-// never mutate shared state, so opting out of the check is safe here.
+///
+/// `@unchecked Sendable`: `FileManager` is not `Sendable`, but it is only used for
+/// read-only enumeration and no shared state is mutated.
 public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     private let cliRoot: URL
     private let desktopRoot: URL
@@ -73,8 +73,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
 
     public init(cliRoot: URL = TranscriptSource.defaultCLIRoot,
                 desktopRoot: URL = TranscriptSource.defaultDesktopRoot,
-                fileManager: FileManager = .default)
-    {
+                fileManager: FileManager = .default) {
         self.cliRoot = cliRoot
         self.desktopRoot = desktopRoot
         self.fileManager = fileManager
@@ -134,11 +133,12 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
             .map { slice -> String in
                 var slice = slice
                 if slice.last == UInt8(ascii: "\r") { slice = slice.dropLast() }
+                // Lossy on purpose: a transcript line with a bad byte still parses.
                 return String(decoding: slice, as: UTF8.self)
             }
         // Drop a single trailing empty line (the common case of a file ending
         // in a newline), but keep genuinely empty intermediate lines.
-        if lines.last == "" {
+        if lines.last?.isEmpty == true {
             lines.removeLast()
         }
         return lines

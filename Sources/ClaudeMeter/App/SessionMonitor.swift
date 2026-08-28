@@ -80,8 +80,7 @@ final class SessionMonitor: ObservableObject {
     }
 
     init(scanner: SessionScanner = SessionMonitor.makeDefaultScanner(),
-         interval: TimeInterval = 10)
-    {
+         interval: TimeInterval = 10) {
         self.scanner = scanner
         self.interval = interval
     }

@@ -32,13 +32,15 @@ if CommandLine.arguments.contains("--dump-sessions") {
 // Diagnostic: report where the widget snapshot resolves and whether writing works.
 if CommandLine.arguments.contains("--snapshot-test") {
     let inbox = SessionMonitor.widgetInboxURL()
-    FileHandle.standardError.write("widget inbox URL: \(inbox.path)\n".data(using: .utf8)!)
+    FileHandle.standardError.write(Data("widget inbox URL: \(inbox.path)\n".utf8))
     let snapshot = SessionSnapshot.make(from: [], now: Date())
     let store = SnapshotStore()
     do {
-        try store.write(snapshot, to: inbox); FileHandle.standardError
-            .write("widget inbox write: OK\n".data(using: .utf8)!)
-    } catch { FileHandle.standardError.write("widget inbox write FAILED: \(error)\n".data(using: .utf8)!) }
+        try store.write(snapshot, to: inbox)
+        FileHandle.standardError.write(Data("widget inbox write: OK\n".utf8))
+    } catch {
+        FileHandle.standardError.write(Data("widget inbox write FAILED: \(error)\n".utf8))
+    }
     exit(0)
 }
 

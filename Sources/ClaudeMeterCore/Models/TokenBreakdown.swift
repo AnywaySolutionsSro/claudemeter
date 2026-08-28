@@ -30,4 +30,8 @@ public struct TokenBreakdown: Equatable, Sendable, Codable {
             cacheRead: lhs.cacheRead + rhs.cacheRead,
         )
     }
+
+    public static func += (lhs: inout TokenBreakdown, rhs: TokenBreakdown) {
+        lhs = lhs + rhs
+    }
 }

@@ -55,8 +55,7 @@ struct SessionScannerTests {
     }
 
     private func ref(_ id: String, origin: SessionOrigin = .cli, modified: TimeInterval = 1_000,
-                     parentID: String? = nil) -> TranscriptRef
-    {
+                     parentID: String? = nil) -> TranscriptRef {
         TranscriptRef(id: id, url: URL(fileURLWithPath: "/tmp/\(id).jsonl"),
                       origin: origin, title: nil, modifiedAt: Date(timeIntervalSince1970: modified),
                       parentID: parentID)
@@ -191,8 +190,11 @@ struct SessionScannerTests {
     @Test func runningRankUsesFileMtimeNotAssistantTimestamp() async {
         // Both sessions share a cwd with ONE live process. "stale" has the newer
         // assistant timestamp; "fresh" has the newer file mtime and must win.
+        // JSONL fixture on one line, as in a real transcript.
+        // swiftlint:disable line_length
         let staleLine = #"{"type":"assistant","timestamp":"2026-06-28T17:00:00Z","cwd":"/p1","message":{"model":"m","usage":{"output_tokens":5}}}"#
         let freshLine = #"{"type":"assistant","timestamp":"2026-06-28T16:00:00Z","cwd":"/p1","message":{"model":"m","usage":{"output_tokens":5}}}"#
+        // swiftlint:enable line_length
         let disco = FakeDiscoverer(
             refs: [ref("stale", modified: 1_000), ref("fresh", modified: 2_000)],
             linesByID: ["stale": [staleLine], "fresh": [freshLine]],
