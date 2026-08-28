@@ -50,13 +50,19 @@ public struct UsageResponseDecoder {
                 let percent = (object["percent"] as? NSNumber)?.doubleValue,
                 let scope = object["scope"] as? [String: Any],
                 let model = scope["model"] as? [String: Any],
-                let label = model["display_name"] as? String, !label.isEmpty
+                let name = model["display_name"] as? String, !name.isEmpty
             else {
                 return nil
             }
+            // A surface-scoped window ("Fable · Cowork") must not collide with the
+            // model-wide one: the label doubles as the row/gauge identity.
+            let surface = (scope["surface"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let label = surface.map { "\(name) · \($0)" } ?? name
             let bucket = UsageBucket(
                 utilization: percent,
                 resetsAt: parseResetsAt(object["resets_at"]),
+                // `severity` ("normal", …) — a different vocabulary from the top-level
+                // buckets' `status`; nothing reads `status` today, kept for diagnostics.
                 status: object["severity"] as? String,
             )
             return ModelWeeklyLimit(
