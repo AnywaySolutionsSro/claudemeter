@@ -31,12 +31,16 @@ jobs:
           [ -d "$xcode" ] || { echo "::error::No Xcode_26*.app on this runner image"; exit 1; }
           sudo xcode-select -s "$xcode"
 
+      # Before codeql init: init injects its build tracer (DYLD_INSERT_LIBRARIES)
+      # into every later step, and Homebrew misreads that as running under
+      # Rosetta and refuses to install ("Cannot install under Rosetta 2 in ARM
+      # default prefix").
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
       - uses: github/codeql-action/init@v3
         with:
           languages: swift
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
 
       - name: Build app + widget (traced)
         env:
