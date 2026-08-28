@@ -23,7 +23,7 @@ jobs:
       - name: Select newest Xcode 26
         run: |
           set -euo pipefail
-          xcode="$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcode="$(for d in /Applications/Xcode_26*.app; do echo "$d"; done | sort -V | tail -1)"
           echo "Using $xcode"
           sudo xcode-select -s "$xcode"
           swift --version
