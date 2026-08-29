@@ -78,7 +78,17 @@ final class UpdateService: ObservableObject {
 
     // MARK: - Scheduling
 
+    /// Diagnostic launch argument: check immediately and install without a click,
+    /// so the real GUI install + relaunch path can be exercised end to end
+    /// (`open -a ClaudeMeter --args --install-update-now`).
+    static let installNowArgument = "--install-update-now"
+    private let installNow = CommandLine.arguments.contains(UpdateService.installNowArgument)
+
     func start() {
+        if installNow {
+            log.notice("\(Self.installNowArgument, privacy: .public): checking and installing immediately")
+            check(userInitiated: true)
+        }
         let version = currentVersion?.description ?? "unversioned"
         log
             .notice(
@@ -134,6 +144,7 @@ final class UpdateService: ObservableObject {
         case let .available(release):
             state = .available(release)
             if !userInitiated { onUpdateFound?(release) }
+            if installNow { install() }
         }
     }
 

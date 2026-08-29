@@ -21,7 +21,7 @@ settings:
     SWIFT_VERSION: "5.0"
     # Fallback for local builds only. Releases take the version from the git tag
     # (vMM.mm.pp) and the build number from the workflow run — see docs/release.md.
-    MARKETING_VERSION: "01.01.00"
+    MARKETING_VERSION: "01.02.00"
     CURRENT_PROJECT_VERSION: "2"
     CODE_SIGN_STYLE: Automatic
 

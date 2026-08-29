@@ -117,10 +117,25 @@ struct UpdateInstaller: Sendable {
 
     /// A detached shell waits for this process to exit, then opens the new bundle.
     /// Children survive the parent's exit, so terminating ourselves next is safe.
-    /// (PID reuse inside the 0.2 s poll is theoretically possible; it's the same
-    /// pattern Sparkle-style updaters use and would at worst delay the relaunch.)
+    ///
+    /// `open -n` + retry, not a plain `open`: LaunchServices keeps the just-exited
+    /// process on its running list for a few tens of ms after the kernel reaped it.
+    /// A plain `open` in that window resolves to the dead instance, tries to
+    /// activate it, fails with -600 procNotFound and launches nothing (seen in the
+    /// wild on 2026-08-29). `-n` asks for a new instance regardless, and retrying
+    /// until `open` exits 0 covers the window. Bounded so a broken bundle cannot
+    /// leave a shell polling forever.
     private static func relaunch(bundleURL: URL) {
-        let script = "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$2\""
+        let script = """
+        while /bin/kill -0 "$1" 2>/dev/null; do /bin/sleep 0.2; done
+        i=0
+        while [ "$i" -lt 30 ]; do
+          /bin/sleep 0.5
+          if /usr/bin/open -n "$2"; then exit 0; fi
+          i=$((i + 1))
+        done
+        exit 1
+        """
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", script, "_", String(ProcessInfo.processInfo.processIdentifier), bundleURL.path]
