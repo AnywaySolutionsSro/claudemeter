@@ -25,7 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
         },
     )
-    private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth)
+    private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth, updates: updates)
+    private lazy var updates = UpdateService(settings: settings)
+    private let updateResponder = UpdateNotificationResponder()
     private let armedSessions = ArmedSessions()
     private let sleepInhibitor = SleepInhibitor()
     private lazy var autoResume = AutoResumeCoordinator(
@@ -138,9 +140,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .sink { [weak self] _ in Task { await self?.sessionMonitor.refresh() } }
             .store(in: &cancellables)
 
+        installUpdater()
+
         updateLabel()
         DispatchQueue.main.async { [weak self] in self?.updateLabel() }
 
+        installSystemObservers()
+    }
+
+    /// The 30 s label tick plus wake and appearance-change hooks.
+    private func installSystemObservers() {
         labelTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateLabel() }
         }
@@ -152,6 +161,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self, selector: #selector(handleThemeChange),
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil,
         )
+    }
+
+    /// Daily self-update check. A background find notifies (Install / Later
+    /// buttons); a failed install always notifies, as the popover may be closed.
+    private func installUpdater() {
+        updates.onUpdateFound = { [weak self] release in
+            guard let self, self.settings.notificationsEnabled else { return }
+            self.notifications.notifyUpdateAvailable(version: release.version.description)
+        }
+        updates.onInstallFailed = { [weak self] message in
+            self?.notifications.notify("ClaudeMeter update failed", message)
+        }
+        updateResponder.onInstall = { [weak self] in self?.updates.install() }
+        updateResponder.onOpen = { [weak self] in self?.openPopover() }
+        notifications.installUpdateHandling(updateResponder)
+        updates.start()
     }
 
     /// One-time proactive Automation authorization (the TCC consent prompt),
@@ -204,6 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func handleWake() {
+        updates.checkIfDue()
         guard auth.isSignedIn else { return }
         Task { await store.refresh(); updateLabel() }
     }
@@ -253,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         .environmentObject(store)
         .environmentObject(auth)
         .environmentObject(settings)
+        .environmentObject(updates)
         .environment(\.textScale, settings.textScale)
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = [.preferredContentSize]

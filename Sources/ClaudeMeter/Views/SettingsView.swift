@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var auth: AuthModel
+    @ObservedObject var updates: UpdateService
 
     /// Read from `settings` directly rather than the environment: this view sets
     /// the environment value for its own children, and a value set in `body`
@@ -21,7 +22,7 @@ struct SettingsView: View {
             autoResumeTab
                 .tabItem { Label("Auto-Resume", systemImage: "bolt.fill") }
         }
-        .frame(width: scale.pt(460), height: scale.pt(400))
+        .frame(width: scale.pt(460), height: scale.pt(470))
         .environment(\.textScale, scale)
     }
 
@@ -57,6 +58,10 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+            }
+
+            Section(header: sectionHeader("Updates", "arrow.down.circle.fill", .teal)) {
+                UpdateSettingsSection(settings: settings, updates: updates)
             }
 
             Section {

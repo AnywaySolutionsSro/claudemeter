@@ -87,8 +87,11 @@ add a framework, an EdDSA key secret and appcast hosting for the same one-click 
 - `UpdateInstaller`, strictly ordered gates: download zip + sha256 → verify hash → unzip
   with `ditto -x -k` → verify bundle with Security.framework (valid signature, Team ID
   `72K9YQF24J`, bundle ID `com.jakubzak.claudemeter`, `CFBundleShortVersionString` equals the
-  release) → trash the running `/Applications/ClaudeMeter.app` → move the new bundle in →
-  `lsregister -f` + kick `chronod` (as `build.sh --install`) → detached `open` + terminate.
+  release) → move the new bundle next to the installed one → `FileManager.replaceItemAt`
+  swap (the installed path is never empty, the old bundle is kept as a backup through the
+  swap and trashed afterwards) → `lsregister -f` + kick `chronod` (as `build.sh --install`)
+  → detached `open` + terminate. Diagnostics: `ClaudeMeter --update-check` (check + download
+  + verify, nothing installed) and `--update-install` (the real swap, GUI quit first).
 
 ### UX
 

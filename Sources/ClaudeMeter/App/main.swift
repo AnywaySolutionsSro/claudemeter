@@ -44,6 +44,46 @@ if CommandLine.arguments.contains("--snapshot-test") {
     exit(0)
 }
 
+// Diagnostics: `--update-check` runs the updater's check + download + verification
+// headlessly and prints every decision (nothing installed, staged bundle deleted).
+// `--update-install` additionally performs the real swap + relaunch when the
+// bundle is in place (quit the GUI instance first: `pkill -x ClaudeMeter`).
+if CommandLine.arguments.contains("--update-check") || CommandLine.arguments.contains("--update-install") {
+    let performInstall = CommandLine.arguments.contains("--update-install")
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    let mode = UpdatePolicy.installMode(
+        bundleURL: Bundle.main.bundleURL,
+        homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+        canWriteParent: { FileManager.default.isWritableFile(atPath: $0.path) },
+    )
+    print("running: \(version)  bundle: \(Bundle.main.bundleURL.path)\ninstall mode: \(mode)")
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        defer { semaphore.signal() }
+        do {
+            let latest = try await GitHubReleaseClient().fetchLatest()
+            let decision = UpdatePolicy.decide(current: AppVersion(version), latest: latest, skipped: nil)
+            print("latest: \(latest?.tagName ?? "none")  decision: \(decision)")
+            guard let latest else { return }
+            let staged = try await UpdateInstaller().stage(latest) { print(String(
+                format: "  download %3.0f%%",
+                $0 * 100,
+            )) }
+            print("staged + verified: \(staged.path)")
+            if performInstall, case let .inPlace(bundleURL) = mode, case .available = decision {
+                print("installing over \(bundleURL.path) and relaunching…")
+                try await UpdateInstaller().install(staged: staged, over: bundleURL)
+                return
+            }
+            try? FileManager.default.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
+        } catch {
+            print("FAILED: \(error.localizedDescription)")
+        }
+    }
+    semaphore.wait()
+    exit(0)
+}
+
 // Menu-bar–only agent: no Dock icon, no main window, no Cmd-Tab entry.
 // Top-level code is nonisolated, but it executes on the main thread, so we assume main-actor
 // isolation to construct the @MainActor delegate. `run()` blocks here, keeping `delegate` alive.
