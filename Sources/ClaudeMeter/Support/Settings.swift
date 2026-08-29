@@ -56,6 +56,21 @@ final class Settings: ObservableObject {
         didSet { defaults.set(autoResumeContinueText, forKey: Keys.autoResumeContinueText) }
     }
 
+    /// Daily background check for a newer GitHub release (Settings → General → Updates).
+    @Published var autoUpdateCheckEnabled: Bool {
+        didSet { defaults.set(autoUpdateCheckEnabled, forKey: Keys.autoUpdateCheckEnabled) }
+    }
+
+    /// When the updater last asked GitHub, successfully or not; drives the 24 h cadence.
+    @Published var lastUpdateCheck: Date? {
+        didSet { defaults.set(lastUpdateCheck, forKey: Keys.lastUpdateCheck) }
+    }
+
+    /// A version (`01.02.00`) the user chose to skip; never offered again.
+    @Published var skippedUpdateVersion: String? {
+        didSet { defaults.set(skippedUpdateVersion, forKey: Keys.skippedUpdateVersion) }
+    }
+
     /// Continue text to type, trimmed; defaults to "continue" when blank.
     var normalizedContinueText: String {
         let trimmed = autoResumeContinueText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -77,6 +92,9 @@ final class Settings: ObservableObject {
         // across updates (didSet persists it).
         self.autoResumeEnabled = defaults.object(forKey: Keys.autoResumeEnabled) as? Bool ?? false
         self.autoResumeContinueText = defaults.string(forKey: Keys.autoResumeContinueText) ?? "continue"
+        self.autoUpdateCheckEnabled = defaults.object(forKey: Keys.autoUpdateCheckEnabled) as? Bool ?? true
+        self.lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
+        self.skippedUpdateVersion = defaults.string(forKey: Keys.skippedUpdateVersion)
     }
 
     private enum Keys {
@@ -86,5 +104,8 @@ final class Settings: ObservableObject {
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
         static let autoResumeContinueText = "autoResumeContinueText"
+        static let autoUpdateCheckEnabled = "autoUpdateCheckEnabled"
+        static let lastUpdateCheck = "lastUpdateCheck"
+        static let skippedUpdateVersion = "skippedUpdateVersion"
     }
 }

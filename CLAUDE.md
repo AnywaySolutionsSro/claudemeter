@@ -77,6 +77,28 @@ A successful resume posts a "▶︎ Resumed X" notification (the only way to tel
 from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
 summary notifies if armed sessions never became eligible.
 
+### Self-update feature (daily GitHub check, one-click install + relaunch)
+
+- **Core** (pure/TDD): `AppVersion` (`MM.mm.pp`, numeric `Comparable`), `ReleaseDecoder` →
+  `ReleaseInfo` (lenient parse of GitHub `releases/latest`; drafts/pre-releases/odd tags → `nil`),
+  `Sha256Manifest`, `UpdatePolicy` (24 h cadence, `decide` → upToDate/available/skipped,
+  `installMode` → in-place only from `/Applications` or `~/Applications`, not translocated, parent
+  writable; otherwise download-only = open the release page).
+- **App**: `UpdateService` (@MainActor; first check 60 s after launch, hourly tick that only
+  checks when due, wake hook; "Later" hides until next due check, "Skip this version" persists),
+  `GitHubReleaseClient` (unauthenticated API, streaming download), `UpdateInstaller` (download →
+  sha256 → `ditto -x -k` → **`BundleVerifier`** → trash old bundle → move new in → `lsregister -f`
+  + `killall chronod` → detached `open` + terminate). UI: `UpdateBanner` in the dropdown,
+  `UpdateSettingsSection` in Settings → General; notification with Install/Later actions routed
+  through `UpdateNotificationResponder` (the `UNUserNotificationCenter` delegate).
+- **Trust gate = `BundleVerifier`**: `SecStaticCodeCheckValidity` against a Developer ID
+  requirement pinned to team `72K9YQF24J` + bundle ID, nested code checked, plus Info.plist
+  version == release version. A dev-team (`./build.sh --install`) build fails this on purpose —
+  only CI releases are ever installed. Logs: category `updater` at `.notice`.
+- **End-to-end test recipe:** `MARKETING_VERSION=01.00.00 ./build.sh --install` runs a build that
+  believes it's older than the latest release, so the real download/verify/swap/relaunch path can
+  be exercised against a genuine notarized release.
+
 **`./build.sh` always builds the full app + widget extension** (XcodeGen project from
 `project.yml`, dev-team signed). Jakub uses the widget — never install a widget-less build,
 or macOS silently deletes his placed widgets. `./build.sh --spm` remains as the widget-less

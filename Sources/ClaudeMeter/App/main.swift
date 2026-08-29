@@ -44,6 +44,38 @@ if CommandLine.arguments.contains("--snapshot-test") {
     exit(0)
 }
 
+// Diagnostic: run the updater's check + download + verification headlessly and
+// print every decision. Nothing is installed — the staged bundle is deleted.
+if CommandLine.arguments.contains("--update-check") {
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    let mode = UpdatePolicy.installMode(
+        bundleURL: Bundle.main.bundleURL,
+        homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+        canWriteParent: { FileManager.default.isWritableFile(atPath: $0.path) },
+    )
+    print("running: \(version)  bundle: \(Bundle.main.bundleURL.path)\ninstall mode: \(mode)")
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        defer { semaphore.signal() }
+        do {
+            let latest = try await GitHubReleaseClient().fetchLatest()
+            let decision = UpdatePolicy.decide(current: AppVersion(version), latest: latest, skipped: nil)
+            print("latest: \(latest?.tagName ?? "none")  decision: \(decision)")
+            guard let latest else { return }
+            let staged = try await UpdateInstaller().stage(latest) { print(String(
+                format: "  download %3.0f%%",
+                $0 * 100,
+            )) }
+            print("staged + verified: \(staged.path)")
+            try? FileManager.default.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
+        } catch {
+            print("FAILED: \(error.localizedDescription)")
+        }
+    }
+    semaphore.wait()
+    exit(0)
+}
+
 // Menu-bar–only agent: no Dock icon, no main window, no Cmd-Tab entry.
 // Top-level code is nonisolated, but it executes on the main thread, so we assume main-actor
 // isolation to construct the @MainActor delegate. `run()` blocks here, keeping `delegate` alive.

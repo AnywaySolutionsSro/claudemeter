@@ -21,6 +21,7 @@ struct MenuContentView: View {
         VStack(alignment: .leading, spacing: scale.pt(12)) {
             header
             Divider()
+            UpdateBanner()
             if auth.isSignedIn {
                 usageContent
                 Divider()

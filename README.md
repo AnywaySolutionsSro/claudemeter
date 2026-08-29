@@ -106,6 +106,14 @@ release is Developer ID signed and notarized by Apple, so it opens with a normal
 > Prerequisite: a Claude paid subscription. The app authenticates as your Claude account; it
 > bundles no credentials.
 
+**Updates install themselves.** Once a day the app asks GitHub for the latest release; when
+there is a newer one you get a notification and a banner in the dropdown — **Install and
+relaunch** downloads it, verifies the checksum *and* Apple's Developer ID signature + notarization
+of the new bundle, swaps it into `/Applications` and relaunches. *Later* re-offers at the next
+daily check; *Skip this version* silences that one release. Settings → General → Updates has the
+daily-check switch and **Check now**. (Outside `/Applications` or without write access the offer
+opens the release page instead.)
+
 ## Build from source
 
 Requires the Xcode 26 toolchain (Swift 6.2) and targets macOS 26 (Tahoe).
