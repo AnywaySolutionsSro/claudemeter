@@ -12,6 +12,7 @@ struct MenuContentView: View {
     @EnvironmentObject var store: UsageStore
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
+    @EnvironmentObject var updates: UpdateService
     @Environment(\.textScale) private var scale
     @State private var now = Date()
 
@@ -39,6 +40,10 @@ struct MenuContentView: View {
         HStack(spacing: scale.pt(6)) {
             Image(systemName: "gauge.medium").font(scale.font(13))
             Text("ClaudeMeter").font(scale.font(13, weight: .bold))
+            if let version = updates.currentVersion {
+                // The running version — after a self-update this is the proof it landed.
+                Text(version.description).font(scale.font(11)).foregroundColor(.secondary)
+            }
             Spacer()
             if store.isLoading { ProgressView().controlSize(.small) }
             Button(action: onOpenSessions) {
