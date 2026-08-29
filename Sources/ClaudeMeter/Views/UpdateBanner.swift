@@ -61,7 +61,17 @@ struct UpdateBanner: View {
                 }
             }
         case .idle, .checking, .upToDate, .failed(nil, _):
-            EmptyView()
+            if updates.justUpdated, let current = updates.currentVersion {
+                box(tint: .green) {
+                    Label("Updated to ClaudeMeter \(current.description)", systemImage: "checkmark.circle.fill")
+                        .font(scale.font(12, weight: .semibold))
+                    ReleaseNotesView(body: updates.currentRelease?.notes, emptyText: "Loading what's new…")
+                    HStack {
+                        Spacer()
+                        Button("Got it") { updates.acknowledgeUpdate() }.font(scale.font(11))
+                    }
+                }
+            }
         }
     }
 
