@@ -1,6 +1,10 @@
-# Quality gates for every PR and for main. The four jobs are the required status
-# checks in the "main: tests" ruleset (no bypass): tests, lint, build-app, scripts.
+# Quality gates for every PR and for main. The five jobs are the required status
+# checks in the "main: tests" ruleset (no bypass): pr-title, tests, lint,
+# build-app, scripts.
 #
+#   pr-title   the PR title is a Conventional Commits subject with an allowed
+#              type (scripts/check-pr-title.sh) — it becomes the squash commit on
+#              main and decides the release bump (release.yml); pull_request only
 #   tests      swift build/test with warnings-as-errors + ClaudeMeterCore
 #              line coverage >= 80% (scripts/coverage-gate.sh)
 #   lint       swiftlint --strict and swiftformat --lint (.swiftlint.yml, .swiftformat)
@@ -24,6 +28,23 @@ permissions:
   contents: read
 
 jobs:
+  pr-title:
+    name: pr-title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the PR title (Conventional Commits, no breaking markers)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          scripts/check-pr-title.sh "$PR_TITLE" "$RUNNER_TEMP/pr-body.txt"
+
   tests:
     name: tests
     runs-on: macos-26
