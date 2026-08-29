@@ -13,6 +13,16 @@ struct UpdateBanner: View {
         case let .available(release):
             box(tint: .blue) {
                 title("ClaudeMeter \(release.version) is available")
+                // Both sides of the decision: what the update brings, and what
+                // the running version already has.
+                ReleaseNotesDisclosure(
+                    title: "What's new in \(release.version)", release: release, isExpanded: true,
+                )
+                if let current = updates.currentVersion {
+                    ReleaseNotesDisclosure(
+                        title: "You're on \(current)", release: updates.currentRelease, isExpanded: false,
+                    )
+                }
                 HStack(spacing: scale.pt(8)) {
                     Button(installLabel) { updates.install() }
                         .font(scale.font(11)).keyboardShortcut(.defaultAction)

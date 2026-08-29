@@ -128,9 +128,11 @@ jobs:
 
       # A rebuild checks out the released tag; a new release builds the commit
       # that triggered the run (the tag is created at that same sha below).
+      # Full history: the release notes walk the commits since the previous tag.
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.plan.outputs.rebuild == 'true' && needs.plan.outputs.tag || github.sha }}
+          fetch-depth: 0
 
       - name: Select newest Xcode 26
         run: |
@@ -218,6 +220,7 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           assets=(dist/ClaudeMeter.zip dist/ClaudeMeter.zip.sha256)
@@ -229,11 +232,13 @@ jobs:
               echo "::error::Release $TAG already exists; the plan step should have moved past it. Use rebuild_tag to replace its assets."
               exit 1
             fi
-            notes=(--generate-notes)
-            [ -n "$PREVIOUS" ] && notes+=(--notes-start-tag "$PREVIOUS")
+            # Customer-facing notes from the merged PRs' "Release notes" sections
+            # (see CLAUDE.md); the app shows these in its update prompt.
+            scripts/release-notes.sh "$PREVIOUS" "$TAG" "$GH_REPO" > "$RUNNER_TEMP/notes.md"
+            echo "--- release notes ---"; cat "$RUNNER_TEMP/notes.md"; echo "---------------------"
             # Creates the tag at the built commit as a side effect.
             gh release create "$TAG" "${assets[@]}" --target "$GITHUB_SHA" \
-              --title "ClaudeMeter $VERSION" "${notes[@]}"
+              --title "ClaudeMeter $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           fi
           gh release view "$TAG" --json url -q '"Published: \(.url)"'
 

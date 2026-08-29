@@ -149,8 +149,28 @@ comes from the plan (`scripts/release-plan.sh`) — don't hand-edit `MARKETING_V
 `lint`, `build-app` and `scripts` must pass (no bypass) and a code-owner approval is required
 (repo admins — Jakub — can bypass). **PR titles must be Conventional Commits subjects**
 (`type(scope): summary`, types listed above; `!`/BREAKING CHANGE is refused) because the
-title becomes the commit on `main` and decides the release. Never push to `main` directly;
-branch, open a PR, let Jakub merge.
+title becomes the commit on `main` and decides the release. **Name branches
+`<type>/<short-topic>`** with the same type you'll put in the PR title (`feat/`, `fix/`,
+`perf/`, `ci/`, `docs/`, `chore/`, `refactor/`, `test/`), so the branch already says whether
+the merge releases and how; the title is what actually decides — keep them consistent. Never
+push to `main` directly; branch, open a PR, let Jakub merge.
+
+**Release notes (required for every `feat`/`fix`/`perf` PR; the `pr-title` check enforces
+it).** Nobody works on ClaudeMeter without an AI agent, so **the agent doing the work writes
+the release notes** — in the PR body, as a `## Release notes` section of 1–3 bullets, each
+starting with an emoji. `release.yml` (`scripts/release-notes.sh`) turns the bullets of all
+PRs since the previous release into the GitHub release body (grouped ✨ New / 🐛 Fixes /
+⚡ Faster, `(#PR)` appended), and the app shows them in the update prompt next to the notes
+of the version the user is on — so this is customer-facing copy, not a changelog:
+- Warm, plain, human: say what the person gains or what stopped hurting, in their words
+  (“✨ The dropdown now shows which version you're running”), never internals
+  (“refactor UpdateService state machine”), file names, or PR jargon.
+- One idea per bullet, sentence case, no trailing period needed, ≤ ~90 characters.
+- Emoji vocabulary: ✨ new · 🐛 fix · ⚡ faster/lighter · 🎨 look & feel · 🔒 privacy/security ·
+  🧹 tidy-up · ⚠️ behaviour change worth knowing · 🔄 updates/releases.
+- Non-releasing PRs (`ci`, `docs`, …) don't need the section (they never reach a release
+  body); a releasing PR without bullets falls back to its emoji-prefixed title.
+- Preview locally: `scripts/release-notes.sh v01.03.00 v01.04.00` (uses `gh`).
 
 **Quality gates (CI = local):** zero compiler warnings (`-warnings-as-errors` in both
 `swift build` and the Xcode build), `swiftlint --strict`, `swiftformat --lint`, core line

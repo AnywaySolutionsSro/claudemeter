@@ -44,4 +44,23 @@ if [ -f "$body_file" ] && grep -qE '^BREAKING[ -]CHANGE:' "$body_file"; then
 	fail "PR body has a 'BREAKING CHANGE:' footer; majors are released manually."
 fi
 
-echo "PR title OK: type '$type' -> release bump '$(conventional_bump "$title")'"
+bump="$(conventional_bump "$title")"
+
+# A releasing PR ships release notes: a "## Release notes" section in the body
+# with at least one bullet that starts with an emoji (any non-ASCII first
+# character — checked bytewise in the C locale, where UTF-8 lead bytes fall
+# outside the printable ASCII range). release.yml turns them into the release
+# body; the app shows them in the update prompt. See CLAUDE.md "Release notes".
+if [ "$bump" != "none" ]; then
+	[ -f "$body_file" ] || fail "PR '$title' releases ($bump) but has no body with a '## Release notes' section."
+	bullets="$(awk '
+		/^## / { in_section = ($0 ~ /^## [Rr]elease [Nn]otes/); next }
+		in_section && /^[-*] / { print }
+	' "$body_file")"
+	[ -n "$bullets" ] || fail "PR '$title' releases ($bump) but its body has no '## Release notes' section with bullets."
+	if ! LC_ALL=C grep -qE '^[-*] +[^ -~]' <<<"$bullets"; then
+		fail "Release notes bullets must start with an emoji (e.g. '- ✨ …'). See CLAUDE.md."
+	fi
+fi
+
+echo "PR title OK: type '$type' -> release bump '$bump'"

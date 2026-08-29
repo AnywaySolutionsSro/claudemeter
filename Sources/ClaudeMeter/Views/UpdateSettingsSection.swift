@@ -25,6 +25,16 @@ struct UpdateSettingsSection: View {
             Text("Updates open the download page instead of installing in place: \(reason)")
                 .font(scale.font(10)).foregroundStyle(.secondary)
         }
+        if let current = updates.currentVersion {
+            ReleaseNotesDisclosure(
+                title: "What's in \(current)", release: updates.currentRelease, isExpanded: false,
+            )
+        }
+        if let offered = updates.state.offeredRelease {
+            ReleaseNotesDisclosure(
+                title: "What's new in \(offered.version)", release: offered, isExpanded: true,
+            )
+        }
     }
 
     @ViewBuilder private var statusText: some View {
