@@ -91,9 +91,17 @@ summary notifies if armed sessions never became eligible.
   `GitHubReleaseClient` (unauthenticated API, streaming download), `UpdateInstaller` (download →
   sha256 → `ditto -x -k` → **`BundleVerifier`** → move next to the installed app →
   `replaceItemAt` swap (installed path never empty; old bundle trashed after) → `lsregister -f`
-  + `killall chronod` → detached `open` + terminate). Headless diagnostics:
-  `ClaudeMeter --update-check` (check + download + verify only) and `--update-install` (the
-  real swap + relaunch; `pkill -x ClaudeMeter` first, run the binary inside `/Applications`). UI: `UpdateBanner` in the dropdown,
+  + `killall chronod` → detached `open -n` with retries + terminate). Diagnostics:
+  `ClaudeMeter --update-check` (headless check + download + verify only), `--update-install`
+  (headless swap + relaunch; `pkill -x ClaudeMeter` first, run the binary inside
+  `/Applications`), and `open -a ClaudeMeter --args --install-update-now` (the **real GUI
+  path**: LaunchServices-launched app checks, installs and relaunches without a click).
+- **Relaunch must be `open -n` + retry, never a plain `open`.** LaunchServices keeps the
+  just-exited process on its running list for a few tens of ms after the kernel reaped it; a
+  plain `open` in that window resolves to the dead instance, tries to send it `rapp`
+  (reopen), fails with `-600 procNotFound` and launches nothing — the app "crashed and never
+  restarted" (2026-08-29, v01.02.00). Diagnose with `/usr/bin/log show --predicate 'process ==
+  "CoreServicesUIAgent" AND eventMessage CONTAINS "-600"'` around the relaunch time. UI: `UpdateBanner` in the dropdown,
   `UpdateSettingsSection` in Settings → General; notification with Install/Later actions routed
   through `UpdateNotificationResponder` (the `UNUserNotificationCenter` delegate).
 - **Trust gate = `BundleVerifier`**: `SecStaticCodeCheckValidity` against a Developer ID
