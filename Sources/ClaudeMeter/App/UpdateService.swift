@@ -174,10 +174,13 @@ final class UpdateService: ObservableObject {
         state = .downloading(release, progress: fraction)
     }
 
-    /// "Later": hide the offer until the next due check.
+    /// "Later" on an offer, or closing a failure notice: hide it until the next
+    /// due check. Nothing is persisted — the version stays eligible.
     func dismiss() {
-        guard case .available = state else { return }
-        state = .idle
+        switch state {
+        case .available, .failed: state = .idle
+        case .idle, .checking, .upToDate, .downloading, .installing: break
+        }
     }
 
     /// "Skip this version": never offer this exact version again (a newer one still is).

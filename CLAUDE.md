@@ -72,7 +72,9 @@ sessions that haven't fired, and a *failed* attempt un-marks the session so it r
 the feature was a fragile one-shot that silently missed. Don't revert it to fire-once.
 
 **Diagnosing a miss.** Every decision logs at `.notice` (persisted, unlike `.info`):
-`log show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category == "autoresume"'`.
+`/usr/bin/log show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category == "autoresume"'`
+(the full path matters: in zsh `log` is a shell builtin and `log show …` fails with
+"too many arguments" — silently if stderr is redirected).
 A successful resume posts a "▶︎ Resumed X" notification (the only way to tell an auto-`continue`
 from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
 summary notifies if armed sessions never became eligible.
@@ -87,8 +89,11 @@ summary notifies if armed sessions never became eligible.
 - **App**: `UpdateService` (@MainActor; first check 60 s after launch, hourly tick that only
   checks when due, wake hook; "Later" hides until next due check, "Skip this version" persists),
   `GitHubReleaseClient` (unauthenticated API, streaming download), `UpdateInstaller` (download →
-  sha256 → `ditto -x -k` → **`BundleVerifier`** → trash old bundle → move new in → `lsregister -f`
-  + `killall chronod` → detached `open` + terminate). UI: `UpdateBanner` in the dropdown,
+  sha256 → `ditto -x -k` → **`BundleVerifier`** → move next to the installed app →
+  `replaceItemAt` swap (installed path never empty; old bundle trashed after) → `lsregister -f`
+  + `killall chronod` → detached `open` + terminate). Headless diagnostics:
+  `ClaudeMeter --update-check` (check + download + verify only) and `--update-install` (the
+  real swap + relaunch; `pkill -x ClaudeMeter` first, run the binary inside `/Applications`). UI: `UpdateBanner` in the dropdown,
   `UpdateSettingsSection` in Settings → General; notification with Install/Later actions routed
   through `UpdateNotificationResponder` (the `UNUserNotificationCenter` delegate).
 - **Trust gate = `BundleVerifier`**: `SecStaticCodeCheckValidity` against a Developer ID

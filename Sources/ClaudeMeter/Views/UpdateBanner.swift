@@ -47,7 +47,7 @@ struct UpdateBanner: View {
                     Button("Download manually") { openURL(release.pageURL) }
                         .buttonStyle(.link).font(scale.font(10))
                     Spacer()
-                    Button("Dismiss") { updates.skipOffered() }.font(scale.font(11))
+                    Button("Dismiss") { updates.dismiss() }.font(scale.font(11))
                 }
             }
         case .idle, .checking, .upToDate, .failed(nil, _):

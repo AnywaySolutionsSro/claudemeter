@@ -11,10 +11,10 @@ import os
 ///    checksum, unpack with `ditto` (keeps the signature and the notarization
 ///    staple intact), and run `BundleVerifier`. Any failure removes the temp
 ///    directory and throws; nothing on disk outside the temp dir is touched.
-/// 2. `install(staged:over:)` — move the installed bundle to the Trash, move the
-///    staged one into its place (the running binary stays alive by inode), re-register
-///    with LaunchServices so the widget appex doesn't linger on a stale registration,
-///    then relaunch. If the move fails after trashing, the old bundle is put back.
+/// 2. `install(staged:over:)` — swap the staged bundle in for the installed one
+///    (`replaceItemAt`, so the installed path is never empty; the running binary stays
+///    alive by inode), trash the old bundle, re-register with LaunchServices so the
+///    widget appex doesn't linger on a stale registration, then relaunch.
 struct UpdateInstaller: Sendable {
     var client = GitHubReleaseClient()
     private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "updater")
@@ -78,20 +78,34 @@ struct UpdateInstaller: Sendable {
 
     /// Replaces `target` with `staged` and relaunches. Only returns by throwing.
     /// `async` so the blocking `lsregister`/`killall` calls run off the main actor.
+    ///
+    /// Crash-safe ordering: the staged bundle is first moved *next to* the target
+    /// (same directory, so the write permission is proven before the installed app
+    /// is touched), then `replaceItemAt` swaps it in — the installed app is either
+    /// the old or the new bundle at every instant, never absent. The old bundle is
+    /// kept as a backup through the swap and only trashed afterwards.
     func install(staged: URL, over target: URL) async throws {
         let fm = FileManager.default
-        var trashed: NSURL?
+        let directory = target.deletingLastPathComponent()
+        let incoming = directory.appendingPathComponent(".\(target.lastPathComponent).update")
+        let backupName = "\(target.lastPathComponent).previous"
+        try? fm.removeItem(at: incoming)
         do {
-            try fm.trashItem(at: target, resultingItemURL: &trashed)
+            try fm.moveItem(at: staged, to: incoming)
         } catch {
-            throw UpdateError.installFailed("couldn't move the old app to the Trash: \(error.localizedDescription)")
+            throw UpdateError
+                .installFailed("couldn't place the new app next to the installed one: \(error.localizedDescription)")
         }
         do {
-            try fm.moveItem(at: staged, to: target)
+            _ = try fm.replaceItemAt(
+                target, withItemAt: incoming, backupItemName: backupName,
+                options: [.usingNewMetadataOnly, .withoutDeletingBackupItem],
+            )
         } catch {
-            if let trashed { try? fm.moveItem(at: trashed as URL, to: target) }
+            try? fm.removeItem(at: incoming)
             throw UpdateError.installFailed(error.localizedDescription)
         }
+        try? fm.trashItem(at: directory.appendingPathComponent(backupName), resultingItemURL: nil)
         try? fm.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
 
         // Same consolidation as `build.sh --install`: one registration, at this path.
@@ -103,6 +117,8 @@ struct UpdateInstaller: Sendable {
 
     /// A detached shell waits for this process to exit, then opens the new bundle.
     /// Children survive the parent's exit, so terminating ourselves next is safe.
+    /// (PID reuse inside the 0.2 s poll is theoretically possible; it's the same
+    /// pattern Sparkle-style updaters use and would at worst delay the relaunch.)
     private static func relaunch(bundleURL: URL) {
         let script = "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$2\""
         let process = Process()

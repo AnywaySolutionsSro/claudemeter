@@ -44,9 +44,12 @@ if CommandLine.arguments.contains("--snapshot-test") {
     exit(0)
 }
 
-// Diagnostic: run the updater's check + download + verification headlessly and
-// print every decision. Nothing is installed — the staged bundle is deleted.
-if CommandLine.arguments.contains("--update-check") {
+// Diagnostics: `--update-check` runs the updater's check + download + verification
+// headlessly and prints every decision (nothing installed, staged bundle deleted).
+// `--update-install` additionally performs the real swap + relaunch when the
+// bundle is in place (quit the GUI instance first: `pkill -x ClaudeMeter`).
+if CommandLine.arguments.contains("--update-check") || CommandLine.arguments.contains("--update-install") {
+    let performInstall = CommandLine.arguments.contains("--update-install")
     let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     let mode = UpdatePolicy.installMode(
         bundleURL: Bundle.main.bundleURL,
@@ -67,6 +70,11 @@ if CommandLine.arguments.contains("--update-check") {
                 $0 * 100,
             )) }
             print("staged + verified: \(staged.path)")
+            if performInstall, case let .inPlace(bundleURL) = mode, case .available = decision {
+                print("installing over \(bundleURL.path) and relaunching…")
+                try await UpdateInstaller().install(staged: staged, over: bundleURL)
+                return
+            }
             try? FileManager.default.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
         } catch {
             print("FAILED: \(error.localizedDescription)")
