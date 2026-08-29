@@ -38,8 +38,10 @@ type="$(conventional_type "$title")"
 
 conventional_type_allowed "$type" || fail "PR title type '$type' is not allowed."
 
-if [ -n "$body_file" ] && [ -f "$body_file" ] && grep -q "BREAKING CHANGE" "$body_file"; then
-	fail "PR body contains 'BREAKING CHANGE'; majors are released manually."
+# The Conventional Commits footer form only ("BREAKING CHANGE: ..." / "BREAKING-CHANGE: ..."
+# at the start of a line), so a PR that merely talks about breaking changes passes.
+if [ -f "$body_file" ] && grep -qE '^BREAKING[ -]CHANGE:' "$body_file"; then
+	fail "PR body has a 'BREAKING CHANGE:' footer; majors are released manually."
 fi
 
 echo "PR title OK: type '$type' -> release bump '$(conventional_bump "$title")'"
