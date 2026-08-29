@@ -44,6 +44,9 @@ final class UpdateService: ObservableObject {
     /// next to an offered update's so the choice is an informed one. Fetched once
     /// per launch alongside the first check; `nil` for dev builds and offline.
     @Published private(set) var currentRelease: ReleaseInfo?
+    /// True from launch until acknowledged when the running version differs from the
+    /// one that ran last time — i.e. an update just landed; the dropdown shows its notes.
+    @Published private(set) var justUpdated = false
 
     let currentVersion: AppVersion?
     let installMode: InstallMode
@@ -98,6 +101,17 @@ final class UpdateService: ObservableObject {
             .notice(
                 "updater start: running \(version, privacy: .public), mode \(String(describing: self.installMode), privacy: .public)",
             )
+        if let currentVersion {
+            // A version change since the last run = an update just landed.
+            if let previous = settings.lastRunVersion, previous != currentVersion.description {
+                justUpdated = true
+                log.notice("updated \(previous, privacy: .public) -> \(currentVersion.description, privacy: .public)")
+            }
+            settings.lastRunVersion = currentVersion.description
+            // The running version's notes are wanted right away (Settings, and the
+            // post-update banner), not only after the next check.
+            Task { [weak self] in await self?.loadCurrentReleaseIfNeeded(latest: nil) }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstCheckDelay) { [weak self] in
             self?.checkIfDue()
         }
@@ -201,6 +215,9 @@ final class UpdateService: ObservableObject {
         guard case .downloading = state else { return }
         state = .downloading(release, progress: fraction)
     }
+
+    /// "Got it" on the post-update notes.
+    func acknowledgeUpdate() { justUpdated = false }
 
     /// "Later" on an offer, or closing a failure notice: hide it until the next
     /// due check. Nothing is persisted — the version stays eligible.

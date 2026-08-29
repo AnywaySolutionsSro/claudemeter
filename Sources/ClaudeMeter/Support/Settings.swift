@@ -71,6 +71,12 @@ final class Settings: ObservableObject {
         didSet { defaults.set(skippedUpdateVersion, forKey: Keys.skippedUpdateVersion) }
     }
 
+    /// The version that ran last time (`01.04.00`); a different running version means
+    /// an update just landed and its notes are shown once.
+    @Published var lastRunVersion: String? {
+        didSet { defaults.set(lastRunVersion, forKey: Keys.lastRunVersion) }
+    }
+
     /// Continue text to type, trimmed; defaults to "continue" when blank.
     var normalizedContinueText: String {
         let trimmed = autoResumeContinueText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,6 +101,7 @@ final class Settings: ObservableObject {
         self.autoUpdateCheckEnabled = defaults.object(forKey: Keys.autoUpdateCheckEnabled) as? Bool ?? true
         self.lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
         self.skippedUpdateVersion = defaults.string(forKey: Keys.skippedUpdateVersion)
+        self.lastRunVersion = defaults.string(forKey: Keys.lastRunVersion)
     }
 
     private enum Keys {
@@ -107,5 +114,6 @@ final class Settings: ObservableObject {
         static let autoUpdateCheckEnabled = "autoUpdateCheckEnabled"
         static let lastUpdateCheck = "lastUpdateCheck"
         static let skippedUpdateVersion = "skippedUpdateVersion"
+        static let lastRunVersion = "lastRunVersion"
     }
 }
