@@ -15,7 +15,17 @@ struct GitHubReleaseClient: Sendable {
     /// The latest published (non-draft, non-prerelease) release, or `nil` when the
     /// response doesn't describe one this app can install.
     func fetchLatest() async throws -> ReleaseInfo? {
-        var request = URLRequest(url: Self.latestReleaseURL)
+        try await fetchRelease(at: Self.latestReleaseURL)
+    }
+
+    /// The release published under `tag` (e.g. the running version's own notes);
+    /// `nil` when there is none or it isn't a plain release.
+    func fetchRelease(tag: String) async throws -> ReleaseInfo? {
+        try await fetchRelease(at: URL(string: "https://api.github.com/repos/\(Self.repository)/releases/tags/\(tag)")!)
+    }
+
+    private func fetchRelease(at url: URL) async throws -> ReleaseInfo? {
+        var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")

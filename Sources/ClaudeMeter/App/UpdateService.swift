@@ -40,6 +40,10 @@ enum UpdateState: Equatable {
 @MainActor
 final class UpdateService: ObservableObject {
     @Published private(set) var state: UpdateState = .idle
+    /// The GitHub release of the version that is running — its notes are shown
+    /// next to an offered update's so the choice is an informed one. Fetched once
+    /// per launch alongside the first check; `nil` for dev builds and offline.
+    @Published private(set) var currentRelease: ReleaseInfo?
 
     let currentVersion: AppVersion?
     let installMode: InstallMode
@@ -120,12 +124,25 @@ final class UpdateService: ObservableObject {
             do {
                 let latest = try await client.fetchLatest()
                 apply(latest: latest, userInitiated: userInitiated)
+                await loadCurrentReleaseIfNeeded(latest: latest)
             } catch {
                 log.error("check failed: \(error.localizedDescription, privacy: .public)")
                 // A background failure is silent (retry next tick); a manual one is shown.
                 state = userInitiated ? .failed(nil, message: error.localizedDescription) : .idle
             }
         }
+    }
+
+    /// The running version's own release: reuse `latest` when it *is* the running
+    /// version (no extra call), otherwise one `releases/tags/<tag>` request. Failure
+    /// is silent — the notes are a nicety, not a gate.
+    private func loadCurrentReleaseIfNeeded(latest: ReleaseInfo?) async {
+        guard currentRelease == nil, let currentVersion else { return }
+        if let latest, latest.version == currentVersion {
+            currentRelease = latest
+            return
+        }
+        currentRelease = try? await client.fetchRelease(tag: currentVersion.tagName)
     }
 
     private func apply(latest: ReleaseInfo?, userInitiated: Bool) {
