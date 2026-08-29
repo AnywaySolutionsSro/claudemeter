@@ -2,12 +2,10 @@
 
 ## TL;DR
 
-**Official releases are built by GitHub Actions** — push a version tag and a notarized
-`ClaudeMeter.zip` lands on the [Releases page](https://github.com/AnywaySolutionsSro/claudemeter/releases):
-
-```bash
-git tag v01.02.03 && git push origin v01.02.03
-```
+**Releases are automatic.** Every PR merged into `main` whose title is `feat…`, `fix…` or
+`perf…` is built, notarized and published by GitHub Actions as `ClaudeMeter.zip` on the
+[Releases page](https://github.com/AnywaySolutionsSro/claudemeter/releases) — nothing to tag,
+nothing to push. `ci:`, `docs:`, `build:`, `chore:`, … merge without a release.
 
 Local one-off builds for sharing still work:
 
@@ -21,28 +19,55 @@ export NOTARY_PROFILE="mbx-notary"
 ## Versioning policy
 
 Tags and release names are `vMM.mm.pp` — two-digit, zero-padded — starting at `v01.00.00`.
+The bump comes from the **PR title**, which `main` (squash-merge only) records as the commit
+subject. Titles must be [Conventional Commits](https://www.conventionalcommits.org) subjects
+— `<type>(<optional scope>): <summary>` — with one of these types; the `pr-title` check
+refuses anything else, so a badly named PR cannot be merged.
 
-| Bump          | When                                  |
-| ------------- | ------------------------------------- |
-| major (`MM`)  | a major new feature is introduced     |
-| minor (`mm`)  | any new (smaller) feature             |
-| patch (`pp`)  | any fix                               |
+| PR title type                                               | Bump         | Release? |
+| ----------------------------------------------------------- | ------------ | -------- |
+| `feat`                                                      | minor (`mm`) | yes      |
+| `fix`, `perf`                                               | patch (`pp`) | yes      |
+| `build`, `chore`, `ci`, `docs`, `refactor`, `style`, `test` | —            | no       |
+| `feat!:` or `BREAKING CHANGE` in the body                   | refused      | —        |
 
-- `vMM.mm.pp-rcN` publishes a **pre-release** — use one to rehearse the pipeline.
-- The workflow refuses a tag that doesn't match the pattern or isn't newer than the latest
-  published release (`sort -V` order).
-- `CFBundleShortVersionString` = `MM.mm.pp` from the tag; `CFBundleVersion` = the workflow run
-  number. `project.yml`'s `MARKETING_VERSION` is only the fallback for local builds.
-- Only repository admins can create/move/delete `v*` tags (the **release tags** ruleset).
+- **Major (`MM`) bumps are manual only:** *Actions → release → Run workflow → bump: major*.
+  (The same form offers minor/patch for an out-of-band release.)
+- Several merges covered by one run (Actions collapses queued runs) release **once** with
+  the highest bump among them — `scripts/release-plan.sh` folds every commit since the
+  previous release.
+- `CFBundleShortVersionString` = `MM.mm.pp`; `CFBundleVersion` = the workflow run number.
+  `project.yml`'s `MARKETING_VERSION` is only the fallback for local builds — nothing in the
+  repo needs bumping for a release.
+- The tag is created by the workflow **after** a green, verified build (`gh release create
+  --target <sha>`), so a failed run leaves no tag or release behind — just re-run it.
+- Dry-run the decision locally: `scripts/release-plan.sh v01.01.00` (prints the bump and
+  next tag for the commits since that release); `scripts/check-pr-title.sh "<title>"`
+  validates a title.
 
 ## Releases via GitHub Actions
 
-`.github/workflows/release.yml` runs on `macos-26` for every `v*` tag (or manually via
-*Actions → release → Run workflow* with an existing tag to rebuild its assets). It runs the
-same `./build.sh --notarize` as a local release; CI only provides a temporary keychain with
-the Developer ID certificate and a notarytool profile named `ClaudeMeterNotary`, verifies the
-result (`spctl` must say `Notarized Developer ID`, `stapler validate`, version == tag) and
-publishes `ClaudeMeter.zip` + `ClaudeMeter.zip.sha256` with generated notes.
+`.github/workflows/release.yml` runs on every push to `main` (and manually via *Actions →
+release → Run workflow*). A fast `plan` job on Ubuntu decides whether and what to release;
+only then does the `release` job on `macos-26` run the same `./build.sh --notarize` as a
+local release. CI only provides a temporary keychain with the Developer ID certificate and a
+notarytool profile named `ClaudeMeterNotary`, verifies the result (`spctl` must say
+`Notarized Developer ID`, `stapler validate`, version == plan) and publishes
+`ClaudeMeter.zip` + `ClaudeMeter.zip.sha256` with notes generated from the merged PRs.
+
+**Run workflow** inputs: `bump` (major / minor / patch — the only way to get a major) or
+`rebuild_tag` (rebuild and replace the assets of an existing release, e.g. after a
+notarization hiccup; ignores `bump`).
+
+### Repository settings this relies on
+
+- **Squash merge only**, squash commit title = *pull request title* (not "default to
+  commit message" — that silently uses the commit message for single-commit PRs).
+- Ruleset **main: tests** requires the checks `pr-title`, `tests`, `lint`, `build-app`,
+  `scripts` (no bypass); **main: review** requires a code-owner approval.
+- Ruleset **release tags** protects `v*` against update/delete/force-push but does **not**
+  restrict creation — the workflow's `GITHUB_TOKEN` creates the tag. Only collaborators and
+  Actions can push tags anyway.
 
 ### Secrets (repository → Settings → Secrets and variables → Actions)
 
@@ -90,16 +115,15 @@ so it can be revoked on its own without touching local releases.
 
 ### Cutting a release
 
-```bash
-git checkout main && git pull
-git tag v01.00.00-rc1 && git push origin v01.00.00-rc1   # rehearsal → pre-release
-# download ClaudeMeter.zip from the pre-release, unzip, then:
-spctl -a -vvv -t install ClaudeMeter.app                  # want: source=Notarized Developer ID
-git tag v01.00.00 && git push origin v01.00.00           # the real one
-```
+Merge a `feat:`/`fix:`/`perf:` PR — that's it. Watch it under *Actions → release*; a failed
+run leaves no release behind, fix and re-run. For a major: *Run workflow → bump: major*.
 
-Watch it under *Actions → release*. A failed run leaves no release behind; fix and re-run via
-*Run workflow* with the same tag.
+To sanity-check a published build:
+
+```bash
+gh release download --pattern ClaudeMeter.zip && ditto -x -k ClaudeMeter.zip .
+spctl -a -vvv -t install ClaudeMeter.app                  # want: source=Notarized Developer ID
+```
 
 ## How `build.sh` modes differ
 

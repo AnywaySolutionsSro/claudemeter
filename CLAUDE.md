@@ -102,15 +102,20 @@ Release env vars: `CODESIGN_ID="Developer ID Application: Jakub Zak (72K9YQF24J)
 `NOTARY_PROFILE="mbx-notary"` (an account-level notarytool keychain profile; reusable across
 projects — it authenticates the Apple **team**, not the app). See [docs/release.md](docs/release.md).
 
-**Official releases come from CI, not `--release`:** pushing a tag `vMM.mm.pp` (two-digit,
-e.g. `v01.02.03`; `-rcN` = pre-release) runs `.github/workflows/release.yml`, which builds,
-notarizes and publishes `ClaudeMeter.zip` to GitHub Releases. Versioning: major = major new
-feature, minor = any new feature, patch = any fix. The version comes from the tag — don't
-hand-edit `MARKETING_VERSION` in `project.yml` for a release.
+**Releases are automatic (`.github/workflows/release.yml`):** every PR merged into `main`
+whose title starts with `feat` (minor) or `fix`/`perf` (patch) is built, notarized and
+published to GitHub Releases as `vMM.mm.pp` (two-digit, e.g. `v01.02.03`). Other types
+(`ci`, `docs`, `build`, `chore`, `refactor`, `test`, `style`) merge without a release.
+**Majors are manual only** (Actions → release → Run workflow → bump: major). The version
+comes from the plan (`scripts/release-plan.sh`) — don't hand-edit `MARKETING_VERSION` in
+`project.yml` for a release, and never push `v*` tags by hand. See [docs/release.md](docs/release.md).
 
-**Branch rules:** `main` takes PRs only — the `ci` jobs `tests`, `lint`, `build-app` and
-`scripts` must pass (no bypass) and a code-owner approval is required (repo admins — Jakub —
-can bypass). Never push to `main` directly; branch, open a PR, let Jakub merge.
+**Branch rules:** `main` takes squash-merged PRs only — the `ci` jobs `pr-title`, `tests`,
+`lint`, `build-app` and `scripts` must pass (no bypass) and a code-owner approval is required
+(repo admins — Jakub — can bypass). **PR titles must be Conventional Commits subjects**
+(`type(scope): summary`, types listed above; `!`/BREAKING CHANGE is refused) because the
+title becomes the commit on `main` and decides the release. Never push to `main` directly;
+branch, open a PR, let Jakub merge.
 
 **Quality gates (CI = local):** zero compiler warnings (`-warnings-as-errors` in both
 `swift build` and the Xcode build), `swiftlint --strict`, `swiftformat --lint`, core line
