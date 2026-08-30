@@ -26,14 +26,14 @@ final class CostReportDecoderTests: XCTestCase {
     // "103.1554" + "33.755" = 136.9104 cents = $1.3691, NOT $136.91.
     func testConvertsCentsToDollars() throws {
         let page = try decoder.decode(realShape)
-        XCTAssertEqual(page.days[0].amountUSD, Decimal(string: "1.369104")!)
+        XCTAssertEqual(page.days[0].amountUSD, Decimal(string: "1.369104"))
     }
 
     func testSumsTheSeparateInputAndOutputRowsOfOneDay() throws {
         let page = try decoder.decode(realShape)
         XCTAssertEqual(page.days[0].byModel.count, 1)
         XCTAssertEqual(page.days[0].byModel[0].model, "claude-sonnet-5")
-        XCTAssertEqual(page.days[0].byModel[0].amountUSD, Decimal(string: "1.369104")!)
+        XCTAssertEqual(page.days[0].byModel[0].amountUSD, Decimal(string: "1.369104"))
     }
 
     func testParsesTheBucketStartAsUTC() throws {
@@ -88,7 +88,7 @@ final class CostReportDecoderTests: XCTestCase {
         ]}],"has_more":false,"next_page":null}
         """.utf8)
         let day = try decoder.decode(noModel).days[0]
-        XCTAssertEqual(day.amountUSD, Decimal(string: "2.5")!)
+        XCTAssertEqual(day.amountUSD, Decimal(string: "2.5"))
         XCTAssertEqual(day.byModel.map(\.model), ["Code Execution Usage"])
     }
 

@@ -25,13 +25,13 @@ final class ApiSpendSnapshotTests: XCTestCase {
     }
 
     func testTotalSumsEveryDay() {
-        XCTAssertEqual(snapshot().totalUSD, Decimal(string: "2.5877")!)
+        XCTAssertEqual(snapshot().totalUSD, Decimal(string: "2.5877"))
     }
 
     func testTodayMatchesTheUTCDayContainingNow() {
         // 23:30 UTC on the 22nd still belongs to the 22nd's bucket.
         let late = utcDay(22).addingTimeInterval(23 * 3600 + 1800)
-        XCTAssertEqual(snapshot().todayUSD(now: late), Decimal(string: "1.2186")!)
+        XCTAssertEqual(snapshot().todayUSD(now: late), Decimal(string: "1.2186"))
     }
 
     func testTodayIsZeroWhenNoBucketExistsYet() {
@@ -41,8 +41,8 @@ final class ApiSpendSnapshotTests: XCTestCase {
     func testByModelAggregatesAcrossDaysDescending() {
         let models = snapshot().byModel
         XCTAssertEqual(models.map(\.model), ["claude-sonnet-5", "claude-opus-5"])
-        XCTAssertEqual(models[0].amountUSD, Decimal(string: "2.5877")!)
-        XCTAssertEqual(models[1].amountUSD, Decimal(string: "0.5000")!)
+        XCTAssertEqual(models[0].amountUSD, Decimal(string: "2.5877"))
+        XCTAssertEqual(models[1].amountUSD, Decimal(string: "0.5000"))
     }
 
     func testIsEmptyWhenNoDaysCarrySpend() {
@@ -56,8 +56,8 @@ final class ApiSpendSnapshotTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ApiSpendSnapshot.self, from: data), snapshot())
     }
 
-    func testFormatsSmallAmountsToCents() {
-        XCTAssertEqual(Formatting.usd(Decimal(string: "2.5877")!), "$2.59")
+    func testFormatsSmallAmountsToCents() throws {
+        XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "2.5877"))), "$2.59")
         XCTAssertEqual(Formatting.usd(0), "$0.00")
     }
 }

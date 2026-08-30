@@ -463,5 +463,6 @@ struct ClaudeMeterWidgetBundle: WidgetBundle {
         SessionGaugeWidget()
         WeeklyGaugeWidget()
         ModelGaugeWidget()
+        ApiSpendWidget()
     }
 }
