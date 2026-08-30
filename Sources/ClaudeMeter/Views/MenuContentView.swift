@@ -13,7 +13,6 @@ struct MenuContentView: View {
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var updates: UpdateService
-    @EnvironmentObject var apiSpend: ApiSpendStore
     @Environment(\.textScale) private var scale
     @State private var now = Date()
 
