@@ -34,4 +34,15 @@ public enum Formatting {
             return m < 10 ? String(format: "%.1fM", m) : String(format: "%.0fM", m)
         }
     }
+
+    /// Formats USD for display, always to cents (`$2.59`).
+    public static func usd(_ amount: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: amount as NSDecimalNumber) ?? "$0.00"
+    }
 }
