@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var auth: AuthModel
     @ObservedObject var updates: UpdateService
+    @ObservedObject var apiSpend: ApiSpendStore
 
     /// Read from `settings` directly rather than the environment: this view sets
     /// the environment value for its own children, and a value set in `body`
@@ -62,6 +63,10 @@ struct SettingsView: View {
 
             Section(header: sectionHeader("Updates", "arrow.down.circle.fill", .teal)) {
                 UpdateSettingsSection(settings: settings, updates: updates)
+            }
+
+            Section(header: sectionHeader("Claude API spend", "dollarsign.circle.fill", .green)) {
+                ApiSettingsSection(spend: apiSpend)
             }
 
             Section {
