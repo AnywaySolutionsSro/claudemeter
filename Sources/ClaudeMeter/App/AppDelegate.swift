@@ -25,8 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
         },
     )
-    private lazy var settingsWindow = SettingsWindowController(settings: settings, auth: auth, updates: updates)
+    private lazy var settingsWindow = SettingsWindowController(
+        settings: settings, auth: auth, updates: updates, apiSpend: apiSpend,
+    )
     private lazy var updates = UpdateService(settings: settings)
+    private let apiSpend = ApiSpendStore()
     private let updateResponder = UpdateNotificationResponder()
     private let armedSessions = ArmedSessions()
     private let sleepInhibitor = SleepInhibitor()
@@ -81,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Keep scanning local sessions in the background so the widget snapshot
         // stays fresh even when the Sessions window is closed.
         sessionMonitor.start()
+
+        // Cost data is daily-granularity and trails usage by ~5 min, so this ticks slowly.
+        apiSpend.start()
 
         // Feed armed IDs into published snapshots and run auto-resume after each scan.
         sessionMonitor.armedIDsProvider = { [weak self] in Array(self?.armedSessions.armed ?? []) }
@@ -280,10 +286,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         .environmentObject(auth)
         .environmentObject(settings)
         .environmentObject(updates)
+        .environmentObject(apiSpend)
         .environment(\.textScale, settings.textScale)
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
+
+        // Throttled to 5 minutes inside the store, so opening repeatedly is cheap.
+        Task { await apiSpend.refresh() }
 
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
