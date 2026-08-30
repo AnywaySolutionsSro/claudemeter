@@ -58,6 +58,13 @@ orange under 25 % and red under 10 %.
 - **Global hotkey** ⌥⌘U toggles the dropdown.
 - **Run a Shortcut** when usage drops ≤ 10 % (e.g. flip on a Focus mode).
 - **⋯ menu** — quick links to buy more usage / upgrade / help.
+- **Claude API spend** *(optional)* — today's and this month's USD spend on the Claude API,
+  broken down by model, in the dropdown and as a widget. Needs a Console **Admin API key**
+  (`sk-ant-admin01-…`, created at platform.claude.com ▸ Settings ▸ Admin keys) pasted into
+  Settings ▸ General, and an **organization** — the Admin API is unavailable to individual
+  accounts. This is separate from your subscription login. The key is stored in your Keychain
+  and sent only to `api.anthropic.com`; note that a Console admin key carries full
+  organization access, as Console keys have no read-only option.
 
 History for burn-rate/sparkline/stats is stored at
 `~/Library/Application Support/ClaudeMeter/history.json` (usage numbers only).

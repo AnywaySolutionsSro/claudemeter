@@ -112,6 +112,38 @@ summary notifies if armed sessions never became eligible.
   believes it's older than the latest release, so the real download/verify/swap/relaunch path can
   be exercised against a genuine notarized release.
 
+### API spend feature (Claude API cost, separate credential)
+
+Subscription usage and **API spend** are different products with different logins. API spend
+comes from the **documented** Admin API (`GET /v1/organizations/cost_report`), authenticated
+with a Console **Admin API key** (`sk-ant-admin01-…`) held in ClaudeMeter's own Keychain item
+`com.jakubzak.claudemeter.adminkey`.
+
+- **Core** (pure/TDD): `AdminKey` (prefix validation), `CostReportDecoder` → `ApiSpendSnapshot`
+  (`CostDay` / `ModelSpend`), `Formatting.usd`.
+- **App**: `AdminKeyStore`, `CostClient` (paginating), `ApiSpendStore` (@MainActor, 15-min tick
+  + dropdown-open refresh throttled to 5 min), `ApiSpendSection`, `ApiSettingsSection`.
+- **Widget**: kind `ClaudeApiSpend` (`Widget/ApiSpendWidget.swift`), reading `api-spend.json`
+  from its own container — the app cannot deliver into the App Group container a sandboxed
+  widget can read, same constraint as `snapshot.json`. Kept a **separate file** because the two
+  producers run on different cadences and would race on one.
+
+**`amount` is a decimal string in CENTS, not dollars** — `"103.1554"` is $1.03. Reading it as
+dollars overstates spend 100x. The division lives in `CostReportDecoder` alone, pinned by a
+regression test. **`limit` defaults to 7 daily buckets** regardless of the date range and
+silently truncates a month query, so `CostClient` always sends it and follows
+`has_more`/`next_page`. Input and output arrive as separate rows per day and must be summed.
+
+Buckets are UTC-aligned; we present UTC days so figures match the invoice, which means "Today"
+can look off late in a local evening. The Admin API needs an **organization** — individual
+accounts get nothing. There is **no documented balance endpoint**; when one ships it becomes
+another field on `ApiSpendSnapshot`.
+
+**Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
+app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
+dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:
+category `apispend` at `.notice` (failures only).
+
 **`./build.sh` always builds the full app + widget extension** (XcodeGen project from
 `project.yml`, dev-team signed). Jakub uses the widget — never install a widget-less build,
 or macOS silently deletes his placed widgets. `./build.sh --spm` remains as the widget-less
