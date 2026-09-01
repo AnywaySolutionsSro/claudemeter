@@ -48,6 +48,9 @@ struct ApiSpendWidgetView: View {
                 Text("Yesterday \(Formatting.usd(snapshot.latestDayUSD))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                Text("Last month \(Formatting.usd(snapshot.previousMonthUSD(now: entry.date)))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             } else {
                 Spacer(minLength: 0)
                 Text("Add an admin key in ClaudeMeter Settings")

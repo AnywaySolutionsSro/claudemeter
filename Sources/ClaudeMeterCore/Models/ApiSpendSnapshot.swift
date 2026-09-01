@@ -44,7 +44,21 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
     /// deliberately reaches back into the previous month (see `CostWindow`), and those days
     /// must not count toward this month.
     public func monthToDateUSD(now: Date) -> Decimal {
-        daysInMonth(of: now).reduce(0) { $0 + $1.amountUSD }
+        days(inMonthOf: now).reduce(0) { $0 + $1.amountUSD }
+    }
+
+    /// Spend in the UTC month before the one containing `now`.
+    public func previousMonthUSD(now: Date) -> Decimal {
+        let calendar = CostWindow.utcCalendar
+        guard
+            let startOfMonth = calendar.date(
+                from: calendar.dateComponents([.year, .month], from: now),
+            ),
+            let inPreviousMonth = calendar.date(byAdding: .month, value: -1, to: startOfMonth)
+        else {
+            return 0
+        }
+        return days(inMonthOf: inPreviousMonth).reduce(0) { $0 + $1.amountUSD }
     }
 
     /// The most recent **completed** day. The Cost API never reports the current day, so this
@@ -60,7 +74,7 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
     /// Per-model totals for the UTC month containing `now`, most expensive first.
     public func byModel(now: Date) -> [ModelSpend] {
         var totals: [String: Decimal] = [:]
-        for day in daysInMonth(of: now) {
+        for day in days(inMonthOf: now) {
             for entry in day.byModel {
                 totals[entry.model, default: 0] += entry.amountUSD
             }
@@ -70,7 +84,7 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
             .sorted(by: Self.mostExpensiveFirst)
     }
 
-    private func daysInMonth(of now: Date) -> [CostDay] {
+    private func days(inMonthOf now: Date) -> [CostDay] {
         let calendar = CostWindow.utcCalendar
         let month = calendar.dateComponents([.year, .month], from: now)
         return days.filter {

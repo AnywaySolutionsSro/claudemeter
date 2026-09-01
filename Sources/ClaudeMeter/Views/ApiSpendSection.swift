@@ -21,6 +21,7 @@ struct ApiSpendSection: View {
                     // not exist yet, so the freshest real figure is the last full day.
                     row("Yesterday", Formatting.usd(snapshot.latestDayUSD))
                     row("Month to date", Formatting.usd(snapshot.monthToDateUSD(now: now)))
+                    row("Last month", Formatting.usd(snapshot.previousMonthUSD(now: now)))
                     ForEach(Array(snapshot.byModel(now: now).prefix(3)), id: \.model) { entry in
                         row(shortModel(entry.model), Formatting.usd(entry.amountUSD), indented: true)
                     }

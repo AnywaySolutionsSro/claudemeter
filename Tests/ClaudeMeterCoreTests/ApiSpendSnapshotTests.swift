@@ -10,6 +10,13 @@ final class ApiSpendSnapshotTests: XCTestCase {
         return Calendar(identifier: .gregorian).date(from: components)!
     }
 
+    private func utcDay2(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.year = year; components.month = month; components.day = day
+        components.timeZone = TimeZone(identifier: "UTC")
+        return Calendar(identifier: .gregorian).date(from: components)!
+    }
+
     private func snapshot() -> ApiSpendSnapshot {
         ApiSpendSnapshot(
             days: [
@@ -73,6 +80,32 @@ final class ApiSpendSnapshotTests: XCTestCase {
         XCTAssertEqual(models.map(\.model), ["claude-sonnet-5", "claude-opus-5"])
         XCTAssertEqual(models[0].amountUSD, Decimal(string: "2.5877"))
         XCTAssertEqual(models[1].amountUSD, Decimal(string: "0.5000"))
+    }
+
+    func testPreviousMonthSumsOnlyThePriorUTCMonth() {
+        let twoMonths = ApiSpendSnapshot(
+            days: [
+                CostDay(start: utcDay(7, 15), amountUSD: 9, byModel: []),
+                CostDay(start: utcDay(8, 10), amountUSD: 4, byModel: []),
+                CostDay(start: utcDay(8, 11), amountUSD: 1, byModel: []),
+            ],
+            fetchedAt: utcDay(8, 20),
+        )
+        XCTAssertEqual(twoMonths.previousMonthUSD(now: utcDay(8, 20)), 9)
+        XCTAssertEqual(twoMonths.monthToDateUSD(now: utcDay(8, 20)), 5)
+    }
+
+    func testPreviousMonthCrossesAYearBoundary() {
+        let acrossYear = ApiSpendSnapshot(
+            days: [CostDay(start: utcDay2(2025, 12, 20), amountUSD: 7, byModel: [])],
+            fetchedAt: utcDay2(2026, 1, 5),
+        )
+        XCTAssertEqual(acrossYear.previousMonthUSD(now: utcDay2(2026, 1, 5)), 7)
+        XCTAssertEqual(acrossYear.monthToDateUSD(now: utcDay2(2026, 1, 5)), 0)
+    }
+
+    func testPreviousMonthIsZeroWhenNothingWasSpent() {
+        XCTAssertEqual(snapshot().previousMonthUSD(now: utcDay(8, 23)), 0)
     }
 
     func testRoundTripsThroughCodableForTheWidget() throws {

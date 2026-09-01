@@ -145,9 +145,10 @@ of the current day, and a range that then collapses to zero length is rejected w
 the dates you sent really are in order. Verified 2026-09-01: `Aug 30 → Sep 02` returns only the
 Aug 30 and Aug 31 buckets. Consequences: **there is no "today" figure** (the UI shows
 *Yesterday* = most recent completed day), and month-to-date on the **1st of a month** is an
-empty range that 400s. `CostWindow.monthToDate` therefore always reaches back at least one full
-day, and `ApiSpendSnapshot.monthToDateUSD(now:)` filters the fetched window to the current month
-so that reach-back day isn't miscounted.
+empty range that 400s. `CostWindow.trailing` spans from the start of the **previous** month (which
+also feeds the "Last month" row and makes the range structurally non-empty), and `ApiSpendSnapshot.monthToDateUSD(now:)` / `previousMonthUSD(now:)` filter that window by UTC
+month. A ~62-day span exceeds the API's **31-bucket cap**, so pagination is mandatory, not
+optional — verified: Jul 1 → Sep 1 returns July, then August.
 
 **Never call `AdminKeyStore.load()` from a SwiftUI body.** A Keychain read that returns the
 secret (`kSecReturnData: true`) is authorization-gated and makes macOS prompt for the login

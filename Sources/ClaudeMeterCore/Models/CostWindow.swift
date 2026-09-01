@@ -19,16 +19,22 @@ public struct CostWindow: Equatable, Sendable {
         self.end = end
     }
 
-    public static func monthToDate(now: Date) -> CostWindow {
+    /// From the start of the **previous** UTC month up to the start of today.
+    ///
+    /// Reaching back a whole extra month lets the UI show last month's total beside this
+    /// month's, and it incidentally removes the first-of-the-month edge case: the range can
+    /// never collapse to zero length, which the API rejects with HTTP 400.
+    ///
+    /// A ~62-day span exceeds the API's 31-bucket cap, so the caller must follow
+    /// `has_more`/`next_page` — verified 2026-09-01: Jul 1 → Sep 1 returns July, then August.
+    public static func trailing(now: Date) -> CostWindow {
         let calendar = utcCalendar
         let end = calendar.startOfDay(for: now)
         let startOfMonth = calendar.date(
             from: calendar.dateComponents([.year, .month], from: now),
         ) ?? end
-        // On the 1st, the month has no completed days yet — reach back a day so the request
-        // stays valid and the most recent completed day is still reported.
-        let previousDay = calendar.date(byAdding: .day, value: -1, to: end) ?? end
-        return CostWindow(start: min(startOfMonth, previousDay), end: end)
+        let start = calendar.date(byAdding: .month, value: -1, to: startOfMonth) ?? startOfMonth
+        return CostWindow(start: start, end: end)
     }
 
     static var utcCalendar: Calendar {

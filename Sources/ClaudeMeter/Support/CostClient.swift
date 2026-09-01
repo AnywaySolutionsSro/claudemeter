@@ -56,7 +56,7 @@ struct CostClient {
     private func requestPage(
         key: AdminKey, now: Date, cursor: String?,
     ) async throws -> CostReportDecoder.Page {
-        let window = CostWindow.monthToDate(now: now)
+        let window = CostWindow.trailing(now: now)
         var components = URLComponents(
             url: Self.base.appendingPathComponent("cost_report"), resolvingAgainstBaseURL: false,
         )!
