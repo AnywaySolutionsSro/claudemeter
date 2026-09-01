@@ -5,7 +5,19 @@ import Foundation
 ///
 /// Unlike the subscription endpoint this one is **documented and supported**; polling once a
 /// minute is sanctioned, and data lands ~5 minutes after the request it bills for.
-struct CostClient {
+/// Refuses redirects: a cross-host 3xx would otherwise carry the `x-api-key` header —
+/// which CFNetwork does not strip, unlike `Authorization` — to the redirect target.
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _: URLSession, task _: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void,
+    ) {
+        completionHandler(nil)
+    }
+}
+
+struct CostClient: Sendable {
     private static let base = URL(string: "https://api.anthropic.com/v1/organizations")!
     private static let apiVersion = "2023-06-01"
 
@@ -13,42 +25,62 @@ struct CostClient {
     /// truncating a month-long query. Always send a limit; 31 covers the longest month.
     private static let maxDailyBuckets = 31
 
+    /// Total wall-clock budget for a whole paginated fetch, so a stalled request cannot
+    /// wedge the store for minutes (each page would otherwise inherit the 60 s default).
+    private static let resourceTimeout: TimeInterval = 45
+
     private let keys: AdminKeyStore
     private let session: URLSession
     private let decoder = CostReportDecoder()
 
-    init(keys: AdminKeyStore = AdminKeyStore(), session: URLSession = .shared) {
+    init(keys: AdminKeyStore = AdminKeyStore(), session: URLSession? = nil) {
         self.keys = keys
-        self.session = session
+        self.session = session ?? Self.makeSession()
+    }
+
+    /// Ephemeral so cost figures and credentials never share on-disk cache or cookie
+    /// storage with the OAuth traffic.
+    private static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = resourceTimeout
+        return URLSession(configuration: configuration,
+                          delegate: NoRedirectDelegate(), delegateQueue: nil)
     }
 
     /// Spend for the current UTC month, following pagination to the end.
     func fetchMonthToDate(now: Date = Date()) async throws -> ApiSpendSnapshot {
-        guard let key = keys.load() else { throw UsageError.notAuthenticated }
+        guard let key = keys.load() else { throw CostError.keyUnreadable }
 
-        var days: [CostDay] = []
+        var accumulator = CostPageAccumulator()
         var cursor: String?
-        // Bounded so a server that always returns has_more can't spin forever.
-        for _ in 0 ..< 12 {
+        while true {
             let page = try await requestPage(key: key, now: now, cursor: cursor)
-            days.append(contentsOf: page.days)
-            guard let next = page.nextPage else {
-                return ApiSpendSnapshot(days: days, fetchedAt: now)
+            let next: String?
+            do {
+                next = try accumulator.accept(page)
+            } catch {
+                // Duplicate cursor or an exhausted page budget: the total would be wrong.
+                throw CostError.unreadableReport
             }
+            guard let next else { break }
             cursor = next
         }
-        return ApiSpendSnapshot(days: days, fetchedAt: now)
+        // Any row or bucket we couldn't read means the total is understated. Refuse to
+        // report a number rather than show an understated one as fact.
+        guard !accumulator.isDegraded else { throw CostError.unreadableReport }
+        return accumulator.snapshot(fetchedAt: now)
     }
 
     /// Confirms the key works and returns the organization's name.
     func verifyOrganization() async throws -> String {
-        guard let key = keys.load() else { throw UsageError.notAuthenticated }
+        guard let key = keys.load() else { throw CostError.keyUnreadable }
         let data = try await get(Self.base.appendingPathComponent("me"), key: key)
         guard
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let name = root["name"] as? String
         else {
-            throw UsageError.network("Malformed response")
+            throw CostError.network("Malformed response")
         }
         return name
     }
@@ -68,12 +100,16 @@ struct CostClient {
         ]
         if let cursor { items.append(URLQueryItem(name: "page", value: cursor)) }
         components.queryItems = items
+        // `urlQueryAllowed` leaves `+` unescaped, and a form-decoding server reads it as a
+        // space — which corrupts a non-url-safe base64 cursor.
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
 
         let data = try await get(components.url!, key: key)
         do {
             return try decoder.decode(data)
         } catch {
-            throw UsageError.network("Couldn't read the cost report")
+            throw CostError.unreadableReport
         }
     }
 
@@ -93,20 +129,21 @@ struct CostClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw UsageError.network(error.localizedDescription)
+            throw CostError.network(error.localizedDescription)
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw UsageError.network("Malformed response")
+            throw CostError.network("Malformed response")
         }
         guard (200 ..< 300).contains(http.statusCode) else {
             switch http.statusCode {
-            case 401: throw UsageError.notAuthenticated
+            case 401: throw CostError.invalidAdminKey
+            case 403: throw CostError.notAnOrganization
             case 429:
                 let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
                     .flatMap(TimeInterval.init)
-                throw UsageError.rateLimited(retryAfter: retryAfter)
-            default: throw UsageError.http(http.statusCode)
+                throw CostError.rateLimited(retryAfter: retryAfter)
+            default: throw CostError.http(http.statusCode)
             }
         }
         return data

@@ -187,6 +187,39 @@ Also worth clearing: the self-updater leaves `~/.Trash/ClaudeMeter.app.previous`
 LaunchServices, and `lsregister -u` cannot remove it once the file is gone. It appeared harmless
 here (`pluginkit` still resolved to `/Applications`), but it is noise when diagnosing.
 
+**The admin key stays in the LEGACY login keychain, and that is a known, accepted
+exposure.** `AdminKeyStore` tries the data-protection keychain first
+(`kSecUseDataProtectionKeychain` + `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) and falls
+back to the login keychain. The fallback is **not optional**: the data-protection keychain
+returns **-34018 `errSecMissingEntitlement`** for this app (verified 2026-09-01, on a dev
+build that *does* carry `com.apple.application-identifier`), and a Developer ID release build
+has no provisioning profile at all — so a data-protection-only store would work on a dev
+machine and silently make the key unsaveable in every shipped build. Consequence to accept:
+the key lives in `login.keychain-db`, which Time Machine and Migration Assistant carry.
+Closing this needs a `keychain-access-groups` entitlement, which does not fit Developer ID
+distribution. Which store won is logged at `.notice`, category `adminkey`.
+
+**Never surface `UsageError` from the Cost API path.** Its copy is about the OAuth
+subscription login ("Run `claude` and sign in"), a different credential; showing it for a
+rejected admin key told users to re-authenticate something that was never broken. Cost paths
+throw `CostError` (`invalidAdminKey` / `notAnOrganization` / `keyUnreadable` /
+`unreadableReport` / …).
+
+**A degraded cost report is an error, not a number.** `CostAmount.parse` rejects anything that
+is not a complete decimal — `Decimal(string:)` alone **truncates** (`"1,234.5678"` → `1`, a
+1000x understatement) — and accepts a JSON number as well as a string, so a shape change
+degrades to a correct reading instead of a confident $0.00. `CostReportDecoder` counts skipped
+rows/buckets, `CostPageAccumulator` dedupes days by `start` and refuses a repeated cursor or an
+exhausted page budget, and `CostClient` throws `unreadableReport` if anything was skipped. The
+previous good snapshot is kept; the cache and widget file are never overwritten with a partial
+or zeroed reading.
+
+**Every figure ships with its age.** `ApiSpendStore` publishes `lastUpdated` and `statusNote`
+(mirroring `UsageStore.present(_:)`), the dropdown shows the fetch time and marks >24 h stale,
+and the widget renders "as of …" plus `—` rather than `$0.00` when its snapshot predates the
+month asked about. `Formatting.usd` rounds **half-up** (to match the invoice, not
+`NumberFormatter`'s half-even default) and renders `<$0.01` for real sub-cent spend.
+
 **Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
 app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
 dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:

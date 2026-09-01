@@ -27,10 +27,12 @@ struct MenuContentView: View {
                 usageContent
                 Divider()
                 signedInFooter
-                ApiSpendSection(now: now)
             } else {
                 loginContent
             }
+            // Outside the sign-in branch on purpose: API spend uses the admin key, which
+            // has nothing to do with the OAuth subscription login.
+            ApiSpendSection(now: now)
         }
         .padding(scale.pt(14))
         .frame(width: scale.pt(300))

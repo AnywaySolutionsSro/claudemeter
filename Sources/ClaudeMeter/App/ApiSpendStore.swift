@@ -18,7 +18,13 @@ final class ApiSpendStore: ObservableObject {
     private static let tick: TimeInterval = 15 * 60
 
     @Published private(set) var snapshot: ApiSpendSnapshot?
+    /// A hard error with no data behind it.
     @Published private(set) var errorMessage: String?
+    /// A note explaining why the figures below it are stale — the data is still shown.
+    @Published private(set) var statusNote: String?
+    /// When the displayed figures were actually fetched. Never leave this implicit: a
+    /// cached snapshot rendered without it reads as current.
+    @Published private(set) var lastUpdated: Date?
     @Published private(set) var isLoading = false
     /// Cached like `AuthModel.state`: the dropdown asks this once a second, and hitting the
     /// Keychain that often is what made macOS prompt repeatedly.
@@ -26,7 +32,10 @@ final class ApiSpendStore: ObservableObject {
 
     private let client: CostClient
     private let keys: AdminKeyStore
-    private var lastFetch: Date?
+    /// Timestamp of the last *attempt*, not the last success — a failing fetch must still
+    /// throttle, or every dropdown open re-runs the whole request while broken.
+    private var lastAttempt: Date?
+    private var backoffUntil: Date?
     private var timer: Timer?
 
     init(client: CostClient = CostClient(), keys: AdminKeyStore = AdminKeyStore()) {
@@ -34,12 +43,23 @@ final class ApiSpendStore: ObservableObject {
         self.keys = keys
         hasKey = keys.hasKey
         snapshot = Self.readCache()
+        lastUpdated = snapshot?.fetchedAt
     }
 
     /// Re-read after Settings saves or clears the key.
     func refreshKeyState() {
-        hasKey = keys.hasKey
+        let present = keys.hasKey
+        if hasKey != present { hasKey = present }
     }
+
+    /// Invalidate the tick — the store outlives the app today, but a second instance
+    /// would otherwise leak a timer into the run loop.
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    deinit { timer?.invalidate() }
 
     func start() {
         timer?.invalidate()
@@ -51,27 +71,64 @@ final class ApiSpendStore: ObservableObject {
 
     func refresh(force: Bool = false) async {
         guard hasKey else {
-            snapshot = nil
-            errorMessage = nil
+            // Full reset: clearing memory alone would leave the disk cache and the widget
+            // file showing figures for a key that is no longer there.
+            if snapshot != nil || errorMessage != nil { reset() }
             return
         }
-        if !force, let last = lastFetch, Date().timeIntervalSince(last) < Self.throttle { return }
+
+        let now = Date()
+        if let backoffUntil, now < backoffUntil { return }
+        if !force, let lastAttempt, now.timeIntervalSince(lastAttempt) < Self.throttle { return }
         guard !isLoading else { return }
 
         isLoading = true
+        lastAttempt = now
         defer { isLoading = false }
 
         do {
             let fresh = try await client.fetchMonthToDate(now: Date())
-            lastFetch = Date()
             snapshot = fresh
+            lastUpdated = fresh.fetchedAt
             errorMessage = nil
+            statusNote = nil
+            backoffUntil = nil
             Self.writeCache(fresh)
             deliverToWidget(fresh)
+        } catch let CostError.rateLimited(retryAfter) {
+            backoffUntil = Date().addingTimeInterval(retryAfter ?? 120)
+            present(CostError.rateLimited(retryAfter: retryAfter))
         } catch {
-            // Keep showing the cached snapshot; surface why it's stale.
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            Self.log.notice("api spend refresh failed: \(String(describing: error), privacy: .public)")
+            present(error)
+        }
+    }
+
+    /// Distinguishes "no data at all" from "stale data shown below", the way `UsageStore`
+    /// does. A failed refresh must never silently overwrite a good reading.
+    private func present(_ error: Error) {
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        if snapshot == nil {
+            errorMessage = message
+            statusNote = nil
+        } else {
+            statusNote = message
+            errorMessage = nil
+        }
+        Self.log.notice("api spend refresh failed: \(Self.label(for: error), privacy: .public)")
+    }
+
+    /// A closed vocabulary — never interpolate a foreign error into a persisted log line,
+    /// where a URL or header could ride along in its `userInfo`.
+    private static func label(for error: Error) -> String {
+        switch error as? CostError {
+        case .keyUnreadable: "keyUnreadable"
+        case .invalidAdminKey: "invalidAdminKey"
+        case .notAnOrganization: "notAnOrganization"
+        case .rateLimited: "rateLimited"
+        case let .http(code): "http(\(code))"
+        case .network: "network"
+        case .unreadableReport: "unreadableReport"
+        case nil: "other"
         }
     }
 
@@ -80,7 +137,10 @@ final class ApiSpendStore: ObservableObject {
         hasKey = false
         snapshot = nil
         errorMessage = nil
-        lastFetch = nil
+        statusNote = nil
+        lastUpdated = nil
+        lastAttempt = nil
+        backoffUntil = nil
         try? FileManager.default.removeItem(at: Self.cacheURL)
         try? FileManager.default.removeItem(at: Self.widgetInboxURL())
         WidgetCenter.shared.reloadAllTimelines()
@@ -110,7 +170,12 @@ final class ApiSpendStore: ObservableObject {
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
         )
-        try? data.write(to: url, options: .atomic)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // Silent failure here is how the wrong-container bug hid for a whole release.
+            Self.log.notice("widget delivery failed: \(url.path, privacy: .public)")
+        }
         WidgetCenter.shared.reloadAllTimelines()
     }
 

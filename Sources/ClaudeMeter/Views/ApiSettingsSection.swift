@@ -11,7 +11,10 @@ struct ApiSettingsSection: View {
 
     @State private var entry = ""
     @State private var status: Status = .idle
-    @State private var hasKey = AdminKeyStore().hasKey
+
+    /// Read from the store rather than a local `@State` seeded once: the Settings window is
+    /// cached for the app's lifetime, so a copy here would never see the key change.
+    private var hasKey: Bool { spend.hasKey }
 
     private enum Status: Equatable {
         case idle
@@ -28,6 +31,8 @@ struct ApiSettingsSection: View {
                 HStack {
                     Label(organizationLabel, systemImage: "checkmark.seal.fill")
                         .foregroundStyle(.green)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Spacer()
                     if status == .verifying { ProgressView().controlSize(.small) }
                     Button("Verify") { verify() }
@@ -76,6 +81,9 @@ struct ApiSettingsSection: View {
             """)
             .font(scale.font(10))
             .foregroundStyle(.secondary)
+            Text("Removing the key here does not revoke it — revoke it in the Console.")
+                .font(scale.font(10))
+                .foregroundStyle(.secondary)
             Link(
                 "Open Admin keys settings",
                 destination: URL(string: "https://platform.claude.com/settings/admin-keys")!,
@@ -90,7 +98,6 @@ struct ApiSettingsSection: View {
         do {
             try keys.save(key)
             entry = ""
-            hasKey = true
             spend.refreshKeyState()
             verify()
         } catch {
@@ -99,6 +106,9 @@ struct ApiSettingsSection: View {
     }
 
     private func verify() {
+        // Without this, repeated clicks race and the last response to land wins — which can
+        // show a red error for a key that is fine, or green for one that just failed.
+        guard status != .verifying else { return }
         status = .verifying
         Task {
             do {
@@ -114,8 +124,15 @@ struct ApiSettingsSection: View {
     }
 
     private func remove() {
-        keys.clear()
-        hasKey = false
+        do {
+            try keys.clear()
+        } catch {
+            status = .failed(
+                "Couldn't remove the key from the Keychain — it is still stored. "
+                    + "Revoke it in the Console to be safe.",
+            )
+            return
+        }
         status = .idle
         spend.reset()
     }
