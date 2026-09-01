@@ -109,6 +109,43 @@ final class CostReportDecoderTests: XCTestCase {
         XCTAssertTrue(try decoder.decode(junk).days.isEmpty)
     }
 
+    // A shape change from `"amount": "103.1554"` to a JSON number must not silently
+    // zero out the whole report.
+    func testReadsAnAmountEmittedAsAJSONNumber() throws {
+        let numeric = Data("""
+        {"data":[{"starting_at":"2026-08-21T00:00:00Z","results":[
+          {"currency":"USD","amount":103.1554,"model":"claude-sonnet-5"}
+        ]}],"has_more":false,"next_page":null}
+        """.utf8)
+        let page = try decoder.decode(numeric)
+        XCTAssertEqual(page.days[0].amountUSD, Decimal(string: "1.031554"))
+        XCTAssertEqual(page.skippedRows, 0)
+    }
+
+    func testCountsSkippedRowsSoTheCallerKnowsTheTotalIsUnderstated() throws {
+        let junk = Data("""
+        {"data":[{"starting_at":"2026-08-21T00:00:00Z","results":[
+          {"currency":"USD","amount":"1,234.5678","model":"claude-sonnet-5"},
+          {"currency":"USD","amount":"100","model":"claude-sonnet-5"}
+        ]}],"has_more":false,"next_page":null}
+        """.utf8)
+        let page = try decoder.decode(junk)
+        // "1,234.5678" is rejected outright rather than truncated to 1.
+        XCTAssertEqual(page.skippedRows, 1)
+        XCTAssertEqual(page.days[0].amountUSD, 1)
+    }
+
+    func testCountsSkippedBuckets() throws {
+        let junk = Data("""
+        {"data":[{"starting_at":"tomorrow","results":[]},
+                 {"starting_at":"2026-08-21T00:00:00Z","results":[]}],
+         "has_more":false,"next_page":null}
+        """.utf8)
+        let page = try decoder.decode(junk)
+        XCTAssertEqual(page.skippedBuckets, 1)
+        XCTAssertEqual(page.days.count, 1)
+    }
+
     func testThrowsOnNonObjectRoot() {
         XCTAssertThrowsError(try decoder.decode(Data("[]".utf8))) { error in
             XCTAssertEqual(error as? CostReportDecoder.DecodingError, .malformed)

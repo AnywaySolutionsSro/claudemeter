@@ -42,3 +42,23 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Formatting.tokenCount(1_300_000), "1.3M")
     }
 }
+
+extension FormattingTests {
+    func testUSDRoundsHalfUpToMatchTheInvoice() throws {
+        // NumberFormatter defaults to half-even, which would give $0.02 / $0.12.
+        XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "0.025"))), "$0.03")
+        XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "0.125"))), "$0.13")
+    }
+
+    func testUSDNeverShowsRealSpendAsZero() throws {
+        // Sub-cent days are normal — the API reports cents to 4 decimal places.
+        XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "0.004"))), "<$0.01")
+        XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "-0.001"))), "-<$0.01")
+        XCTAssertEqual(Formatting.usd(0), "$0.00")
+    }
+
+    func testUSDDistinguishesAbsentDataFromZero() {
+        XCTAssertEqual(Formatting.usd(nil), "—")
+        XCTAssertEqual(Formatting.usd(Decimal(0)), "$0.00")
+    }
+}

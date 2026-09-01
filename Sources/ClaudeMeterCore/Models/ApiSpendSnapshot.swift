@@ -43,12 +43,12 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
     /// Filtered rather than a plain total: on the first of a month the fetched window
     /// deliberately reaches back into the previous month (see `CostWindow`), and those days
     /// must not count toward this month.
-    public func monthToDateUSD(now: Date) -> Decimal {
-        days(inMonthOf: now).reduce(0) { $0 + $1.amountUSD }
+    public func monthToDateUSD(now: Date) -> Decimal? {
+        days.isEmpty ? nil : days(inMonthOf: now).reduce(0) { $0 + $1.amountUSD }
     }
 
     /// Spend in the UTC month before the one containing `now`.
-    public func previousMonthUSD(now: Date) -> Decimal {
+    public func previousMonthUSD(now: Date) -> Decimal? {
         let calendar = CostWindow.utcCalendar
         guard
             let startOfMonth = calendar.date(
@@ -56,9 +56,9 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
             ),
             let inPreviousMonth = calendar.date(byAdding: .month, value: -1, to: startOfMonth)
         else {
-            return 0
+            return nil
         }
-        return days(inMonthOf: inPreviousMonth).reduce(0) { $0 + $1.amountUSD }
+        return days.isEmpty ? nil : days(inMonthOf: inPreviousMonth).reduce(0) { $0 + $1.amountUSD }
     }
 
     /// The most recent **completed** day. The Cost API never reports the current day, so this
@@ -67,7 +67,23 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
         days.max { $0.start < $1.start }
     }
 
-    public var latestDayUSD: Decimal { latestDay?.amountUSD ?? 0 }
+    /// Optional on purpose: `?? 0` would turn "no data" into "zero dollars".
+    public var latestDayUSD: Decimal? { latestDay?.amountUSD }
+
+    /// How old this reading is. The Cost API trails real usage, and a cached snapshot can
+    /// be arbitrarily old, so every surface that shows a figure must be able to say when.
+    public func age(now: Date) -> TimeInterval { now.timeIntervalSince(fetchedAt) }
+
+    /// A reading older than a day is stale enough that presenting it as current misleads.
+    public func isStale(now: Date) -> Bool { age(now: now) > 24 * 60 * 60 }
+
+    /// True when the snapshot predates the UTC month being asked about, so a
+    /// "this month" figure computed from it would be a confident zero.
+    public func predatesMonth(of now: Date) -> Bool {
+        let calendar = CostWindow.utcCalendar
+        let asked = calendar.dateComponents([.year, .month], from: now)
+        return calendar.dateComponents([.year, .month], from: fetchedAt) != asked
+    }
 
     public var isEmpty: Bool { days.isEmpty }
 

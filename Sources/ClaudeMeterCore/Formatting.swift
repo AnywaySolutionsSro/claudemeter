@@ -35,14 +35,67 @@ public enum Formatting {
         }
     }
 
+    /// Placeholder for "we have no reading", so it can never be confused with "$0.00",
+    /// which must mean "we fetched, and it was zero".
+    public static let noValue = "—"
+
+    public static func usd(_ amount: Decimal?) -> String {
+        guard let amount else { return noValue }
+        return usd(amount)
+    }
+
     /// Formats USD for display, always to cents (`$2.59`).
+    ///
+    /// Pinned to `en_US` deliberately: the bill is in USD, and matching the Console
+    /// invoice's separators matters more than matching the viewer's locale.
+    ///
+    /// Rounds **half-up** to agree with the invoice; `NumberFormatter` defaults to
+    /// half-even, which renders $0.025 as $0.02 where the bill says $0.03. A non-zero
+    /// amount that would round to zero renders as `<$0.01` rather than `$0.00`, so real
+    /// sub-cent spend is never displayed as no spend at all.
     public static func usd(_ amount: Decimal) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         formatter.locale = Locale(identifier: "en_US")
+        formatter.roundingMode = .halfUp
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
-        return formatter.string(from: amount as NSDecimalNumber) ?? "$0.00"
+
+        guard let text = formatter.string(from: amount as NSDecimalNumber) else {
+            return noValue
+        }
+        guard amount != 0, roundsToZero(amount) else { return text }
+        return amount < 0 ? "-<$0.01" : "<$0.01"
+    }
+
+    /// Labels a UTC cost bucket relative to `now`.
+    ///
+    /// The Cost API only reports completed days, so the newest bucket is normally
+    /// yesterday — but off a stale cache it can be far older, and calling that
+    /// "Yesterday" states the wrong day as fact.
+    public static func utcDayLabel(_ day: Date, now: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        // NB: `isDateInYesterday` compares against the system clock, not `now`, so it
+        // cannot be used here — the delta is computed explicitly to stay testable.
+        let delta = calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: day), to: calendar.startOfDay(for: now),
+        ).day
+        if delta == 1 { return "Yesterday" }
+        if delta == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = calendar.isDate(day, equalTo: now, toGranularity: .year)
+            ? "d MMM" : "d MMM yyyy"
+        return formatter.string(from: day)
+    }
+
+    private static func roundsToZero(_ amount: Decimal) -> Bool {
+        var magnitude = abs(amount)
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &magnitude, 2, .plain)
+        return rounded == 0
     }
 }

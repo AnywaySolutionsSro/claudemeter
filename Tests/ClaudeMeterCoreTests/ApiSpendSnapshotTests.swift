@@ -70,8 +70,11 @@ final class ApiSpendSnapshotTests: XCTestCase {
 
     func testLatestDayIsZeroWhenThereAreNoDays() {
         let empty = ApiSpendSnapshot(days: [], fetchedAt: utcDay(8, 23))
-        XCTAssertEqual(empty.latestDayUSD, 0)
+        // nil, not 0 — "no data" must never render as "$0.00".
+        XCTAssertNil(empty.latestDayUSD)
         XCTAssertNil(empty.latestDay)
+        XCTAssertNil(empty.monthToDateUSD(now: utcDay(8, 23)))
+        XCTAssertNil(empty.previousMonthUSD(now: utcDay(8, 23)))
         XCTAssertTrue(empty.isEmpty)
     }
 
@@ -106,6 +109,20 @@ final class ApiSpendSnapshotTests: XCTestCase {
 
     func testPreviousMonthIsZeroWhenNothingWasSpent() {
         XCTAssertEqual(snapshot().previousMonthUSD(now: utcDay(8, 23)), 0)
+    }
+
+    func testKnowsWhenItIsStaleAndWhenItPredatesTheMonthAsked() {
+        let snap = ApiSpendSnapshot(days: [], fetchedAt: utcDay(8, 23))
+        XCTAssertFalse(snap.isStale(now: utcDay(8, 23, 12)))
+        XCTAssertTrue(snap.isStale(now: utcDay(8, 25)))
+        XCTAssertFalse(snap.predatesMonth(of: utcDay(8, 30)))
+        XCTAssertTrue(snap.predatesMonth(of: utcDay(9, 2)))
+    }
+
+    func testDayLabelOnlySaysYesterdayWhenItReallyIs() {
+        XCTAssertEqual(Formatting.utcDayLabel(utcDay(8, 22), now: utcDay(8, 23, 10)), "Yesterday")
+        XCTAssertEqual(Formatting.utcDayLabel(utcDay(8, 12), now: utcDay(8, 23, 10)), "12 Aug")
+        XCTAssertEqual(Formatting.utcDayLabel(utcDay2(2025, 12, 3), now: utcDay(8, 23)), "3 Dec 2025")
     }
 
     func testRoundTripsThroughCodableForTheWidget() throws {
