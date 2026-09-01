@@ -156,6 +156,14 @@ countdown ticker), so a `hasKey` that loaded the secret produced a password prom
 `hasKey` uses `Keychain.exists` (metadata only) and `ApiSpendStore` caches it in a `@Published`
 property, mirroring how `AuthModel` caches `state` instead of re-reading the Keychain.
 
+**The widget's bundle ID is `com.jakubzak.claudemeter.ClaudeMeterWidget`**, not
+`…claudemeter.widget`. Always build the inbox path from `SessionMonitor.widgetBundleID` — a
+hardcoded guess fails **silently**, because the non-sandboxed app cheerfully creates the wrong
+container directory and writes there, so the delivery "succeeds" while the widget reads an
+empty container forever. Verify with
+`ls ~/Library/Containers/com.jakubzak.claudemeter.ClaudeMeterWidget/Data/Documents/` — both
+`snapshot.json` and `api-spend.json` must be there.
+
 **Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
 app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
 dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:

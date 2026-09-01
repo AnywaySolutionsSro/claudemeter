@@ -93,10 +93,15 @@ final class ApiSpendStore: ObservableObject {
     /// `SessionMonitor` uses. Kept as a separate file from `snapshot.json` because the two
     /// producers run on different cadences and would otherwise race.
     nonisolated static func widgetInboxURL() -> URL {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home
-            .appendingPathComponent("Library/Containers/com.jakubzak.claudemeter.widget")
-            .appendingPathComponent("Data/Documents/api-spend.json")
+        // Reuse SessionMonitor's constant: the appex's bundle ID is
+        // `…claudemeter.ClaudeMeterWidget`, and hardcoding a guess here wrote the snapshot
+        // into a directory the app happily created and the widget never reads.
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(
+                "Library/Containers/\(SessionMonitor.widgetBundleID)/Data/Documents",
+                isDirectory: true,
+            )
+            .appendingPathComponent("api-spend.json")
     }
 
     private func deliverToWidget(_ snapshot: ApiSpendSnapshot) {
