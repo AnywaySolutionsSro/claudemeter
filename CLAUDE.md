@@ -139,6 +139,23 @@ can look off late in a local evening. The Admin API needs an **organization** �
 accounts get nothing. There is **no documented balance endpoint**; when one ships it becomes
 another field on `ApiSpendSnapshot`.
 
+**The Cost API reports COMPLETED UTC days only.** `ending_at` is silently clamped to the start
+of the current day, and a range that then collapses to zero length is rejected with **HTTP 400
+"Invalid date range: ending date must be after starting date"** — a misleading message, since
+the dates you sent really are in order. Verified 2026-09-01: `Aug 30 → Sep 02` returns only the
+Aug 30 and Aug 31 buckets. Consequences: **there is no "today" figure** (the UI shows
+*Yesterday* = most recent completed day), and month-to-date on the **1st of a month** is an
+empty range that 400s. `CostWindow.monthToDate` therefore always reaches back at least one full
+day, and `ApiSpendSnapshot.monthToDateUSD(now:)` filters the fetched window to the current month
+so that reach-back day isn't miscounted.
+
+**Never call `AdminKeyStore.load()` from a SwiftUI body.** A Keychain read that returns the
+secret (`kSecReturnData: true`) is authorization-gated and makes macOS prompt for the login
+password; a **metadata-only** query is not. `MenuContentView` re-evaluates every second (the
+countdown ticker), so a `hasKey` that loaded the secret produced a password prompt per second.
+`hasKey` uses `Keychain.exists` (metadata only) and `ApiSpendStore` caches it in a `@Published`
+property, mirroring how `AuthModel` caches `state` instead of re-reading the Keychain.
+
 **Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
 app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
 dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:

@@ -39,13 +39,13 @@ struct ApiSpendWidgetView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("API").font(.caption2).foregroundStyle(.secondary)
             if let snapshot = entry.snapshot {
-                Text(Formatting.usd(snapshot.totalUSD))
+                Text(Formatting.usd(snapshot.monthToDateUSD(now: entry.date)))
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                 Text("this month").font(.caption2).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                Text("Today \(Formatting.usd(snapshot.todayUSD(now: entry.date)))")
+                Text("Yesterday \(Formatting.usd(snapshot.latestDayUSD))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {

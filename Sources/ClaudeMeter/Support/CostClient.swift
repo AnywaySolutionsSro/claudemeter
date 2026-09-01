@@ -56,12 +56,13 @@ struct CostClient {
     private func requestPage(
         key: AdminKey, now: Date, cursor: String?,
     ) async throws -> CostReportDecoder.Page {
+        let window = CostWindow.monthToDate(now: now)
         var components = URLComponents(
             url: Self.base.appendingPathComponent("cost_report"), resolvingAgainstBaseURL: false,
         )!
         var items = [
-            URLQueryItem(name: "starting_at", value: Self.iso(Self.startOfUTCMonth(now))),
-            URLQueryItem(name: "ending_at", value: Self.iso(Self.startOfNextUTCDay(now))),
+            URLQueryItem(name: "starting_at", value: Self.iso(window.start)),
+            URLQueryItem(name: "ending_at", value: Self.iso(window.end)),
             URLQueryItem(name: "group_by[]", value: "description"),
             URLQueryItem(name: "limit", value: String(Self.maxDailyBuckets)),
         ]
@@ -116,23 +117,5 @@ struct CostClient {
         formatter.formatOptions = [.withInternetDateTime]
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.string(from: date)
-    }
-
-    private static var utcCalendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
-        return calendar
-    }
-
-    private static func startOfUTCMonth(_ now: Date) -> Date {
-        let components = utcCalendar.dateComponents([.year, .month], from: now)
-        return utcCalendar.date(from: components) ?? now
-    }
-
-    /// Exclusive upper bound: the API's `ending_at` must pass the end of today's bucket
-    /// for today's partial spend to be included.
-    private static func startOfNextUTCDay(_ now: Date) -> Date {
-        let startOfToday = utcCalendar.startOfDay(for: now)
-        return utcCalendar.date(byAdding: .day, value: 1, to: startOfToday) ?? now
     }
 }

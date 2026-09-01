@@ -91,6 +91,7 @@ struct ApiSettingsSection: View {
             try keys.save(key)
             entry = ""
             hasKey = true
+            spend.refreshKeyState()
             verify()
         } catch {
             status = .failed("Couldn't save to the Keychain: \(error.localizedDescription)")

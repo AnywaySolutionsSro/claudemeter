@@ -52,6 +52,23 @@ struct Keychain {
         return Item(data: data, account: dict[kSecAttrAccount as String] as? String)
     }
 
+    /// Does an item exist, without reading its secret?
+    ///
+    /// Returning the value (`kSecReturnData`) is authorization-gated and makes macOS prompt
+    /// for the login password when the ACL doesn't already trust this binary. A
+    /// **metadata-only** query is not gated, so existence checks — which views ask for
+    /// constantly — must never request the data.
+    func exists(account: String?) -> Bool {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: false,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let account { query[kSecAttrAccount as String] = account }
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
     /// Update the existing item in place (matching the same service + account so we never
     /// clobber or duplicate Claude Code's credential).
     func write(_ data: Data, account: String?) throws {

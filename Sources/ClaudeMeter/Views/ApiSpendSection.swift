@@ -17,9 +17,11 @@ struct ApiSpendSection: View {
                     .foregroundStyle(.secondary)
 
                 if let snapshot = store.snapshot {
-                    row("Today", Formatting.usd(snapshot.todayUSD(now: now)))
-                    row("Month to date", Formatting.usd(snapshot.totalUSD))
-                    ForEach(Array(snapshot.byModel.prefix(3)), id: \.model) { entry in
+                    // The Cost API reports completed UTC days only — today's spend does
+                    // not exist yet, so the freshest real figure is the last full day.
+                    row("Yesterday", Formatting.usd(snapshot.latestDayUSD))
+                    row("Month to date", Formatting.usd(snapshot.monthToDateUSD(now: now)))
+                    ForEach(Array(snapshot.byModel(now: now).prefix(3)), id: \.model) { entry in
                         row(shortModel(entry.model), Formatting.usd(entry.amountUSD), indented: true)
                     }
                 } else if store.isLoading {

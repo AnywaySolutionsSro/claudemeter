@@ -20,6 +20,9 @@ final class ApiSpendStore: ObservableObject {
     @Published private(set) var snapshot: ApiSpendSnapshot?
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
+    /// Cached like `AuthModel.state`: the dropdown asks this once a second, and hitting the
+    /// Keychain that often is what made macOS prompt repeatedly.
+    @Published private(set) var hasKey: Bool
 
     private let client: CostClient
     private let keys: AdminKeyStore
@@ -29,10 +32,14 @@ final class ApiSpendStore: ObservableObject {
     init(client: CostClient = CostClient(), keys: AdminKeyStore = AdminKeyStore()) {
         self.client = client
         self.keys = keys
+        hasKey = keys.hasKey
         snapshot = Self.readCache()
     }
 
-    var hasKey: Bool { keys.hasKey }
+    /// Re-read after Settings saves or clears the key.
+    func refreshKeyState() {
+        hasKey = keys.hasKey
+    }
 
     func start() {
         timer?.invalidate()
@@ -70,6 +77,7 @@ final class ApiSpendStore: ObservableObject {
 
     /// Forget everything when the key is removed, so no stale figures linger.
     func reset() {
+        hasKey = false
         snapshot = nil
         errorMessage = nil
         lastFetch = nil

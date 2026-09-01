@@ -38,25 +38,29 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
         self.fetchedAt = fetchedAt
     }
 
-    /// Total across the whole fetched window. The store requests exactly month-to-date,
-    /// so this is what the UI labels "Month to date".
-    public var totalUSD: Decimal { days.reduce(0) { $0 + $1.amountUSD } }
-
-    public var isEmpty: Bool { totalUSD == 0 }
-
-    /// Spend in the UTC day containing `now`; zero when that bucket hasn't appeared yet.
-    public func todayUSD(now: Date) -> Decimal {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
-        return days
-            .first { calendar.isDate($0.start, inSameDayAs: now) }?
-            .amountUSD ?? 0
+    /// Spend so far in the UTC month containing `now`.
+    ///
+    /// Filtered rather than a plain total: on the first of a month the fetched window
+    /// deliberately reaches back into the previous month (see `CostWindow`), and those days
+    /// must not count toward this month.
+    public func monthToDateUSD(now: Date) -> Decimal {
+        daysInMonth(of: now).reduce(0) { $0 + $1.amountUSD }
     }
 
-    /// Per-model totals across every day, most expensive first.
-    public var byModel: [ModelSpend] {
+    /// The most recent **completed** day. The Cost API never reports the current day, so this
+    /// — not "today" — is the freshest figure that exists.
+    public var latestDay: CostDay? {
+        days.max { $0.start < $1.start }
+    }
+
+    public var latestDayUSD: Decimal { latestDay?.amountUSD ?? 0 }
+
+    public var isEmpty: Bool { days.isEmpty }
+
+    /// Per-model totals for the UTC month containing `now`, most expensive first.
+    public func byModel(now: Date) -> [ModelSpend] {
         var totals: [String: Decimal] = [:]
-        for day in days {
+        for day in daysInMonth(of: now) {
             for entry in day.byModel {
                 totals[entry.model, default: 0] += entry.amountUSD
             }
@@ -64,6 +68,14 @@ public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
         return totals
             .map { ModelSpend(model: $0.key, amountUSD: $0.value) }
             .sorted(by: Self.mostExpensiveFirst)
+    }
+
+    private func daysInMonth(of now: Date) -> [CostDay] {
+        let calendar = CostWindow.utcCalendar
+        let month = calendar.dateComponents([.year, .month], from: now)
+        return days.filter {
+            calendar.dateComponents([.year, .month], from: $0.start) == month
+        }
     }
 
     /// Descending by amount, then alphabetical so equal amounts have a stable order.

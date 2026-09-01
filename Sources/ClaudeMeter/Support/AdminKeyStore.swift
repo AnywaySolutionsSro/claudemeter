@@ -12,7 +12,10 @@ struct AdminKeyStore {
 
     private let keychain = Keychain(service: service)
 
-    var hasKey: Bool { load() != nil }
+    /// Existence only — deliberately does NOT read the secret. `load()` is
+    /// authorization-gated and prompts for the login password; this is called from SwiftUI
+    /// bodies that re-evaluate every second.
+    var hasKey: Bool { keychain.exists(account: Self.account) }
 
     func load() -> AdminKey? {
         guard
