@@ -8,18 +8,24 @@ final class SettingsWindowController: NSObject {
     private let settings: Settings
     private let auth: AuthModel
     private let updates: UpdateService
+    private let apiSpend: ApiSpendStore
     private var window: NSWindow?
 
-    init(settings: Settings, auth: AuthModel, updates: UpdateService) {
+    init(settings: Settings, auth: AuthModel, updates: UpdateService, apiSpend: ApiSpendStore) {
         self.settings = settings
         self.auth = auth
         self.updates = updates
+        self.apiSpend = apiSpend
         super.init()
     }
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(settings: settings, auth: auth, updates: updates))
+            let hosting = NSHostingController(
+                rootView: SettingsView(
+                    settings: settings, auth: auth, updates: updates, apiSpend: apiSpend,
+                ),
+            )
             // A hosted NSWindow does not follow its root view's preferred size on
             // its own, unlike NSPopover. Without this, `SettingsView`'s reactive
             // frame changes when the text size setting changes but the window keeps

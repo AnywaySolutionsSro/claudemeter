@@ -28,14 +28,35 @@ struct Keychain {
 
     let service: String
 
-    func read() throws -> Item {
-        let query: [String: Any] = [
+    /// Store this item in the **data-protection** keychain rather than the legacy
+    /// file-based login keychain.
+    ///
+    /// The legacy keychain ignores `kSecAttrAccessible` and its file is carried by Time
+    /// Machine and Migration Assistant — acceptable for a short-lived OAuth token, not for
+    /// a Console admin key that grants full organization access. The two keychains are
+    /// separate stores, so this must be consistent across every query for an item or it
+    /// becomes invisible to its own accessors.
+    var dataProtection = false
+
+    private var scopeAttributes: [String: Any] {
+        guard dataProtection else { return [:] }
+        return [
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrSynchronizable as String: false,
+        ]
+    }
+
+    func read(account: String? = nil) throws -> Item {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecReturnData as String: true,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if let account { query[kSecAttrAccount as String] = account }
+        query.merge(scopeAttributes) { current, _ in current }
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -52,6 +73,24 @@ struct Keychain {
         return Item(data: data, account: dict[kSecAttrAccount as String] as? String)
     }
 
+    /// Does an item exist, without reading its secret?
+    ///
+    /// Returning the value (`kSecReturnData`) is authorization-gated and makes macOS prompt
+    /// for the login password when the ACL doesn't already trust this binary. A
+    /// **metadata-only** query is not gated, so existence checks — which views ask for
+    /// constantly — must never request the data.
+    func exists(account: String?) -> Bool {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: false,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let account { query[kSecAttrAccount as String] = account }
+        query.merge(scopeAttributes) { current, _ in current }
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
     /// Update the existing item in place (matching the same service + account so we never
     /// clobber or duplicate Claude Code's credential).
     func write(_ data: Data, account: String?) throws {
@@ -60,6 +99,7 @@ struct Keychain {
             kSecAttrService as String: service,
         ]
         if let account { query[kSecAttrAccount as String] = account }
+        query.merge(scopeAttributes) { current, _ in current }
 
         let attributes: [String: Any] = [kSecValueData as String: data]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
@@ -80,6 +120,7 @@ struct Keychain {
             kSecAttrService as String: service,
         ]
         if let account { query[kSecAttrAccount as String] = account }
+        query.merge(scopeAttributes) { current, _ in current }
 
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

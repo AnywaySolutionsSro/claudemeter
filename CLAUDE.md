@@ -112,6 +112,129 @@ summary notifies if armed sessions never became eligible.
   believes it's older than the latest release, so the real download/verify/swap/relaunch path can
   be exercised against a genuine notarized release.
 
+### API spend feature (Claude API cost, separate credential)
+
+Subscription usage and **API spend** are different products with different logins. API spend
+comes from the **documented** Admin API (`GET /v1/organizations/cost_report`), authenticated
+with a Console **Admin API key** (`sk-ant-admin01-…`) held in ClaudeMeter's own Keychain item
+`com.jakubzak.claudemeter.adminkey`.
+
+- **Core** (pure/TDD): `AdminKey` (prefix validation), `CostReportDecoder` → `ApiSpendSnapshot`
+  (`CostDay` / `ModelSpend`), `Formatting.usd`.
+- **App**: `AdminKeyStore`, `CostClient` (paginating), `ApiSpendStore` (@MainActor, 15-min tick
+  + dropdown-open refresh throttled to 5 min), `ApiSpendSection`, `ApiSettingsSection`.
+- **Widget**: kind `ClaudeApiSpend` (`Widget/ApiSpendWidget.swift`), reading `api-spend.json`
+  from its own container — the app cannot deliver into the App Group container a sandboxed
+  widget can read, same constraint as `snapshot.json`. Kept a **separate file** because the two
+  producers run on different cadences and would race on one.
+
+**`amount` is a decimal string in CENTS, not dollars** — `"103.1554"` is $1.03. Reading it as
+dollars overstates spend 100x. The division lives in `CostReportDecoder` alone, pinned by a
+regression test. **`limit` defaults to 7 daily buckets** regardless of the date range and
+silently truncates a month query, so `CostClient` always sends it and follows
+`has_more`/`next_page`. Input and output arrive as separate rows per day and must be summed.
+
+Buckets are UTC-aligned; we present UTC days so figures match the invoice, which means "Today"
+can look off late in a local evening. The Admin API needs an **organization** — individual
+accounts get nothing. There is **no documented balance endpoint**; when one ships it becomes
+another field on `ApiSpendSnapshot`.
+
+**The Cost API reports COMPLETED UTC days only.** `ending_at` is silently clamped to the start
+of the current day, and a range that then collapses to zero length is rejected with **HTTP 400
+"Invalid date range: ending date must be after starting date"** — a misleading message, since
+the dates you sent really are in order. Verified 2026-09-01: `Aug 30 → Sep 02` returns only the
+Aug 30 and Aug 31 buckets. Consequences: **there is no "today" figure** (the UI shows
+*Yesterday* = most recent completed day), and month-to-date on the **1st of a month** is an
+empty range that 400s. `CostWindow.trailing` spans from the start of the **previous** month (which
+also feeds the "Last month" row and makes the range structurally non-empty), and `ApiSpendSnapshot.monthToDateUSD(now:)` / `previousMonthUSD(now:)` filter that window by UTC
+month. A ~62-day span exceeds the API's **31-bucket cap**, so pagination is mandatory, not
+optional — verified: Jul 1 → Sep 1 returns July, then August.
+
+**Never call `AdminKeyStore.load()` from a SwiftUI body.** A Keychain read that returns the
+secret (`kSecReturnData: true`) is authorization-gated and makes macOS prompt for the login
+password; a **metadata-only** query is not. `MenuContentView` re-evaluates every second (the
+countdown ticker), so a `hasKey` that loaded the secret produced a password prompt per second.
+`hasKey` uses `Keychain.exists` (metadata only) and `ApiSpendStore` caches it in a `@Published`
+property, mirroring how `AuthModel` caches `state` instead of re-reading the Keychain.
+
+**The widget's bundle ID is `com.jakubzak.claudemeter.ClaudeMeterWidget`**, not
+`…claudemeter.widget`. Always build the inbox path from `SessionMonitor.widgetBundleID` — a
+hardcoded guess fails **silently**, because the non-sandboxed app cheerfully creates the wrong
+container directory and writes there, so the delivery "succeeds" while the widget reads an
+empty container forever. Verify with
+`ls ~/Library/Containers/com.jakubzak.claudemeter.ClaudeMeterWidget/Data/Documents/` — both
+`snapshot.json` and `api-spend.json` must be there.
+
+**A NEW widget kind needs `~/Library/Caches/com.apple.chrono` purged.** Adding a widget to
+`ClaudeMeterWidgetBundle` is not picked up by the documented recovery for *sizes*
+(`pluginkit -r`/`-a` + `lsregister -f` + `killall chronod`) — chronod caches the enumerated
+**descriptors** on disk, and that cache survives all of it, so the gallery keeps showing the old
+set while the binary plainly contains the new one (2026-09-01, `ClaudeApiSpend`). Recovery:
+
+```bash
+killall chronod; rm -rf ~/Library/Caches/com.apple.chrono
+pluginkit -r <appex>; pluginkit -a <appex>; killall chronod
+```
+
+Confirm with the kinds chronod actually knows — this is the diagnostic that ends the guessing:
+
+```bash
+/usr/bin/log show --last 2m --predicate 'process == "chronod"' \
+  | grep -oE "ClaudeMeterWidget:[A-Za-z]+" | sort -u
+```
+
+Also worth clearing: the self-updater leaves `~/.Trash/ClaudeMeter.app.previous` registered with
+LaunchServices, and `lsregister -u` cannot remove it once the file is gone. It appeared harmless
+here (`pluginkit` still resolved to `/Applications`), but it is noise when diagnosing.
+
+**The admin key stays in the LEGACY login keychain, and that is a known, accepted
+exposure.** `AdminKeyStore` tries the data-protection keychain first
+(`kSecUseDataProtectionKeychain` + `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) and falls
+back to the login keychain. The fallback is **not optional**: the data-protection keychain
+returns **-34018 `errSecMissingEntitlement`** for this app (verified 2026-09-01, on a dev
+build that *does* carry `com.apple.application-identifier`), and a Developer ID release build
+has no provisioning profile at all — so a data-protection-only store would work on a dev
+machine and silently make the key unsaveable in every shipped build. Which store won is logged at `.notice`, category
+`adminkey`.
+
+**This is a decided trade-off, not an open bug — don't reopen it.** The key lives in
+`login.keychain-db`, which Time Machine and Migration Assistant *do* carry (so it survives a
+machine migration and the same signed app can still read it — keychain ACLs follow the code
+signature, not the hardware). Jakub reviewed and accepted this on 2026-09-01: the exposure is
+the macOS norm for a Developer ID app, and **Anthropic's own Claude Code and Claude desktop
+app store their credentials in the same login keychain on the same machine**, as do Chrome,
+Arc, VS Code and NordVPN. Closing it would need the `keychain-access-groups` entitlement plus
+the Keychain Sharing capability on the App ID — feasible (the app already embeds a
+provisioning profile for App Groups) but not worth it for this. If you want to reduce risk,
+reduce the credential's *privilege* (a service-account key, or an expiring key), not its
+storage tier.
+
+**Never surface `UsageError` from the Cost API path.** Its copy is about the OAuth
+subscription login ("Run `claude` and sign in"), a different credential; showing it for a
+rejected admin key told users to re-authenticate something that was never broken. Cost paths
+throw `CostError` (`invalidAdminKey` / `notAnOrganization` / `keyUnreadable` /
+`unreadableReport` / …).
+
+**A degraded cost report is an error, not a number.** `CostAmount.parse` rejects anything that
+is not a complete decimal — `Decimal(string:)` alone **truncates** (`"1,234.5678"` → `1`, a
+1000x understatement) — and accepts a JSON number as well as a string, so a shape change
+degrades to a correct reading instead of a confident $0.00. `CostReportDecoder` counts skipped
+rows/buckets, `CostPageAccumulator` dedupes days by `start` and refuses a repeated cursor or an
+exhausted page budget, and `CostClient` throws `unreadableReport` if anything was skipped. The
+previous good snapshot is kept; the cache and widget file are never overwritten with a partial
+or zeroed reading.
+
+**Every figure ships with its age.** `ApiSpendStore` publishes `lastUpdated` and `statusNote`
+(mirroring `UsageStore.present(_:)`), the dropdown shows the fetch time and marks >24 h stale,
+and the widget renders "as of …" plus `—` rather than `$0.00` when its snapshot predates the
+month asked about. `Formatting.usd` rounds **half-up** (to match the invoice, not
+`NumberFormatter`'s half-even default) and renders `<$0.01` for real sub-cent spend.
+
+**Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
+app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
+dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:
+category `apispend` at `.notice` (failures only).
+
 **`./build.sh` always builds the full app + widget extension** (XcodeGen project from
 `project.yml`, dev-team signed). Jakub uses the widget — never install a widget-less build,
 or macOS silently deletes his placed widgets. `./build.sh --spm` remains as the widget-less
