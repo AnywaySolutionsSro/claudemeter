@@ -194,10 +194,20 @@ back to the login keychain. The fallback is **not optional**: the data-protectio
 returns **-34018 `errSecMissingEntitlement`** for this app (verified 2026-09-01, on a dev
 build that *does* carry `com.apple.application-identifier`), and a Developer ID release build
 has no provisioning profile at all — so a data-protection-only store would work on a dev
-machine and silently make the key unsaveable in every shipped build. Consequence to accept:
-the key lives in `login.keychain-db`, which Time Machine and Migration Assistant carry.
-Closing this needs a `keychain-access-groups` entitlement, which does not fit Developer ID
-distribution. Which store won is logged at `.notice`, category `adminkey`.
+machine and silently make the key unsaveable in every shipped build. Which store won is logged at `.notice`, category
+`adminkey`.
+
+**This is a decided trade-off, not an open bug — don't reopen it.** The key lives in
+`login.keychain-db`, which Time Machine and Migration Assistant *do* carry (so it survives a
+machine migration and the same signed app can still read it — keychain ACLs follow the code
+signature, not the hardware). Jakub reviewed and accepted this on 2026-09-01: the exposure is
+the macOS norm for a Developer ID app, and **Anthropic's own Claude Code and Claude desktop
+app store their credentials in the same login keychain on the same machine**, as do Chrome,
+Arc, VS Code and NordVPN. Closing it would need the `keychain-access-groups` entitlement plus
+the Keychain Sharing capability on the App ID — feasible (the app already embeds a
+provisioning profile for App Groups) but not worth it for this. If you want to reduce risk,
+reduce the credential's *privilege* (a service-account key, or an expiring key), not its
+storage tier.
 
 **Never surface `UsageError` from the Cost API path.** Its copy is about the OAuth
 subscription login ("Run `claude` and sign in"), a different credential; showing it for a
