@@ -164,6 +164,28 @@ empty container forever. Verify with
 `ls ~/Library/Containers/com.jakubzak.claudemeter.ClaudeMeterWidget/Data/Documents/` — both
 `snapshot.json` and `api-spend.json` must be there.
 
+**A NEW widget kind needs `~/Library/Caches/com.apple.chrono` purged.** Adding a widget to
+`ClaudeMeterWidgetBundle` is not picked up by the documented recovery for *sizes*
+(`pluginkit -r`/`-a` + `lsregister -f` + `killall chronod`) — chronod caches the enumerated
+**descriptors** on disk, and that cache survives all of it, so the gallery keeps showing the old
+set while the binary plainly contains the new one (2026-09-01, `ClaudeApiSpend`). Recovery:
+
+```bash
+killall chronod; rm -rf ~/Library/Caches/com.apple.chrono
+pluginkit -r <appex>; pluginkit -a <appex>; killall chronod
+```
+
+Confirm with the kinds chronod actually knows — this is the diagnostic that ends the guessing:
+
+```bash
+/usr/bin/log show --last 2m --predicate 'process == "chronod"' \
+  | grep -oE "ClaudeMeterWidget:[A-Za-z]+" | sort -u
+```
+
+Also worth clearing: the self-updater leaves `~/.Trash/ClaudeMeter.app.previous` registered with
+LaunchServices, and `lsregister -u` cannot remove it once the file is gone. It appeared harmless
+here (`pluginkit` still resolved to `/Applications`), but it is noise when diagnosing.
+
 **Don't seed the key with `/usr/bin/security`.** An item created by another binary fails the
 app's code-signature ACL, so `AdminKeyStore.load()` silently returns nil and the feature looks
 dead with no log line. Paste the key in Settings so the app creates the item itself. Logs:
