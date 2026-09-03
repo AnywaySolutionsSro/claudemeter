@@ -5,9 +5,11 @@ import Foundation
 /// This is what makes byte-offset resumption possible: instead of re-parsing a
 /// whole file each scan, the scanner keeps one accumulator per file and folds
 /// only the newly appended records into it. `message.id` dedup happens at fold
-/// time (Claude Code writes one JSONL entry per content block, all repeating the
-/// same id and identical usage), and two accumulators can `merged(with:)` so a
-/// parent transcript and its subagent transcripts combine into one session.
+/// time: Claude Code writes one JSONL entry per content block, all repeating the
+/// same id, but the usage is NOT identical — the first entry carries the
+/// streaming-partial `output_tokens` and a later one the final count — so the
+/// largest reading per id wins. Two accumulators can `merged(with:)` so a parent
+/// transcript and its subagent transcripts combine into one session.
 public struct SessionAccumulator: Equatable, Sendable {
     /// A folded record's contribution to the trailing burn-rate window.
     private struct BurnEvent: Equatable, Sendable {
@@ -27,7 +29,9 @@ public struct SessionAccumulator: Equatable, Sendable {
     /// its birth directory and never matches its process again.
     private var lastCwd: String?
     private var lastCwdStamp: Date?
-    private var seenMessageIDs: Set<String> = []
+    /// Best reading seen per `message.id`, so a later entry with the final
+    /// `output_tokens` can replace the streaming-partial one already folded.
+    private var seenMessageIDs: [String: TokenBreakdown] = [:]
     private var burnEvents: [BurnEvent] = []
     /// Model of the newest record that carried one, with its timestamp — "the
     /// model being used", unlike `models` which is the alphabetical full set.
@@ -40,10 +44,19 @@ public struct SessionAccumulator: Equatable, Sendable {
 
     public var isEmpty: Bool { messageCount == 0 }
 
-    /// Fold one record in. Records repeating an already-seen `message.id` are
-    /// dropped; records without an id (older transcripts) always count.
+    /// Fold one record in. A record repeating an already-seen `message.id` only
+    /// contributes the growth over the reading already folded (or nothing);
+    /// records without an id (older transcripts) always count.
     public mutating func fold(_ record: AssistantUsageRecord) {
-        if let id = record.messageID, !seenMessageIDs.insert(id).inserted { return }
+        if let id = record.messageID, let previous = seenMessageIDs[id] {
+            guard record.tokens.total > previous.total else { return }
+            let delta = record.tokens - previous
+            seenMessageIDs[id] = record.tokens
+            tokens += delta
+            burnEvents.append(BurnEvent(timestamp: record.timestamp, total: delta.total))
+            return
+        }
+        if let id = record.messageID { seenMessageIDs[id] = record.tokens }
 
         tokens += record.tokens
         if let model = record.model {
@@ -85,7 +98,23 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.lastTimestamp = [lastTimestamp, other.lastTimestamp].compactMap(\.self).max()
         result.lastCwd = lastCwd ?? other.lastCwd
         result.lastCwdStamp = lastCwd != nil ? lastCwdStamp : other.lastCwdStamp
-        result.seenMessageIDs = seenMessageIDs.union(other.seenMessageIDs)
+        // An id folded on both sides was counted twice: keep the larger reading
+        // and take the smaller one back out.
+        var seen = seenMessageIDs
+        var duplicated = TokenBreakdown.zero
+        var duplicateCount = 0
+        for (id, reading) in other.seenMessageIDs {
+            if let mine = seen[id] {
+                duplicated += reading.total > mine.total ? mine : reading
+                duplicateCount += 1
+                if reading.total > mine.total { seen[id] = reading }
+            } else {
+                seen[id] = reading
+            }
+        }
+        result.seenMessageIDs = seen
+        result.tokens = tokens + other.tokens - duplicated
+        result.messageCount = messageCount + other.messageCount - duplicateCount
         result.burnEvents = burnEvents + other.burnEvents
         if lastModel == nil {
             result.lastModel = other.lastModel

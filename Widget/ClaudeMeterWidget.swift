@@ -15,6 +15,15 @@ struct SnapshotEntry: TimelineEntry {
     /// any not-yet-applied widget taps folded in, so a tap reflects immediately.
     let effectiveArmed: Set<String>
 
+    /// The app stopped publishing (quit, crashed, asleep): "N running" and the arm
+    /// toggles would otherwise describe sessions that may have ended days ago.
+    var isStale: Bool {
+        guard let snapshot else { return false }
+        return date.timeIntervalSince(snapshot.generatedAt) > Self.staleAfter
+    }
+
+    static let staleAfter: TimeInterval = 15 * 60
+
     /// Representative content for the gallery preview / first paint.
     static var sample: SnapshotEntry {
         let now = Date()
@@ -134,15 +143,18 @@ struct GaugeRingView: View {
         return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
     }
 
-    /// Compact "4h9m" / "12m" countdown until a window resets.
+    /// Compact "4h9m" / "12m" countdown until a window resets; "reset" once it has
+    /// passed (the ring then shows a pre-reset figure the app hasn't refreshed yet).
     static func resetShort(_ date: Date) -> String {
-        let secs = Int(max(0, date.timeIntervalSinceNow))
+        let remaining = date.timeIntervalSinceNow
+        guard remaining > 0 else { return "reset" }
+        let secs = Int(remaining)
         let h = secs / 3600, m = (secs % 3600) / 60
         return h > 0 ? "\(h)h\(m)m" : "\(m)m"
     }
 }
 
-private var noGaugeData: some View {
+var noGaugeData: some View {
     VStack(spacing: 6) {
         Image(systemName: "gauge.with.dots.needle.67percent")
             .font(.system(size: 22)).foregroundStyle(.secondary)
@@ -159,7 +171,8 @@ struct ClaudeMeterWidgetEntryView: View {
     private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
     private var armedIDs: Set<String> { entry.effectiveArmed }
-    private var armableIDs: Set<String> { Set(entry.snapshot?.armableSessionIDs ?? []) }
+    /// Nothing is armable from a stale snapshot: the processes it names may be gone.
+    private var armableIDs: Set<String> { entry.isStale ? [] : Set(entry.snapshot?.armableSessionIDs ?? []) }
     private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
 
     var body: some View {
@@ -196,14 +209,22 @@ struct ClaudeMeterWidgetEntryView: View {
         }
     }
 
-    private var livePill: some View {
-        HStack(spacing: 3) {
-            Circle().fill(Color.green).frame(width: 6, height: 6)
-            Text("\(entry.snapshot?.runningCount ?? 0)")
-                .font(.system(size: 11, weight: .bold)).monospacedDigit()
+    @ViewBuilder private var livePill: some View {
+        if entry.isStale, let generated = entry.snapshot?.generatedAt {
+            Text("as of " + generated.formatted(date: .omitted, time: .shortened))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(Color.orange.opacity(0.15)))
+        } else {
+            HStack(spacing: 3) {
+                Circle().fill(Color.green).frame(width: 6, height: 6)
+                Text("\(entry.snapshot?.runningCount ?? 0)")
+                    .font(.system(size: 11, weight: .bold)).monospacedDigit()
+            }
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(Capsule().fill(Color.green.opacity(0.15)))
         }
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(Capsule().fill(Color.green.opacity(0.15)))
     }
 
     // MARK: Session bar
@@ -376,93 +397,5 @@ struct ClaudeMeterWidgetEntryView: View {
             Image(systemName: "moon.zzz").font(.system(size: 18)).foregroundStyle(.secondary)
             Text("No active sessions").font(.system(size: 11)).foregroundColor(.secondary)
         }
-    }
-}
-
-// MARK: - Single-gauge small widget (one per account window)
-
-/// Small widget showing exactly one gauge, picked by its position in the
-/// snapshot's gauge list (0 = Session, 1 = Weekly, 2 = the weekly model window).
-struct SingleGaugeView: View {
-    let entry: SnapshotEntry
-    let slot: Int
-
-    private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
-
-    var body: some View {
-        Group {
-            if slot < gauges.count {
-                VStack {
-                    Spacer(minLength: 0)
-                    GaugeRingView(gauge: gauges[slot], size: 96)
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                noGaugeData
-            }
-        }
-        .padding(12)
-        .containerBackground(.background, for: .widget)
-    }
-}
-
-/// Each `Widget` conformer needs its own `init()`, so the three single-gauge
-/// widgets are distinct types (sharing `SingleGaugeView`) rather than one
-/// parameterized struct — that also gives each a stable `kind` and gallery name.
-struct SessionGaugeWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "ClaudeGaugeSession", provider: Provider()) { entry in
-            SingleGaugeView(entry: entry, slot: 0)
-        }
-        .configurationDisplayName("Claude · Session (5h)")
-        .description("The 5-hour session window as a circular gauge.")
-        .supportedFamilies([.systemSmall])
-    }
-}
-
-struct WeeklyGaugeWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "ClaudeGaugeWeekly", provider: Provider()) { entry in
-            SingleGaugeView(entry: entry, slot: 1)
-        }
-        .configurationDisplayName("Claude · Weekly")
-        .description("The weekly usage window as a circular gauge.")
-        .supportedFamilies([.systemSmall])
-    }
-}
-
-struct ModelGaugeWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "ClaudeGaugeModel", provider: Provider()) { entry in
-            SingleGaugeView(entry: entry, slot: 2)
-        }
-        .configurationDisplayName("Claude · Weekly model")
-        .description("The weekly per-model window (Opus / Sonnet) as a circular gauge.")
-        .supportedFamilies([.systemSmall])
-    }
-}
-
-// MARK: - Bundle
-
-struct ClaudeMeterWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "ClaudeMeterWidget", provider: Provider()) { entry in
-            ClaudeMeterWidgetEntryView(entry: entry)
-        }
-        .configurationDisplayName("Claude Sessions")
-        .description("Medium shows account usage gauges; Large and Extra Large show live Claude Code sessions.")
-        .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
-    }
-}
-
-@main
-struct ClaudeMeterWidgetBundle: WidgetBundle {
-    var body: some Widget {
-        ClaudeMeterWidget()
-        SessionGaugeWidget()
-        WeeklyGaugeWidget()
-        ModelGaugeWidget()
-        ApiSpendWidget()
     }
 }

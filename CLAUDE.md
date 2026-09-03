@@ -31,16 +31,21 @@ A second subsystem reads local Claude Code transcripts and shows per-session tok
 - **Core** (`ClaudeMeterCore`, pure/TDD, **Swift 6 strict mode**): `TranscriptParser` (lenient
   JSONL → usage records; `<synthetic>` placeholder entries skipped), `SessionAccumulator`
   (incrementally foldable aggregate; headline total = input+output+cacheCreation, cache-reads
-  tracked separately; **deduped by `message.id`** — Claude Code writes one JSONL entry per
-  content block, each repeating the same id and identical usage, so counting every entry
-  inflates totals 2–4x), `RunningResolver` (which sessions are live — ranks by transcript file
+  tracked separately; **deduped by `message.id`, keeping the LARGEST reading per id** —
+  Claude Code writes one JSONL entry per content block, each repeating the same id, so
+  counting every entry inflates totals 2–4x; but the entries are NOT identical: the first
+  carries the streaming-partial `output_tokens` (often `1`) and a later one the final count,
+  so keeping the first entry undercounted output by ~50% on a real corpus (2026-09-03:
+  17k of 57k ids differed, 15.8M vs 32.5M output tokens)), `RunningResolver` (which sessions are live — ranks by transcript file
   **mtime**, not the last assistant record), `SessionScanner` (actor orchestrating
   discover→parse→resolve→snapshot; **incremental**: caches (mtime, byteOffset, accumulator) per
   file and folds only appended lines, restarting on truncation; canonicalizes session cwds with
   `realpath(3)` to match libproc's kernel-resolved cwds; probes the process table once per scan
   and computes the armable set itself), `TranscriptSource` (scan roots; **subagent transcripts
-  under `<sessionId>/subagents/` are discovered with a `parentID`** and their usage folds into
-  the parent session), `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`,
+  anywhere under `<sessionId>/subagents/` are discovered with a `parentID`** and their usage
+  folds into the parent session — walked recursively, because Workflow-tool agents write to
+  `subagents/workflows/wf_*/agent-*.jsonl`, which a one-level listing missed: 40% of all
+  local transcript tokens went uncounted until 2026-09-03), `LibprocProcessProbe` (live CLI cwds via libproc), `SnapshotStore`,
   `SessionSnapshot`.
 - **App**: `SessionMonitor` (@MainActor, scans every 10s, publishes), Sessions window
   (`SessionsView` — all sessions + "Active only" toggle), Settings window (`SettingsView`),
@@ -345,6 +350,27 @@ CodeQL runs on `main` weekly as an advisory scan (Security tab).
   aggressively.
 - **OAuth loopback redirect** (`http://localhost:<port>/callback`) is what enables the one-click
   login (`LoopbackCallbackServer`). The manual paste flow uses the hosted callback instead.
+  The server binds **127.0.0.1 only** (an `NWListener` without `requiredLocalEndpoint` listens
+  on every interface), accepts a redirect only when its `state` matches the one this login
+  sent (anything else gets a 400 and the listener keeps waiting), and times out after 10 min.
+- **Auto-resume compares against `UsageStore.snapshotForRefillDetection`, not the raw
+  snapshot.** The launch-time on-disk cache can be days old; comparing the first live fetch
+  against it looked like a refill, fired `continue` into stale sessions and burned the 1-h
+  refill cooldown so a genuine refill minutes later was ignored. A cached reading counts only
+  while younger than 5 h (an update relaunch, a quick restart). The planner also skips armed
+  sessions that are no longer `.running` — their cwd may now host a *different* session's
+  process — and the coordinator holds its baseline while the weekly window is exhausted, so a
+  5-h refill under a weekly cutoff doesn't type `continue` into a wall every 5 hours.
+- **Widget reloads are budgeted (~40–70/day for a background app).** `SessionMonitor.publish`
+  writes the snapshot file on every change but calls `reloadAllTimelines()` only when the
+  running/armed/gauge structure changes, or at most every 5 min for token-count-only changes.
+  Reloading on every 10 s scan while a session streamed (measured ~2,400/day) got the widget
+  throttled and frozen. The widget marks a snapshot older than 15 min as stale ("as of …",
+  nothing armable) rather than showing dead sessions as live.
+- **`AdminKeyStore.clear()` must tolerate the data-protection delete failing.** In a
+  Developer ID build that delete returns -34018 even when nothing is stored there; a thrown
+  error made "Remove" impossible in every shipped build. The post-delete `hasKey` check is
+  what guarantees the key is really gone.
 
 - **Claude Code CLI processes are matched by executable PATH, not name.** The CLI runs
   versioned binaries (`~/.local/share/claude/versions/<v>`), so `proc_name` returns the version

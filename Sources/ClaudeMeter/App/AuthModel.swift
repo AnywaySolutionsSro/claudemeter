@@ -53,11 +53,13 @@ final class AuthModel: ObservableObject {
             let port = try await server.start()
             let request = login.makeRequest(redirectURI: "http://localhost:\(port)/callback")
             pending = request
+            server.expectedState = request.state
             NSWorkspace.shared.open(request.url)
 
             let query = try await server.waitForCallback()
-            guard let code = query["code"] else { throw AuthError.invalidResponse }
-            if let returnedState = query["state"], returnedState != request.state {
+            // The server already refused anything without a matching state; re-check here
+            // so the model never depends on the server's filtering alone.
+            guard let code = query["code"], query["state"] == request.state else {
                 throw AuthError.invalidResponse
             }
             try await completeLogin(code: code, request: request)

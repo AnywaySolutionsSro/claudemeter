@@ -31,8 +31,16 @@ final class AccountStore: AccessTokenProvider {
 
     var isAuthenticated: Bool { (try? load()) != nil }
 
+    /// The stored tokens; `AuthError.notAuthenticated` when there is no item (never
+    /// signed in, or the item was removed outside the app), so callers land on the
+    /// signed-out path instead of a generic error.
     func load() throws -> AuthTokens {
-        let item = try keychain.read()
+        let item: Keychain.Item
+        do {
+            item = try keychain.read()
+        } catch KeychainError.notFound {
+            throw AuthError.notAuthenticated
+        }
         return try decoder.decode(AuthTokens.self, from: item.data)
     }
 
@@ -62,6 +70,11 @@ final class AccountStore: AccessTokenProvider {
             refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
             expiresAt: refreshed.expiresAt,
         )
+        // The user may have signed out (or in again) while the request was in flight.
+        // Writing now would resurrect a deleted account or clobber a newer grant.
+        guard let current = try? load(), current.refreshToken == refreshToken else {
+            throw AuthError.notAuthenticated
+        }
         try save(updated)
         return updated.accessToken
     }

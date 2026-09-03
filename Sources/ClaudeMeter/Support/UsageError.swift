@@ -15,9 +15,9 @@ enum UsageError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            "Not logged in. Run `claude` and sign in, then retry."
+            "Not signed in. Click Connect to sign in."
         case .refreshFailed:
-            "Couldn't refresh the access token. Re-login in Claude Code."
+            "Couldn't refresh the login session right now — showing the last reading."
         case .sessionExpired:
             "Your login session expired. Please sign in again."
         case .rateLimited:

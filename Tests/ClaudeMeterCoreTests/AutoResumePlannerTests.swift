@@ -199,4 +199,18 @@ struct AutoResumePlannerTests {
         #expect(p.skipped.isEmpty)
         #expect(p.window?.fired.isEmpty == true)
     }
+
+    // An armed session whose own process is gone (tab closed, /clear, a fresh
+    // `claude` started in the same folder) must never fire: the unique live
+    // process in its cwd belongs to ANOTHER session, and `continue` would land
+    // in that session's prompt.
+    @Test func armedSessionNoLongerRunningIsSkipped() {
+        let stale = session("s1", path: "/p1").withRunning(.idle)
+        let p = plan(previous: 100, current: 0, armed: ["s1"],
+                     sessions: [stale],
+                     processes: [proc(10, cwd: "/p1")], tail: { _ in [self.cutoff] })
+        #expect(p.targets.isEmpty)
+        #expect(p.skipped.first?.reason == .notRunning)
+        #expect(p.window?.fired.isEmpty == true)
+    }
 }

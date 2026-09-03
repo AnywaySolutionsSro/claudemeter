@@ -48,7 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         LoginItem.enableOnFirstLaunchIfNeeded()
         installEditMenu()
-        if settings.notificationsEnabled { notifications.requestAuthorization() }
+        // Auto-resume reports its outcomes only through notifications, so it needs the
+        // permission even when the usage nudges are switched off.
+        if settings.notificationsEnabled || settings.autoResumeEnabled { notifications.requestAuthorization() }
 
         // Fixed width (content centered) so switching modes / changing the countdown never
         // resizes the item — that would shift the button and misalign the open popover.
@@ -65,8 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
 
         auth.onSignedIn = { [weak self] in self?.store.start(); self?.updateLabel() }
-        auth.onSignedOut = { [weak self] in self?.store.clear(); self?.updateLabel() }
-        store.onEvent = { [weak self] in self?.handle($0) }
+        auth.onSignedOut = { [weak self] in
+            self?.store.clear()
+            self?.autoResume.resetBaseline()
+            self?.updateLabel()
+        }
+        store.onEvents = { [weak self] in self?.handle($0) }
         store.onAuthExpired = { [weak self] in self?.auth.sessionExpired() }
 
         // Redraw the bar on usage/auth/settings changes (e.g. async refresh, mode switch).
@@ -115,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
             // Drive auto-resume.
             self.autoResume.handleSnapshot(
-                usage: self.store.snapshot,
+                usage: self.store.snapshotForRefillDetection,
                 sessions: inputs.sessions,
                 processes: inputs.processes,
                 transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
@@ -132,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 guard let self else { return }
                 self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
                 self.requestITermAuthorizationIfNeeded()
+                if !self.armedSessions.armed.isEmpty { self.notifications.requestAuthorization() }
                 Task { await self.sessionMonitor.refresh() }
             }
             .store(in: &cancellables)
@@ -159,9 +166,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         labelTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateLabel() }
         }
+        labelTimer?.tolerance = 3
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleWake),
             name: NSWorkspace.didWakeNotification, object: nil,
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(handleSleep),
+            name: NSWorkspace.willSleepNotification, object: nil,
         )
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(handleThemeChange),
@@ -179,7 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         updates.onInstallFailed = { [weak self] message in
             self?.notifications.notify("ClaudeMeter update failed", message)
         }
-        updateResponder.onInstall = { [weak self] in self?.updates.install() }
+        // The notification may outlive the offer (relaunch, "Later"): re-check, then install.
+        updateResponder.onInstall = { [weak self] in self?.updates.checkAndInstall() }
         updateResponder.onOpen = { [weak self] in self?.openPopover() }
         notifications.installUpdateHandling(updateResponder)
         updates.start()
@@ -221,6 +234,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    /// Several thresholds crossed in one poll (85 % → 100 %) arrive as separate events;
+    /// the Shortcut and the sound must fire once, for the highest.
+    private func handle(_ events: [UsageEvent]) {
+        let crossings = events.compactMap { event -> Double? in
+            if case let .crossedThreshold(threshold, _, _) = event { return threshold }
+            return nil
+        }
+        let highest = crossings.max()
+        for event in events {
+            if case let .crossedThreshold(threshold, _, _) = event, threshold != highest { continue }
+            handle(event)
+        }
+    }
+
     private func installEditMenu() {
         let mainMenu = NSMenu()
         let editMenuItem = NSMenuItem()
@@ -234,8 +261,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    @objc private func handleSleep() {
+        autoResume.noteSleep()
+    }
+
     @objc private func handleWake() {
+        autoResume.noteWake()
         updates.checkIfDue()
+        updates.retryCurrentReleaseNotes()
         guard auth.isSignedIn else { return }
         Task { await store.refresh(); updateLabel() }
     }
@@ -276,7 +309,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func openPopover() {
-        guard let button = statusItem.button else { return }
+        // Re-entrant opens (a notification click while the popover is up) would
+        // replace the content and stack a second global mouse monitor, leaking the
+        // first one for the life of the process.
+        guard !popover.isShown, let button = statusItem.button else { return }
+        updates.retryCurrentReleaseNotes()
 
         let content = MenuContentView(
             onOpenSessions: { [weak self] in self?.openSessions() },

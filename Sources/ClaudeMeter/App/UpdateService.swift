@@ -64,6 +64,9 @@ final class UpdateService: ObservableObject {
     private var timer: Timer?
     private var checkTask: Task<Void, Never>?
     private var installTask: Task<Void, Never>?
+    /// Set by `checkAndInstall()`: the next check that finds an update installs it.
+    private var installAfterCheck = false
+    private var isLoadingCurrentRelease = false
 
     init(
         settings: Settings,
@@ -118,6 +121,7 @@ final class UpdateService: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkIfDue() }
         }
+        timer?.tolerance = Self.tickInterval / 10
     }
 
     /// Runs a background check when the daily interval has elapsed (also called on wake).
@@ -129,6 +133,25 @@ final class UpdateService: ObservableObject {
 
     /// "Check now" from Settings — ignores the interval and the auto-check switch.
     func checkNow() { check(userInitiated: true) }
+
+    /// The Install button of a notification that outlived the offer it announced (the
+    /// app relaunched, or "Later" was pressed since): re-check and install what's found.
+    /// With an offer still on the table this is a plain `install()`.
+    func checkAndInstall() {
+        if state.offeredRelease != nil, !state.isBusy {
+            install()
+            return
+        }
+        installAfterCheck = true
+        check(userInitiated: true)
+    }
+
+    /// The running version's notes failed to load (offline at launch): try again
+    /// when there is a fresh reason to (popover opened, wake).
+    func retryCurrentReleaseNotes() {
+        guard currentRelease == nil, currentVersion != nil, !isLoadingCurrentRelease else { return }
+        Task { [weak self] in await self?.loadCurrentReleaseIfNeeded(latest: nil) }
+    }
 
     private func check(userInitiated: Bool) {
         guard !state.isBusy else { return }
@@ -151,11 +174,13 @@ final class UpdateService: ObservableObject {
     /// version (no extra call), otherwise one `releases/tags/<tag>` request. Failure
     /// is silent — the notes are a nicety, not a gate.
     private func loadCurrentReleaseIfNeeded(latest: ReleaseInfo?) async {
-        guard currentRelease == nil, let currentVersion else { return }
+        guard currentRelease == nil, let currentVersion, !isLoadingCurrentRelease else { return }
         if let latest, latest.version == currentVersion {
             currentRelease = latest
             return
         }
+        isLoadingCurrentRelease = true
+        defer { isLoadingCurrentRelease = false }
         currentRelease = try? await client.fetchRelease(tag: currentVersion.tagName)
     }
 
@@ -166,6 +191,8 @@ final class UpdateService: ObservableObject {
         let decision = UpdatePolicy.decide(current: currentVersion, latest: latest, skipped: skipped)
         let latestTag = latest?.tagName ?? "none"
         log.notice("check: latest \(latestTag, privacy: .public) -> \(String(describing: decision), privacy: .public)")
+        let installFound = installNow || installAfterCheck
+        installAfterCheck = false
         switch decision {
         case .upToDate:
             state = .upToDate(checkedAt: now)
@@ -175,7 +202,7 @@ final class UpdateService: ObservableObject {
         case let .available(release):
             state = .available(release)
             if !userInitiated { onUpdateFound?(release) }
-            if installNow { install() }
+            if installFound { install() }
         }
     }
 

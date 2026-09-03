@@ -52,7 +52,8 @@ struct UsageClient {
         }
         guard (200 ..< 300).contains(http.statusCode) else {
             if http.statusCode == 429 {
-                let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+                let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { RetryAfter.seconds($0, now: now) }
                 throw UsageError.rateLimited(retryAfter: retryAfter)
             }
             throw UsageError.http(http.statusCode)

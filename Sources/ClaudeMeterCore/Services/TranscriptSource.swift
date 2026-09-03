@@ -147,8 +147,8 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
     // MARK: - CLI
 
     /// For each immediate subdirectory of `cliRoot`, collect `*.jsonl` files
-    /// directly inside it, plus subagent transcripts one level deeper at
-    /// `<sessionDir>/subagents/*.jsonl` (attributed to that session).
+    /// directly inside it, plus subagent transcripts anywhere under
+    /// `<sessionDir>/subagents/` (attributed to that session).
     private func discoverCLI() -> [TranscriptRef] {
         guard let projectDirs = try? fileManager.contentsOfDirectory(
             at: cliRoot,
@@ -179,20 +179,25 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         }
     }
 
-    /// `<sessionDir>/subagents/*.jsonl`, attributed to the session dir's name.
+    /// Every `.jsonl` under `<sessionDir>/subagents/`, attributed to the session
+    /// dir's name. Walked recursively: Workflow-tool agents live one level deeper
+    /// (`subagents/workflows/wf_*/agent-*.jsonl`) and were once missed entirely.
     private func subagentRefs(inSessionDir sessionDir: URL, origin: SessionOrigin) -> [TranscriptRef] {
         let subagentsDir = sessionDir.appendingPathComponent("subagents", isDirectory: true)
-        guard let files = try? fileManager.contentsOfDirectory(
-            at: subagentsDir,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles],
-        ) else {
+        guard isDirectory(subagentsDir),
+              let enumerator = fileManager.enumerator(
+                  at: subagentsDir,
+                  includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+                  options: [.skipsHiddenFiles],
+              )
+        else {
             return []
         }
-        return files.compactMap { url in
-            guard isTranscriptFile(url) else { return nil }
-            return makeRef(url: url, origin: origin, parentID: sessionDir.lastPathComponent)
+        var refs: [TranscriptRef] = []
+        for case let url as URL in enumerator where isTranscriptFile(url) {
+            refs.append(makeRef(url: url, origin: origin, parentID: sessionDir.lastPathComponent))
         }
+        return refs
     }
 
     // MARK: - Desktop

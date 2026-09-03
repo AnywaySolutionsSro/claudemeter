@@ -39,6 +39,9 @@ final class AutoResumeCoordinator {
     /// failure (e.g. missing Automation permission) fires dozens of identical
     /// notifications per window. Retries still log at .error every attempt.
     private var notifiedFailures: Set<String> = []
+    /// When the Mac went to sleep, so a window open across the sleep can be extended
+    /// by the slept time instead of expiring while nothing could run.
+    private var sleptAt: Date?
 
     init(armed: ArmedSessions,
          settings: Settings,
@@ -103,6 +106,27 @@ final class AutoResumeCoordinator {
             .terminalKind(forCwd: cwd, detector: terminalDetector, paths: paths, parents: parents)
     }
 
+    /// The account changed (sign-out): the last utilization belongs to someone else.
+    func resetBaseline() {
+        lastUtilization = nil
+        lastRefillAt = nil
+        window = nil
+        notifiedFailures.removeAll()
+    }
+
+    func noteSleep() { sleptAt = now() }
+
+    /// A window is wall-clock bounded; time asleep is not time in which a session
+    /// could have become eligible, so give it back.
+    func noteWake() {
+        guard let sleptAt else { return }
+        self.sleptAt = nil
+        let slept = now().timeIntervalSince(sleptAt)
+        guard slept > 0, window != nil else { return }
+        window?.deadline.addTimeInterval(slept)
+        log.notice("wake: extended resume window by \(Int(slept), format: .decimal)s slept")
+    }
+
     func handleSnapshot(
         usage: UsageSnapshot?,
         sessions: [SessionUsage],
@@ -117,6 +141,14 @@ final class AutoResumeCoordinator {
         }
         guard let bucket = usage?.fiveHour else {
             log.debug("skip: no 5h usage bucket (not signed in / no data yet)")
+            return
+        }
+        // A 5-hour refill under an exhausted weekly window resumes nothing useful:
+        // `continue` hits the weekly limit again, every 5 hours, with a notification
+        // each time. Hold the baseline instead so the eventual weekly reset reads as
+        // the drop that opens the window.
+        if UsageStats.isExhausted(usage?.sevenDay?.utilization) {
+            log.notice("skip: weekly window exhausted; holding refill baseline")
             return
         }
         let current = bucket.utilization

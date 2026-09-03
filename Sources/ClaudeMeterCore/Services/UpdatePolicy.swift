@@ -20,12 +20,13 @@ public enum UpdatePolicy {
     /// Once a day is plenty: releases are rare and the GitHub API is unauthenticated.
     public static let checkInterval: TimeInterval = 24 * 60 * 60
 
-    /// True when no check has ever run or the last one is older than `interval`.
-    /// A last-check in the future (clock skew) counts as recent rather than triggering
-    /// a burst of checks.
+    /// True when no check has ever run, the last one is older than `interval`, or the
+    /// last one is stamped in the future (the clock was ahead when it ran — treating
+    /// that as "recent" would silence the updater until that date comes around).
     public static func isCheckDue(lastCheck: Date?, now: Date, interval: TimeInterval = checkInterval) -> Bool {
         guard let lastCheck else { return true }
-        return now.timeIntervalSince(lastCheck) >= interval
+        let age = now.timeIntervalSince(lastCheck)
+        return age >= interval || age < 0
     }
 
     /// `current == nil` means the running build has no parsable version (a dev build

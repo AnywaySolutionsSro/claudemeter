@@ -54,4 +54,14 @@ final class UsageStatsTests: XCTestCase {
         ]
         XCTAssertEqual(UsageStats.maxedWindows(samples: samples, since: Date(timeIntervalSince1970: 0)), 2)
     }
+
+    // A 5-hour refill is useless while the weekly window is exhausted: typing
+    // `continue` just hits the weekly limit again. The gate treats a missing
+    // bucket as "not exhausted" so accounts without weekly data keep working.
+    func testWeeklyExhaustionGate() {
+        XCTAssertTrue(UsageStats.isExhausted(100))
+        XCTAssertTrue(UsageStats.isExhausted(120))
+        XCTAssertFalse(UsageStats.isExhausted(99.9))
+        XCTAssertFalse(UsageStats.isExhausted(nil))
+    }
 }

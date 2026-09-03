@@ -81,7 +81,15 @@ struct AdminKeyStore {
     /// that stops them revoking it in the Console.
     func clear() throws {
         // Both stores: a key may live in either, depending on how the build was signed.
-        try keychain.delete(account: Self.account)
+        // The data-protection delete fails with `errSecMissingEntitlement` (-34018) in a
+        // Developer ID build even when nothing is stored there — a thrown error here
+        // would make "Remove" impossible in every shipped build. The `hasKey` check
+        // below is what guarantees honesty, so this delete is best-effort.
+        do {
+            try keychain.delete(account: Self.account)
+        } catch {
+            Self.log.notice("data-protection keychain delete skipped: \(String(describing: error), privacy: .public)")
+        }
         try legacyKeychain.delete(account: Self.account)
         guard !hasKey else { throw AdminKeyStoreError.stillPresent }
     }
