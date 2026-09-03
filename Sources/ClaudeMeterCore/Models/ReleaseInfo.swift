@@ -1,7 +1,7 @@
 import Foundation
 
 /// A published GitHub release of ClaudeMeter, as far as the updater needs it.
-public struct ReleaseInfo: Equatable, Sendable {
+public struct ReleaseInfo: Equatable, Sendable, Codable {
     public let version: AppVersion
     /// The git tag, e.g. `v01.02.00`.
     public let tagName: String

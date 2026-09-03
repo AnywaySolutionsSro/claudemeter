@@ -74,17 +74,45 @@ final class NotificationManager {
     static let updateCategory = "UPDATE_AVAILABLE"
     static let installAction = "INSTALL_UPDATE"
     static let laterAction = "LATER_UPDATE"
+    static let readyCategory = "UPDATE_READY"
+    static let restartNowAction = "RESTART_NOW"
+    static let remindLaterAction = "REMIND_LATER"
+    static let installOnRestartAction = "INSTALL_ON_RESTART"
 
-    /// Registers the update category (Install / Later buttons) and routes responses
-    /// to `responder`. Call once at launch, before any update notification.
+    /// Registers the update categories and routes responses to `responder`. Call once
+    /// at launch, before any update notification. "Available" (download-only installs)
+    /// has Install / Later; "Ready" (a verified bundle waiting) has the three choices.
     func installUpdateHandling(_ responder: UpdateNotificationResponder) {
-        let install = UNNotificationAction(identifier: Self.installAction, title: "Install and relaunch", options: [])
+        let install = UNNotificationAction(identifier: Self.installAction, title: "Download", options: [])
         let later = UNNotificationAction(identifier: Self.laterAction, title: "Later", options: [])
-        let category = UNNotificationCategory(
+        let available = UNNotificationCategory(
             identifier: Self.updateCategory, actions: [install, later], intentIdentifiers: [], options: [],
         )
-        center.setNotificationCategories([category])
+        let restart = UNNotificationAction(identifier: Self.restartNowAction, title: "Restart now", options: [])
+        let remind = UNNotificationAction(
+            identifier: Self.remindLaterAction,
+            title: "Remind me in 2 hours",
+            options: [],
+        )
+        let onRestart = UNNotificationAction(
+            identifier: Self.installOnRestartAction, title: "Install on next restart", options: [],
+        )
+        let ready = UNNotificationCategory(
+            identifier: Self.readyCategory, actions: [restart, remind, onRestart], intentIdentifiers: [], options: [],
+        )
+        center.setNotificationCategories([available, ready])
         center.delegate = responder
+    }
+
+    /// "ClaudeMeter X is ready to install" with Restart now / Remind me / On next restart.
+    /// One per version: a reminder replaces the pending one instead of stacking.
+    func notifyUpdateReady(version: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "ClaudeMeter \(version) is ready to install"
+        content.body = "Restart ClaudeMeter to finish the update, or pick a later moment."
+        content.sound = .default
+        content.categoryIdentifier = Self.readyCategory
+        add(UNNotificationRequest(identifier: "ready-\(version)", content: content, trigger: nil))
     }
 
     /// "ClaudeMeter X is available" with Install / Later. One per version: a repeat
@@ -92,7 +120,7 @@ final class NotificationManager {
     func notifyUpdateAvailable(version: String) {
         let content = UNMutableNotificationContent()
         content.title = "ClaudeMeter \(version) is available"
-        content.body = "Install it now and ClaudeMeter relaunches by itself, or pick Later."
+        content.body = "This copy can't update itself here — Download opens the release page."
         content.sound = .default
         content.categoryIdentifier = Self.updateCategory
         add(UNNotificationRequest(identifier: "update-\(version)", content: content, trigger: nil))
@@ -118,6 +146,9 @@ final class NotificationManager {
 final class UpdateNotificationResponder: NSObject, UNUserNotificationCenterDelegate {
     var onInstall: (@MainActor () -> Void)?
     var onOpen: (@MainActor () -> Void)?
+    var onRestartNow: (@MainActor () -> Void)?
+    var onRemindLater: (@MainActor () -> Void)?
+    var onInstallOnRestart: (@MainActor () -> Void)?
 
     func userNotificationCenter(
         _: UNUserNotificationCenter,
@@ -127,10 +158,15 @@ final class UpdateNotificationResponder: NSObject, UNUserNotificationCenterDeleg
         let category = response.notification.request.content.categoryIdentifier
         let action = response.actionIdentifier
         Task { @MainActor in
-            guard category == NotificationManager.updateCategory else { return }
-            switch action {
-            case NotificationManager.installAction: self.onInstall?()
-            case UNNotificationDefaultActionIdentifier: self.onOpen?()
+            switch (category, action) {
+            case (NotificationManager.updateCategory, NotificationManager.installAction): self.onInstall?()
+            case (NotificationManager.readyCategory, NotificationManager.restartNowAction): self.onRestartNow?()
+            case (NotificationManager.readyCategory, NotificationManager.remindLaterAction): self.onRemindLater?()
+            case (NotificationManager.readyCategory, NotificationManager.installOnRestartAction):
+                self.onInstallOnRestart?()
+            case (NotificationManager.updateCategory, UNNotificationDefaultActionIdentifier),
+                 (NotificationManager.readyCategory, UNNotificationDefaultActionIdentifier):
+                self.onOpen?()
             default: break
             }
         }

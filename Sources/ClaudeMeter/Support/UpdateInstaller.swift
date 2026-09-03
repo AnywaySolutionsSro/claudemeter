@@ -7,31 +7,48 @@ import os
 ///
 /// Two phases so the caller can drive UI state between them:
 ///
-/// 1. `stage(_:progress:)` — download `ClaudeMeter.zip` (+ `.sha256`), verify the
+/// 1. `stage(_:into:progress:)` — download `ClaudeMeter.zip` (+ `.sha256`), verify the
 ///    checksum, unpack with `ditto` (keeps the signature and the notarization
-///    staple intact), and run `BundleVerifier`. Any failure removes the temp
-///    directory and throws; nothing on disk outside the temp dir is touched.
-/// 2. `install(staged:over:)` — swap the staged bundle in for the installed one
-///    (`replaceItemAt`, so the installed path is never empty; the running binary stays
-///    alive by inode), trash the old bundle, re-register with LaunchServices so the
-///    widget appex doesn't linger on a stale registration, then relaunch.
+///    staple intact), run `BundleVerifier`, and write a `staged.json` manifest next
+///    to the bundle. Staged into `<root>/<version>/` — a persistent location, so a
+///    verified update survives a relaunch or a reboot until it is installed. Any
+///    failure removes that directory and throws; nothing outside it is touched.
+/// 2. `install(_:over:relaunch:)` — re-verify, then swap the staged bundle in for the
+///    installed one (`replaceItemAt`, so the installed path is never empty; the
+///    running binary stays alive by inode), trash the old bundle, re-register with
+///    LaunchServices so the widget appex doesn't linger on a stale registration, and
+///    relaunch (or not: at quit time the user is leaving anyway).
 struct UpdateInstaller: Sendable {
     var client = GitHubReleaseClient()
     private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "updater")
 
     private static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
         + "LaunchServices.framework/Support/lsregister"
+    private static let manifestName = "staged.json"
+
+    /// Where staged updates live by default: `Application Support/ClaudeMeter/Updates`.
+    static var defaultStagingRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClaudeMeter", isDirectory: true)
+            .appendingPathComponent("Updates", isDirectory: true)
+    }
 
     // MARK: - Stage
 
-    func stage(_ release: ReleaseInfo, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
-        let workDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClaudeMeterUpdate-\(UUID().uuidString)", isDirectory: true)
+    func stage(
+        _ release: ReleaseInfo,
+        into root: URL = UpdateInstaller.defaultStagingRoot,
+        progress: @escaping @Sendable (Double) -> Void,
+    ) async throws -> StagedUpdate {
+        let workDir = root.appendingPathComponent(release.version.description, isDirectory: true)
+        try? FileManager.default.removeItem(at: workDir)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         do {
             let bundle = try await stage(release, in: workDir, progress: progress)
+            let staged = StagedUpdate(release: release, bundlePath: bundle.path, stagedAt: Date())
+            try JSONEncoder().encode(staged).write(to: workDir.appendingPathComponent(Self.manifestName))
             log.notice("staged \(release.tagName, privacy: .public) at \(bundle.path, privacy: .public)")
-            return bundle
+            return staged
         } catch {
             try? FileManager.default.removeItem(at: workDir)
             log
@@ -40,6 +57,37 @@ struct UpdateInstaller: Sendable {
                 )
             throw error
         }
+    }
+
+    /// The newest complete stage under `root` (manifest present, bundle present), if any.
+    /// Anything else there — a half-written stage, an older version — is cleaned up.
+    func loadStaged(from root: URL = UpdateInstaller.defaultStagingRoot) -> StagedUpdate? {
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return nil }
+        var found: [StagedUpdate] = []
+        for dir in dirs {
+            if let data = try? Data(contentsOf: dir.appendingPathComponent(Self.manifestName)),
+               let staged = try? JSONDecoder().decode(StagedUpdate.self, from: data),
+               fm.fileExists(atPath: staged.bundlePath) {
+                found.append(staged)
+            } else {
+                try? fm.removeItem(at: dir)
+            }
+        }
+        let newest = found.max { $0.version < $1.version }
+        for stale in found where stale != newest { discard(stale) }
+        return newest
+    }
+
+    /// Delete a stage (skipped, superseded, or already running).
+    func discard(_ staged: StagedUpdate) {
+        try? FileManager.default.removeItem(at: Self.stageDirectory(of: staged))
+        log.notice("discarded staged \(staged.release.tagName, privacy: .public)")
+    }
+
+    /// `<root>/<version>` for a stage produced by `stage(_:into:progress:)`.
+    private static func stageDirectory(of staged: StagedUpdate) -> URL {
+        URL(fileURLWithPath: staged.bundlePath).deletingLastPathComponent().deletingLastPathComponent()
     }
 
     private func stage(
@@ -76,15 +124,29 @@ struct UpdateInstaller: Sendable {
 
     // MARK: - Install
 
-    /// Replaces `target` with `staged` and relaunches. Only returns by throwing.
-    /// `async` so the blocking `lsregister`/`killall` calls run off the main actor.
+    /// Replaces `target` with the staged bundle; with `relaunch` it only returns by
+    /// throwing, otherwise it returns after the swap (quit-time install). `async` so
+    /// the blocking `lsregister`/`killall` calls run off the main actor.
+    func install(_ staged: StagedUpdate, over target: URL, relaunch: Bool = true) async throws {
+        try installNow(staged, over: target, relaunch: relaunch)
+    }
+
+    /// The synchronous swap, for `applicationShouldTerminate` where nothing may suspend.
     ///
-    /// Crash-safe ordering: the staged bundle is first moved *next to* the target
-    /// (same directory, so the write permission is proven before the installed app
-    /// is touched), then `replaceItemAt` swaps it in — the installed app is either
-    /// the old or the new bundle at every instant, never absent. The old bundle is
-    /// kept as a backup through the swap and only trashed afterwards.
-    func install(staged: URL, over target: URL) async throws {
+    /// The bundle is verified again first: it may have sat on disk for a day, and
+    /// anything that touched it in the meantime must not be swapped in. Then, crash-safe
+    /// ordering: the staged bundle is first moved *next to* the target (same directory,
+    /// so the write permission is proven before the installed app is touched), then
+    /// `replaceItemAt` swaps it in — the installed app is either the old or the new
+    /// bundle at every instant, never absent. The old bundle is kept as a backup
+    /// through the swap and only trashed afterwards.
+    func installNow(_ staged: StagedUpdate, over target: URL, relaunch: Bool) throws {
+        let source = URL(fileURLWithPath: staged.bundlePath)
+        try BundleVerifier.verify(bundleURL: source, expectedVersion: staged.version)
+        try swap(staged: source, over: target, relaunch: relaunch)
+    }
+
+    private func swap(staged: URL, over target: URL, relaunch: Bool) throws {
         let fm = FileManager.default
         let directory = target.deletingLastPathComponent()
         let incoming = directory.appendingPathComponent(".\(target.lastPathComponent).update")
@@ -126,6 +188,10 @@ struct UpdateInstaller: Sendable {
         // Same consolidation as `build.sh --install`: one registration, at this path.
         _ = Self.run(Self.lsregister, ["-f", target.path])
         _ = Self.run("/usr/bin/killall", ["chronod"])
+        guard relaunch else {
+            log.notice("installed \(target.path, privacy: .public) at quit; next launch runs it")
+            return
+        }
         log.notice("installed \(target.path, privacy: .public); relaunching")
         Self.relaunch(bundleURL: target)
     }

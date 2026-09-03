@@ -1,8 +1,10 @@
 import ClaudeMeterCore
 import SwiftUI
 
-/// The "a new version is available" strip in the dropdown. Renders nothing while
-/// the updater has nothing to offer, so callers can drop it in unconditionally.
+/// The update strip in the dropdown: a download in progress, a verified update
+/// waiting for "restart now / later", a download-only offer, or a failure. Renders
+/// nothing while the updater has nothing to say (or the prompt is snoozed or
+/// deferred to the next restart), so callers can drop it in unconditionally.
 struct UpdateBanner: View {
     @EnvironmentObject var updates: UpdateService
     @Environment(\.textScale) private var scale
@@ -27,18 +29,27 @@ struct UpdateBanner: View {
                     Button(installLabel) { updates.install() }
                         .font(scale.font(11)).keyboardShortcut(.defaultAction)
                     Button("Later") { updates.dismiss() }.font(scale.font(11))
+                    Button("Skip this version") { updates.skipOffered() }.font(scale.font(11))
                     Spacer()
                     Button("Release notes") { openURL(release.pageURL) }
                         .buttonStyle(.link).font(scale.font(10))
                 }
             }
         case let .downloading(release, progress):
-            box(tint: .blue) {
-                title("Downloading ClaudeMeter \(release.version)…")
-                if progress >= 0 {
-                    ProgressView(value: progress).progressViewStyle(.linear)
-                } else {
-                    ProgressView().progressViewStyle(.linear)
+            box(tint: .blue) { UpdateProgressView(release: release, progress: progress) }
+        case let .ready(release):
+            if updates.promptVisible {
+                box(tint: .blue) {
+                    title("ClaudeMeter \(release.version) is ready to install")
+                    ReleaseNotesDisclosure(
+                        title: "What's new in \(release.version)", release: release, isExpanded: true,
+                    )
+                    if let current = updates.currentVersion {
+                        ReleaseNotesDisclosure(
+                            title: "You're on \(current)", release: updates.currentRelease, isExpanded: false,
+                        )
+                    }
+                    UpdateReadyActions(updates: updates)
                 }
             }
         case let .installing(release):
@@ -77,7 +88,7 @@ struct UpdateBanner: View {
 
     private var installLabel: String {
         if case .downloadOnly = updates.installMode { return "Download" }
-        return "Install and relaunch"
+        return "Download and restart"
     }
 
     private func title(_ text: String) -> some View {

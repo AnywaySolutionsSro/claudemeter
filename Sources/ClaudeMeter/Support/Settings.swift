@@ -71,6 +71,12 @@ final class Settings: ObservableObject {
         didSet { defaults.set(skippedUpdateVersion, forKey: Keys.skippedUpdateVersion) }
     }
 
+    /// A staged version (`01.06.00`) the user chose to install on the next restart:
+    /// swapped in when the app quits, or at the next launch if the quit was missed.
+    @Published var pendingInstallVersion: String? {
+        didSet { defaults.set(pendingInstallVersion, forKey: Keys.pendingInstallVersion) }
+    }
+
     /// The version that ran last time (`01.04.00`); a different running version means
     /// an update just landed and its notes are shown once.
     @Published var lastRunVersion: String? {
@@ -102,6 +108,7 @@ final class Settings: ObservableObject {
         self.lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
         self.skippedUpdateVersion = defaults.string(forKey: Keys.skippedUpdateVersion)
         self.lastRunVersion = defaults.string(forKey: Keys.lastRunVersion)
+        self.pendingInstallVersion = defaults.string(forKey: Keys.pendingInstallVersion)
     }
 
     private enum Keys {
@@ -115,5 +122,6 @@ final class Settings: ObservableObject {
         static let lastUpdateCheck = "lastUpdateCheck"
         static let skippedUpdateVersion = "skippedUpdateVersion"
         static let lastRunVersion = "lastRunVersion"
+        static let pendingInstallVersion = "pendingInstallVersion"
     }
 }

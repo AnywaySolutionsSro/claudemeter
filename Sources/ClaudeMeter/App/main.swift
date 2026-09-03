@@ -65,17 +65,19 @@ if CommandLine.arguments.contains("--update-check") || CommandLine.arguments.con
             let decision = UpdatePolicy.decide(current: AppVersion(version), latest: latest, skipped: nil)
             print("latest: \(latest?.tagName ?? "none")  decision: \(decision)")
             guard let latest else { return }
-            let staged = try await UpdateInstaller().stage(latest) { print(String(
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ClaudeMeterUpdateCheck-\(UUID().uuidString)", isDirectory: true)
+            let staged = try await UpdateInstaller().stage(latest, into: root) { print(String(
                 format: "  download %3.0f%%",
                 $0 * 100,
             )) }
-            print("staged + verified: \(staged.path)")
+            print("staged + verified: \(staged.bundlePath)")
             if performInstall, case let .inPlace(bundleURL) = mode, case .available = decision {
                 print("installing over \(bundleURL.path) and relaunching…")
-                try await UpdateInstaller().install(staged: staged, over: bundleURL)
+                try await UpdateInstaller().install(staged, over: bundleURL)
                 return
             }
-            try? FileManager.default.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: root)
         } catch {
             print("FAILED: \(error.localizedDescription)")
         }

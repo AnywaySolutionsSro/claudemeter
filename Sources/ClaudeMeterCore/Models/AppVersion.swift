@@ -4,7 +4,7 @@ import Foundation
 /// e.g. `01.02.03`; release tags prefix a `v`). Parsed numerically, so ordering is
 /// `01.09.00 < 01.10.00`. No pre-release suffixes: the release pipeline only
 /// publishes plain versions and anything else must not be offered as an update.
-public struct AppVersion: Hashable, Comparable, Sendable, CustomStringConvertible {
+public struct AppVersion: Hashable, Comparable, Sendable, Codable, CustomStringConvertible {
     public let major: Int
     public let minor: Int
     public let patch: Int
