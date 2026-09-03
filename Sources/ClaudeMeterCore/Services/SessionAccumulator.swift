@@ -24,9 +24,11 @@ public struct SessionAccumulator: Equatable, Sendable {
     private var firstTimestamp: Date?
     private var lastTimestamp: Date?
     /// Cwd of the newest record that carried one — where the session is NOW.
-    /// Sessions move (cd, `--resume` from another dir, worktrees); the label and
-    /// the live-process cwd match must follow, or the session stays pinned to
-    /// its birth directory and never matches its process again.
+    /// Sessions move (cd, `--resume` from another dir); the label and the
+    /// live-process cwd match must follow, or the session stays pinned to its
+    /// birth directory and never matches its process again. Hops into
+    /// `.claude/worktrees/` are the exception: tools stamp those on records while
+    /// the process stays put (see `ClaudeWorktree`).
     private var lastCwd: String?
     private var lastCwdStamp: Date?
     /// Best reading seen per `message.id`, so a later entry with the final
@@ -72,7 +74,8 @@ public struct SessionAccumulator: Equatable, Sendable {
         messageCount += 1
         firstTimestamp = min(firstTimestamp ?? record.timestamp, record.timestamp)
         lastTimestamp = max(lastTimestamp ?? record.timestamp, record.timestamp)
-        if let cwd = record.cwd, lastCwdStamp == nil || record.timestamp >= lastCwdStamp! {
+        if let cwd = record.cwd, lastCwdStamp == nil || record.timestamp >= lastCwdStamp!,
+           !ClaudeWorktree.isHop(from: lastCwd, to: cwd) {
             lastCwd = cwd
             lastCwdStamp = record.timestamp
         }
