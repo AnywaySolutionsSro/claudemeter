@@ -362,7 +362,8 @@ CodeQL runs on `main` weekly as an advisory scan (Security tab).
   process — and the coordinator holds its baseline while the weekly window is exhausted, so a
   5-h refill under a weekly cutoff doesn't type `continue` into a wall every 5 hours.
 - **Widget reloads are budgeted (~40–70/day for a background app).** `SessionMonitor.publish`
-  writes the snapshot file on every change but calls `reloadAllTimelines()` only when the
+  writes the snapshot file on every scan (the widget reads `generatedAt` to detect a dead
+  app) but calls `reloadAllTimelines()` only when the
   running/armed/gauge structure changes, or at most every 5 min for token-count-only changes.
   Reloading on every 10 s scan while a session streamed (measured ~2,400/day) got the widget
   throttled and frozen. The widget marks a snapshot older than 15 min as stale ("as of …",

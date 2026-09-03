@@ -49,11 +49,14 @@ public struct SessionAccumulator: Equatable, Sendable {
     /// records without an id (older transcripts) always count.
     public mutating func fold(_ record: AssistantUsageRecord) {
         if let id = record.messageID, let previous = seenMessageIDs[id] {
-            guard record.tokens.total > previous.total else { return }
-            let delta = record.tokens - previous
-            seenMessageIDs[id] = record.tokens
+            // Field-wise, so a reading that only grew `cacheRead` (outside `total`)
+            // still lands, and no field can be pulled backwards by a partial entry.
+            let best = TokenBreakdown.max(previous, record.tokens)
+            guard best != previous else { return }
+            let delta = best - previous
+            seenMessageIDs[id] = best
             tokens += delta
-            burnEvents.append(BurnEvent(timestamp: record.timestamp, total: delta.total))
+            if delta.total > 0 { burnEvents.append(BurnEvent(timestamp: record.timestamp, total: delta.total)) }
             return
         }
         if let id = record.messageID { seenMessageIDs[id] = record.tokens }
@@ -98,16 +101,17 @@ public struct SessionAccumulator: Equatable, Sendable {
         result.lastTimestamp = [lastTimestamp, other.lastTimestamp].compactMap(\.self).max()
         result.lastCwd = lastCwd ?? other.lastCwd
         result.lastCwdStamp = lastCwd != nil ? lastCwdStamp : other.lastCwdStamp
-        // An id folded on both sides was counted twice: keep the larger reading
-        // and take the smaller one back out.
+        // An id folded on both sides was counted twice: keep the field-wise larger
+        // reading and take the rest back out.
         var seen = seenMessageIDs
         var duplicated = TokenBreakdown.zero
         var duplicateCount = 0
         for (id, reading) in other.seenMessageIDs {
             if let mine = seen[id] {
-                duplicated += reading.total > mine.total ? mine : reading
+                let best = TokenBreakdown.max(mine, reading)
+                duplicated += mine + reading - best
                 duplicateCount += 1
-                if reading.total > mine.total { seen[id] = reading }
+                seen[id] = best
             } else {
                 seen[id] = reading
             }

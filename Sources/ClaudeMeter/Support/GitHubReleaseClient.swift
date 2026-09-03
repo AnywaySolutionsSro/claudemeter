@@ -85,8 +85,10 @@ struct GitHubReleaseClient: Sendable {
             ? response.expectedContentLength
             : Int64(expectedSize ?? 0)
         // Bound the write before the first byte lands: a hostile or broken release
-        // must not be able to fill the disk or feed a zip bomb to `ditto`.
-        let limit = min(Self.maxArchiveBytes, expectedSize.map { Int64($0) } ?? Self.maxArchiveBytes)
+        // must not be able to fill the disk or feed a zip bomb to `ditto`. The
+        // ceiling is absolute — the release JSON's `size` can lag a re-uploaded
+        // asset, and a mismatch there is the checksum's job to catch, not this.
+        let limit = Self.maxArchiveBytes
         guard total <= limit else { throw UpdateError.archiveTooLarge }
 
         FileManager.default.createFile(atPath: destination.path, contents: nil)
