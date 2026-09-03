@@ -10,8 +10,13 @@ struct ApiSpendEntry: TimelineEntry {
 /// Reads `api-spend.json` from the widget's own container Documents — the app cannot
 /// deliver into the App Group container that a sandboxed widget can read.
 struct ApiSpendProvider: TimelineProvider {
+    /// Sample figures for the gallery's redacted preview — a `nil` snapshot there
+    /// rendered the literal "Open ClaudeMeter…" copy instead of a widget.
     func placeholder(in _: Context) -> ApiSpendEntry {
-        ApiSpendEntry(date: Date(), snapshot: nil)
+        let now = Date()
+        let day = CostDay(start: now.addingTimeInterval(-86_400), amountUSD: 12.4,
+                          byModel: [ModelSpend(model: "claude-opus-4-8", amountUSD: 12.4)])
+        return ApiSpendEntry(date: now, snapshot: ApiSpendSnapshot(days: [day], fetchedAt: now))
     }
 
     func getSnapshot(in _: Context, completion: @escaping (ApiSpendEntry) -> Void) {

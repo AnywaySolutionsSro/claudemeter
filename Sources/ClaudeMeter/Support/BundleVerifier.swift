@@ -40,7 +40,15 @@ enum BundleVerifier {
             throw UpdateError.signatureInvalid("SecRequirementCreateWithString \(parsed)")
         }
         var error: Unmanaged<CFError>?
-        let flags = SecCSFlags(rawValue: kSecCSCheckNestedCode | kSecCSStrictValidate | kSecCSCheckAllArchitectures)
+        // Revocation is enforced (one OCSP round-trip per install): the updater writes the
+        // bundle without quarantine, so Gatekeeper never assesses it — this check is the
+        // only thing standing between a revoked Developer ID key and a silent install.
+        // `kSecCSEnforceRevocationChecks` (CSCommon.h, 1 << 30) isn't imported into Swift.
+        let enforceRevocationChecks: UInt32 = 1 << 30
+        let flags = SecCSFlags(
+            rawValue: kSecCSCheckNestedCode | kSecCSStrictValidate | kSecCSCheckAllArchitectures
+                | enforceRevocationChecks,
+        )
         let status = SecStaticCodeCheckValidityWithErrors(code, flags, requirement, &error)
         guard status == errSecSuccess else {
             let detail = error?.takeRetainedValue().localizedDescription ?? "OSStatus \(status)"

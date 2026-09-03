@@ -8,7 +8,7 @@ enum KeychainError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notFound:
-            return "Claude Code credentials not found. Log in with Claude Code first."
+            return "No saved login found. Click Connect to sign in."
         case let .unexpectedStatus(status):
             let message = SecCopyErrorMessageString(status, nil) as String? ?? "status \(status)"
             return "Keychain access failed: \(message). Allow access when macOS prompts."
@@ -16,10 +16,8 @@ enum KeychainError: Error, LocalizedError {
     }
 }
 
-/// Read/write a generic-password Keychain item by service name.
-///
-/// Reading the `Claude Code-credentials` item (created by another app) triggers a one-time
-/// macOS authorization prompt; choosing "Always Allow" makes it persistent for this signed app.
+/// Read/write a generic-password Keychain item by service name. Items are created by this
+/// app, so they read back without a prompt (the ACL follows the code signature).
 struct Keychain {
     struct Item {
         let data: Data

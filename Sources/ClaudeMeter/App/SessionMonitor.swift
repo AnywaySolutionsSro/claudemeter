@@ -56,28 +56,48 @@ final class SessionMonitor: ObservableObject {
             .appendingPathComponent("snapshot.json")
     }
 
-    /// Publish the snapshot to the App Group container (for the widget) and to the
-    /// local Application Support copy, then reload widget timelines — but only when
-    /// the content actually changed, to avoid spending WidgetKit's reload budget.
-    private var lastSignature: [String]?
-    func publish(_ snapshot: SessionSnapshot) {
-        let signature = snapshot.sessions
-            .map { "\($0.id):\($0.totalTokens):\($0.running.rawValue):\($0.lastModel ?? "")" }
-            + ["running:\(snapshot.runningCount)", "total:\(snapshot.totalTokens)",
-               "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
-               "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
-            + snapshot.usageGauges
-            .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
-        guard signature != lastSignature else { return }
-        lastSignature = signature
-
+    /// Publish the snapshot to the widget's container and to the local Application
+    /// Support copy on every scan (two small files; the widget reads `generatedAt`
+    /// to tell a live app from a dead one, so the file must keep moving), but
+    /// reload widget timelines only when something the widget can't wait for
+    /// changed (which sessions run, what's armed, the gauges) or, for token-count
+    /// changes, at most every 5 minutes. WidgetKit budgets ~40–70 reloads a day
+    /// for a background app, and a streaming session moves the count on every
+    /// 10 s scan (measured: ~2,400 reloads/day).
+    private var lastStructure: [String]?
+    private var lastTokens: [String]?
+    private var lastReloadAt: Date?
+    func publish(_ snapshot: SessionSnapshot, now: Date = Date()) {
         // Deliver into the widget's own container (the only place the sandboxed
         // widget can reliably read from a non-sandboxed writer). Local copy for
         // diagnostics.
         try? snapshotStore.write(snapshot, to: Self.widgetInboxURL())
         try? snapshotStore.write(snapshot, to: Self.localSnapshotURL())
+
+        let structure = snapshot.sessions
+            .map { "\($0.id):\($0.running.rawValue):\($0.lastModel ?? "")" }
+            + ["running:\(snapshot.runningCount)",
+               "armed:\(snapshot.armedSessionIDs.sorted().joined(separator: ","))",
+               "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
+            + snapshot.usageGauges
+            .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
+        // Display-rounded, so a count that renders the same doesn't count as a change.
+        let tokens = snapshot.sessions.map { "\($0.id):\(Formatting.tokenCount($0.totalTokens))" }
+            + ["total:\(Formatting.tokenCount(snapshot.totalTokens))"]
+        let structureChanged = structure != lastStructure
+        let tokensChanged = tokens != lastTokens
+        lastStructure = structure
+        lastTokens = tokens
+        guard structureChanged || tokensChanged else { return }
+
+        let sinceReload = lastReloadAt.map { now.timeIntervalSince($0) } ?? .infinity
+        guard structureChanged || sinceReload >= Self.minReloadInterval else { return }
+        lastReloadAt = now
         WidgetCenter.shared.reloadAllTimelines()
     }
+
+    /// Token-only changes reload at most this often (matches the widget's timeline).
+    private static let minReloadInterval: TimeInterval = 5 * 60
 
     init(scanner: SessionScanner = SessionMonitor.makeDefaultScanner(),
          interval: TimeInterval = 10) {
@@ -100,6 +120,7 @@ final class SessionMonitor: ObservableObject {
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
+        timer.tolerance = interval / 10
         self.timer = timer
         Task { await refresh() }
     }
@@ -147,16 +168,35 @@ final class SessionMonitor: ObservableObject {
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.
+    /// Reads only the file's tail: this runs on the main actor every scan while a
+    /// resume window is open, and transcripts reach hundreds of MB.
     nonisolated static func tailLines(forSessionID id: String, maxLines: Int = 40) -> [String] {
         let roots = [TranscriptSource.defaultCLIRoot, TranscriptSource.defaultDesktopRoot]
         for root in roots {
             if let url = findTranscript(id: id, under: root) {
-                guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-                let lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+                guard let tail = tailBytes(of: url, count: tailReadBytes) else { return [] }
+                let content = String(decoding: tail.data, as: UTF8.self)
+                var lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+                // The first line of a mid-file read is almost certainly cut in half.
+                if tail.truncated, lines.count > 1 { lines.removeFirst() }
                 return Array(lines.suffix(maxLines))
             }
         }
         return []
+    }
+
+    private nonisolated static let tailReadBytes = 256 * 1024
+
+    /// The last `count` bytes; `truncated` when the file was longer than that (so the
+    /// first line of `data` may start mid-line).
+    private nonisolated static func tailBytes(of url: URL, count: Int) -> (data: Data, truncated: Bool)? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        let truncated = end > UInt64(count)
+        let start = truncated ? end - UInt64(count) : 0
+        guard (try? handle.seek(toOffset: start)) != nil, let data = try? handle.readToEnd() else { return nil }
+        return (data, truncated)
     }
 
     private nonisolated static func findTranscript(id: String, under root: URL) -> URL? {

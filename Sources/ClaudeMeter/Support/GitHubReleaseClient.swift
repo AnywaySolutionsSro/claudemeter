@@ -84,6 +84,12 @@ struct GitHubReleaseClient: Sendable {
         let total: Int64 = response.expectedContentLength > 0
             ? response.expectedContentLength
             : Int64(expectedSize ?? 0)
+        // Bound the write before the first byte lands: a hostile or broken release
+        // must not be able to fill the disk or feed a zip bomb to `ditto`. The
+        // ceiling is absolute — the release JSON's `size` can lag a re-uploaded
+        // asset, and a mismatch there is the checksum's job to catch, not this.
+        let limit = Self.maxArchiveBytes
+        guard total <= limit else { throw UpdateError.archiveTooLarge }
 
         FileManager.default.createFile(atPath: destination.path, contents: nil)
         let handle = try FileHandle(forWritingTo: destination)
@@ -96,20 +102,36 @@ struct GitHubReleaseClient: Sendable {
             for try await byte in bytes {
                 buffer.append(byte)
                 if buffer.count >= Self.chunkSize {
-                    try handle.write(contentsOf: buffer)
                     received += Int64(buffer.count)
+                    guard received <= limit else { throw UpdateError.archiveTooLarge }
+                    try Self.write(buffer, to: handle)
                     buffer.removeAll(keepingCapacity: true)
                     progress(total > 0 ? Double(received) / Double(total) : -1)
                 }
             }
-            if !buffer.isEmpty { try handle.write(contentsOf: buffer) }
+            received += Int64(buffer.count)
+            guard received <= limit else { throw UpdateError.archiveTooLarge }
+            if !buffer.isEmpty { try Self.write(buffer, to: handle) }
         } catch let error as UpdateError {
             throw error
         } catch {
             throw UpdateError.network(error.localizedDescription)
         }
+        if total > 0, received != total { throw UpdateError.downloadTruncated }
         progress(1)
     }
 
+    /// A local write failure (disk full, permissions) is not a network error and must not
+    /// read as one in the banner.
+    private static func write(_ data: Data, to handle: FileHandle) throws {
+        do {
+            try handle.write(contentsOf: data)
+        } catch {
+            throw UpdateError.installFailed("couldn't save the download: \(error.localizedDescription)")
+        }
+    }
+
     private static let chunkSize = 256 * 1024
+    /// Releases are ~10 MB; anything near this is not one of ours.
+    private static let maxArchiveBytes: Int64 = 200 * 1024 * 1024
 }

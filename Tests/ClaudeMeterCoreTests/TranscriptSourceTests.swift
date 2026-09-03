@@ -159,4 +159,24 @@ struct TranscriptSourceTests {
         let ref = try #require(source.discover().first)
         #expect(source.lines(of: ref) == ["a", "", "b"])
     }
+
+    /// Workflow-tool agents write one level deeper than plain subagents:
+    /// `<session>/subagents/workflows/wf_*/agent-*.jsonl`. On a real machine that
+    /// was 40% of all transcript tokens, silently uncounted (2026-09-03).
+    @Test func cliDiscoversNestedWorkflowSubagentsWithParentID() throws {
+        defer { cleanup() }
+        let cliRoot = root.appendingPathComponent("cli", isDirectory: true)
+        let desktopRoot = root.appendingPathComponent("missing-desktop", isDirectory: true)
+        let projA = cliRoot.appendingPathComponent("proj-a", isDirectory: true)
+        try write("{}", to: projA.appendingPathComponent("sess-1.jsonl"))
+        try write("{}", to: projA.appendingPathComponent("sess-1/subagents/agent-x.jsonl"))
+        try write("{}", to: projA.appendingPathComponent("sess-1/subagents/workflows/wf_1/agent-y.jsonl"))
+
+        let source = TranscriptSource(cliRoot: cliRoot, desktopRoot: desktopRoot, fileManager: fm)
+        let refs = source.discover()
+
+        #expect(Set(refs.map(\.id)) == ["sess-1", "agent-x", "agent-y"])
+        #expect(refs.first { $0.id == "agent-y" }?.parentID == "sess-1")
+        #expect(refs.first { $0.id == "agent-x" }?.parentID == "sess-1")
+    }
 }

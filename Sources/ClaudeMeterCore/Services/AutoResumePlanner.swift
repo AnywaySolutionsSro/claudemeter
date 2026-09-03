@@ -39,6 +39,7 @@ public struct PlannedResume: Equatable, Sendable {
 /// Why an armed session was not nudged this cycle. Surfaced for diagnostics so a
 /// silent miss can be traced (the old coordinator swallowed the eligibility skip).
 public enum ResumeSkipReason: Equatable, Sendable {
+    case notRunning
     case noUniqueProcess
     case noControllingTTY
     case unexpectedTTY(String)
@@ -47,6 +48,7 @@ public enum ResumeSkipReason: Equatable, Sendable {
 
     public var detail: String {
         switch self {
+        case .notRunning: "session no longer running"
         case .noUniqueProcess: "no unique live terminal for cwd"
         case .noControllingTTY: "no controlling tty"
         case let .unexpectedTTY(t): "unexpected tty \(t)"
@@ -151,6 +153,9 @@ public enum AutoResumePlanner {
                 skipped.append(ResumeSkip(sessionID: session.id, projectName: name, reason: reason))
             }
 
+            // A dead session's cwd may now host a DIFFERENT live session; the
+            // unique-process match below would happily target that one.
+            guard session.running == .running else { skip(.notRunning); continue }
             guard let matches = byCwd[session.projectPath], matches.count == 1 else {
                 skip(.noUniqueProcess); continue
             }

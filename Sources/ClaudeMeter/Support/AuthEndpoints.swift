@@ -15,6 +15,8 @@ enum AuthError: Error, LocalizedError, Equatable {
     case invalidResponse
     case exchangeFailed(Int)
     case notAuthenticated
+    /// The browser never came back within the loopback server's timeout.
+    case timedOut
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +26,8 @@ enum AuthError: Error, LocalizedError, Equatable {
             "Sign-in failed (HTTP \(code)). Check the code and try again."
         case .notAuthenticated:
             "Not connected. Click Connect to sign in."
+        case .timedOut:
+            "Sign-in timed out waiting for the browser. Please try again."
         }
     }
 }

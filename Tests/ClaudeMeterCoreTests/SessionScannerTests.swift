@@ -32,6 +32,8 @@ struct SessionScannerTests {
     private final class FakeDiscoverer: TranscriptDiscovering, @unchecked Sendable {
         var refs: [TranscriptRef]
         var linesByID: [String: [String]]
+        /// Transcripts whose reads fail this scan (EMFILE, a rename race, …).
+        var failingIDs: Set<String> = []
         private(set) var lineCalls: [String: Int] = [:]
         private(set) var chunkCalls: [String: [Int64]] = [:]
         init(refs: [TranscriptRef], linesByID: [String: [String]]) {
@@ -47,6 +49,7 @@ struct SessionScannerTests {
 
         func chunk(of ref: TranscriptRef, fromByteOffset offset: Int64) -> TranscriptChunk? {
             chunkCalls[ref.id, default: []].append(offset)
+            guard !failingIDs.contains(ref.id) else { return nil }
             let all = linesByID[ref.id] ?? []
             guard offset <= Int64(all.count) else { return nil } // truncation
             return TranscriptChunk(lines: Array(all.dropFirst(Int(offset))),
@@ -265,5 +268,31 @@ struct SessionScannerTests {
         let result = await scanner.scan(now: now)
         #expect(result.sessions.first?.projectPath == "/Users/x/code/movixtar")
         #expect(result.sessions.first?.projectName == "movixtar")
+    }
+
+    /// A read that fails for a transient reason must not hide the session for a
+    /// scan (the pruner counts that as a miss) nor throw away the byte-offset
+    /// progress: the next scan resumes from where the cache left off.
+    @Test func transientReadFailureKeepsCachedProgressAndSession() async {
+        let disco = FakeDiscoverer(
+            refs: [ref("s1", modified: 5_000)],
+            linesByID: ["s1": [line(cwd: "/p1", output: 100)]],
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: [:]),
+                                     desktopDetector: FakeDesktop(running: false))
+        _ = await scanner.scan(now: now)
+
+        disco.linesByID["s1"] = [line(cwd: "/p1", output: 100), line(cwd: "/p1", output: 40)]
+        disco.refs = [ref("s1", modified: 6_000)]
+        disco.failingIDs = ["s1"]
+        let degraded = await scanner.scan(now: now)
+        #expect(degraded.sessions.map(\.id) == ["s1"])
+        #expect(degraded.sessions.first?.totalTokens == 100)
+
+        disco.failingIDs = []
+        let recovered = await scanner.scan(now: now)
+        #expect(recovered.sessions.first?.totalTokens == 140)
+        // Resumed from the cached offset (1); never re-read line 0 after the failure.
+        #expect(disco.chunkCalls["s1"]?.last == 1)
     }
 }

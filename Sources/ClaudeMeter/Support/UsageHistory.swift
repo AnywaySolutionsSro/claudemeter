@@ -32,6 +32,12 @@ enum UsageHistory {
         return all
     }
 
+    /// Drop all samples (sign-out): burn rate and pace must not carry over between accounts.
+    static func clear() {
+        guard let url = fileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
     private static func save(_ samples: [UsageSample]) {
         guard let url = fileURL, let data = try? encoder.encode(samples) else { return }
         try? FileManager.default.createDirectory(

@@ -35,6 +35,10 @@ public struct ParsedTranscript: Equatable, Sendable {
 /// Lenient JSONL transcript parser. Never throws: malformed lines are skipped
 /// (and, when they were clearly meant to be assistant usage, counted).
 public struct TranscriptParser: Sendable {
+    /// Upper bound for one token field. No single message approaches it; anything
+    /// above is a corrupt line, not a reading.
+    public static let maxTokenField = Int(Int32.max)
+
     public init() {}
 
     /// What one assistant line turned out to be, from a single JSON parse.
@@ -79,7 +83,12 @@ public struct TranscriptParser: Sendable {
             return .malformed
         }
 
-        func int(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
+        // Clamp rather than trust: a field near `Int.max` would make the
+        // aggregate's addition trap, crashing the app on every launch.
+        func int(_ key: String) -> Int {
+            let value = (usage[key] as? NSNumber)?.int64Value ?? 0
+            return Int(min(max(value, 0), Int64(Self.maxTokenField)))
+        }
 
         let tokens = TokenBreakdown(
             input: int("input_tokens"),

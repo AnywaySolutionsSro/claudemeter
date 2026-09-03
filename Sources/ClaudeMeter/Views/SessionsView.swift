@@ -25,11 +25,13 @@ struct SessionsView: View {
         activeOnly ? monitor.sessions.filter { $0.running == .running } : monitor.sessions
     }
 
-    private var terminalKinds: [String: TerminalKind] {
+    /// One libproc walk per running session per scan — never per row per tick. The
+    /// 1 s ticker re-renders the list; recomputing this inside each row multiplied
+    /// the syscalls by the number of rows every second.
+    private func terminalKinds(index: SessionProcessIndex) -> [String: TerminalKind] {
         let detector = TerminalDetector()
-        let index = SessionProcessIndex(processes: monitor.latestProcesses)
         var map: [String: TerminalKind] = [:]
-        for session in monitor.sessions {
+        for session in monitor.sessions where session.running == .running {
             map[session.id] = index.terminalKind(
                 forCwd: session.projectPath, detector: detector,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
@@ -41,9 +43,9 @@ struct SessionsView: View {
 
     /// Why a session can't be armed (nil = armable). Matches the scanner's
     /// armable gating exactly; the text is what the disabled toggle's tooltip shows.
-    private func armDisabledReason(_ session: SessionUsage, kind: TerminalKind) -> String? {
+    private func armDisabledReason(_ session: SessionUsage, kind: TerminalKind,
+                                   index: SessionProcessIndex) -> String? {
         guard session.running == .running else { return "Only live sessions can be armed" }
-        let index = SessionProcessIndex(processes: monitor.latestProcesses)
         switch index.matchCount(forCwd: session.projectPath) {
         case 0: return "No live Claude Code process found for this folder"
         case 1: break
@@ -110,14 +112,16 @@ struct SessionsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            let index = SessionProcessIndex(processes: monitor.latestProcesses)
+            let kinds = terminalKinds(index: index)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleSessions) { session in
-                        let kind = terminalKinds[session.id] ?? .unknown
+                        let kind = kinds[session.id] ?? .unknown
                         SessionRow(
                             session: session, now: now,
                             terminalKind: kind,
-                            armDisabledReason: armDisabledReason(session, kind: kind),
+                            armDisabledReason: armDisabledReason(session, kind: kind, index: index),
                             isArmed: armed.isArmed(session.id),
                             onArmChange: { armed.setArmed(session.id, $0) },
                         )

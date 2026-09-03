@@ -110,7 +110,7 @@ struct ApiSettingsSection: View {
         // show a red error for a key that is fine, or green for one that just failed.
         guard status != .verifying else { return }
         status = .verifying
-        Task {
+        Task { @MainActor in
             do {
                 let name = try await CostClient().verifyOrganization()
                 status = .verified(name)

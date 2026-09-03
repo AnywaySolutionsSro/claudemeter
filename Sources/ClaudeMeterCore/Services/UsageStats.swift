@@ -49,6 +49,13 @@ public enum UsageStats {
         return previous - currentUtilization >= dropThreshold
     }
 
+    /// A window with nothing left (utilization at or past 100%). `nil` — no such
+    /// bucket in the reading — is not exhausted.
+    public static func isExhausted(_ utilization: Double?) -> Bool {
+        guard let utilization else { return false }
+        return utilization >= 100
+    }
+
     /// Count of distinct session windows that reached `>= maxedAt`% within `since`.
     public static func maxedWindows(
         samples: [UsageSample],

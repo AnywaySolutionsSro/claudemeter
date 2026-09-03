@@ -89,10 +89,12 @@ struct UpdateInstaller: Sendable {
         let directory = target.deletingLastPathComponent()
         let incoming = directory.appendingPathComponent(".\(target.lastPathComponent).update")
         let backupName = "\(target.lastPathComponent).previous"
+        let workDir = staged.deletingLastPathComponent().deletingLastPathComponent()
         try? fm.removeItem(at: incoming)
         do {
             try fm.moveItem(at: staged, to: incoming)
         } catch {
+            try? fm.removeItem(at: workDir)
             throw UpdateError
                 .installFailed("couldn't place the new app next to the installed one: \(error.localizedDescription)")
         }
@@ -103,10 +105,23 @@ struct UpdateInstaller: Sendable {
             )
         } catch {
             try? fm.removeItem(at: incoming)
+            try? fm.removeItem(at: workDir)
             throw UpdateError.installFailed(error.localizedDescription)
         }
-        try? fm.trashItem(at: directory.appendingPathComponent(backupName), resultingItemURL: nil)
-        try? fm.removeItem(at: staged.deletingLastPathComponent().deletingLastPathComponent())
+        // The backup must not linger next to the app: it is a second registered copy
+        // of the app AND the widget appex under the same bundle ids, which is exactly
+        // what makes the widget flip to a stale path. Trash it, or delete it outright.
+        let backup = directory.appendingPathComponent(backupName)
+        do {
+            try fm.trashItem(at: backup, resultingItemURL: nil)
+        } catch {
+            log
+                .notice(
+                    "couldn't trash the previous app, deleting instead: \(error.localizedDescription, privacy: .public)",
+                )
+            try? fm.removeItem(at: backup)
+        }
+        try? fm.removeItem(at: workDir)
 
         // Same consolidation as `build.sh --install`: one registration, at this path.
         _ = Self.run(Self.lsregister, ["-f", target.path])

@@ -27,8 +27,12 @@ final class UpdatePolicyTests: XCTestCase {
         XCTAssertFalse(UpdatePolicy.isCheckDue(lastCheck: now, now: now))
     }
 
-    func testClockSkewInTheFutureStillCountsAsChecked() {
-        XCTAssertFalse(UpdatePolicy.isCheckDue(lastCheck: now.addingTimeInterval(3600), now: now))
+    // A last-check stamped while the clock was ahead must not disable checks until
+    // that future date arrives — `apply` rewrites the stamp after every check, so a
+    // burst cannot happen either way.
+    func testClockSkewInTheFutureIsDueAgain() {
+        XCTAssertTrue(UpdatePolicy.isCheckDue(lastCheck: now.addingTimeInterval(3600), now: now))
+        XCTAssertTrue(UpdatePolicy.isCheckDue(lastCheck: now.addingTimeInterval(400 * 86_400), now: now))
     }
 
     // MARK: - Decision

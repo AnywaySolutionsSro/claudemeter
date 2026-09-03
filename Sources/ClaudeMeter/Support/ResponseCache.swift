@@ -19,6 +19,13 @@ enum ResponseCache {
         return try? Data(contentsOf: url)
     }
 
+    /// Forget the last reading (sign-out): the next launch must not show another
+    /// account's numbers.
+    static func remove() {
+        guard let url = fileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
     static func modificationDate() -> Date? {
         guard let url = fileURL else { return nil }
         return (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date

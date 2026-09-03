@@ -161,7 +161,10 @@ public actor SessionScanner {
 
     /// Fold a changed file's new lines into its accumulator, resuming from the
     /// cached byte offset. A failed resume (offset past EOF — the file was
-    /// truncated or rewritten) restarts from byte 0 with a fresh accumulator.
+    /// truncated or rewritten) restarts from byte 0 with a fresh accumulator. If
+    /// the file can't be read at all this scan, the cached entry is kept as is:
+    /// the session stays visible and the next scan resumes from the same offset
+    /// instead of re-parsing the whole file.
     private func refreshedEntry(for ref: TranscriptRef, cached: CacheEntry?) -> CacheEntry? {
         var accumulator = cached?.accumulator ?? SessionAccumulator(burnWindow: burnWindow)
         let resumeOffset = cached?.byteOffset ?? 0
@@ -170,7 +173,7 @@ public actor SessionScanner {
             accumulator = SessionAccumulator(burnWindow: burnWindow)
             chunk = discoverer.chunk(of: ref, fromByteOffset: 0)
         }
-        guard let chunk else { return nil } // unreadable this scan; retry next scan
+        guard let chunk else { return cached } // unreadable this scan; retry next scan
         for record in parser.parse(chunk.lines).records {
             accumulator.fold(record)
         }

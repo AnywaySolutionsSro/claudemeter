@@ -141,7 +141,7 @@ struct CostClient: Sendable {
             case 403: throw CostError.notAnOrganization
             case 429:
                 let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
-                    .flatMap(TimeInterval.init)
+                    .flatMap { RetryAfter.seconds($0) }
                 throw CostError.rateLimited(retryAfter: retryAfter)
             default: throw CostError.http(http.statusCode)
             }

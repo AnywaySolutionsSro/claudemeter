@@ -31,6 +31,25 @@ public struct TokenBreakdown: Equatable, Sendable, Codable {
         )
     }
 
+    public static func - (lhs: TokenBreakdown, rhs: TokenBreakdown) -> TokenBreakdown {
+        TokenBreakdown(
+            input: lhs.input - rhs.input,
+            output: lhs.output - rhs.output,
+            cacheCreation: lhs.cacheCreation - rhs.cacheCreation,
+            cacheRead: lhs.cacheRead - rhs.cacheRead,
+        )
+    }
+
+    /// Field-wise larger of two readings of the same message.
+    public static func max(_ lhs: TokenBreakdown, _ rhs: TokenBreakdown) -> TokenBreakdown {
+        TokenBreakdown(
+            input: Swift.max(lhs.input, rhs.input),
+            output: Swift.max(lhs.output, rhs.output),
+            cacheCreation: Swift.max(lhs.cacheCreation, rhs.cacheCreation),
+            cacheRead: Swift.max(lhs.cacheRead, rhs.cacheRead),
+        )
+    }
+
     public static func += (lhs: inout TokenBreakdown, rhs: TokenBreakdown) {
         lhs = lhs + rhs
     }

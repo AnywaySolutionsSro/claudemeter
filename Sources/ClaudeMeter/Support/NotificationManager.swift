@@ -1,14 +1,23 @@
 import ClaudeMeterCore
 import Foundation
+import os
 import UserNotifications
 
 /// Thin wrapper over `UNUserNotificationCenter` for threshold nudges, reset celebrations, and
 /// "remind me at reset" scheduling.
 final class NotificationManager {
     private let center = UNUserNotificationCenter.current()
+    private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "notifications")
 
+    /// Idempotent: macOS prompts once and answers silently afterwards.
     func requestAuthorization() {
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound]) { [log] granted, error in
+            if let error {
+                log.notice("authorization request failed: \(error.localizedDescription, privacy: .public)")
+            } else if !granted {
+                log.notice("notifications not granted — auto-resume outcomes will not be shown")
+            }
+        }
     }
 
     private func deliver(title: String, body: String, id: String) {
@@ -16,7 +25,18 @@ final class NotificationManager {
         content.title = title
         content.body = body
         content.sound = .default
-        center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+        add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+    }
+
+    /// A dropped notification is invisible by definition, so the reason has to be logged.
+    private func add(_ request: UNNotificationRequest) {
+        center.add(request) { [log] error in
+            guard let error else { return }
+            log
+                .notice(
+                    "notification \(request.identifier, privacy: .public) dropped: \(error.localizedDescription, privacy: .public)",
+                )
+        }
     }
 
     /// 80/90/100%-used nudge. `remaining` is percent left; `etaToReset` seconds until reset.
@@ -75,7 +95,7 @@ final class NotificationManager {
         content.body = "Install it now and ClaudeMeter relaunches by itself, or pick Later."
         content.sound = .default
         content.categoryIdentifier = Self.updateCategory
-        center.add(UNNotificationRequest(identifier: "update-\(version)", content: content, trigger: nil))
+        add(UNNotificationRequest(identifier: "update-\(version)", content: content, trigger: nil))
     }
 
     /// Schedule a one-shot "it reset" notification for a future date.
@@ -87,7 +107,7 @@ final class NotificationManager {
         content.body = "Your Claude session window just reset — back to full."
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-        center.add(UNNotificationRequest(identifier: "reset-reminder", content: content, trigger: trigger))
+        add(UNNotificationRequest(identifier: "reset-reminder", content: content, trigger: trigger))
     }
 }
 

@@ -23,8 +23,9 @@ final class UsageStore: ObservableObject {
     @Published private(set) var burnEstimate: BurnEstimate?
     @Published private(set) var paceRatio: Double?
 
-    /// Fired for threshold crossings and resets so the app can notify / run Shortcuts.
-    var onEvent: ((UsageEvent) -> Void)?
+    /// Fired once per refresh with every threshold crossing and reset detected in it, so
+    /// the app can notify / run Shortcuts — and collapse several crossings into one.
+    var onEvents: (([UsageEvent]) -> Void)?
 
     /// Fired when the OAuth session is irrecoverably dead (refresh token rejected, or the API
     /// keeps 401-ing a fresh token). The app flips to the signed-out UI instead of silently
@@ -69,6 +70,8 @@ final class UsageStore: ObservableObject {
         timer = nil
     }
 
+    /// Sign-out: forget everything, on disk too, so neither this run nor the next
+    /// launch shows the previous account's reading or pace.
     func clear() {
         stop()
         snapshot = nil
@@ -79,9 +82,28 @@ final class UsageStore: ObservableObject {
         backoffUntil = nil
         burnEstimate = nil
         paceRatio = nil
+        history = []
         hasLiveBaseline = false
         consecutiveAuthFailures = 0
+        ResponseCache.remove()
+        UsageHistory.clear()
     }
+
+    /// True once a reading has been fetched live in this run (the launch-time
+    /// on-disk cache doesn't count).
+    var hasLiveReading: Bool { hasLiveBaseline }
+
+    /// The reading auto-resume may compare against to detect a refill: a live one,
+    /// or a cached one young enough to belong to the current 5-hour window (an
+    /// update relaunch, a quick restart). A days-old cache would make the first
+    /// live fetch look like a refill and burn the refill cooldown for nothing.
+    var snapshotForRefillDetection: UsageSnapshot? {
+        guard let snapshot else { return nil }
+        if hasLiveBaseline { return snapshot }
+        return Date().timeIntervalSince(snapshot.fetchedAt) < Self.cachedBaselineMaxAge ? snapshot : nil
+    }
+
+    private static let cachedBaselineMaxAge: TimeInterval = 5 * 60 * 60
 
     func refresh(force: Bool = false) async {
         let now = Date()
@@ -144,12 +166,13 @@ final class UsageStore: ObservableObject {
     /// at already-high usage doesn't fire spurious nudges).
     private func detectEvents(previous: UsageSnapshot?, current: UsageSnapshot, now: Date) {
         guard let previous, let bucket = current.fiveHour else { return }
+        var events: [UsageEvent] = []
 
         if UsageStats.didRefill(
             previousUtilization: previous.fiveHour?.utilization,
             currentUtilization: bucket.utilization,
         ) {
-            onEvent?(.reset(nextResetsAt: bucket.resetsAt))
+            events.append(.reset(nextResetsAt: bucket.resetsAt))
         }
 
         let crossed = UsageStats.crossedThresholds(
@@ -158,12 +181,13 @@ final class UsageStore: ObservableObject {
             thresholds: [80, 90, 100],
         )
         for threshold in crossed {
-            onEvent?(.crossedThreshold(
+            events.append(.crossedThreshold(
                 threshold,
                 remaining: bucket.percentRemaining,
                 etaToReset: bucket.timeUntilReset(now: now),
             ))
         }
+        if !events.isEmpty { onEvents?(events) }
     }
 
     private func present(_ message: String) {
