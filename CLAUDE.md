@@ -84,7 +84,18 @@ A successful resume posts a "▶︎ Resumed X" notification (the only way to tel
 from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
 summary notifies if armed sessions never became eligible.
 
-### Self-update feature (daily GitHub check, one-click install + relaunch)
+### Self-update feature (daily GitHub check, background download, restart prompt)
+
+Flow: check (every launch, throttled to 1 h, then daily + on wake) → a newer in-place-installable
+release is **staged without asking** (download + sha256 + `BundleVerifier`, into
+`Application Support/ClaudeMeter/Updates/<version>/` with a `staged.json` manifest, so it
+survives a reboot) → `.ready` → one prompt (notification `UPDATE_READY` + dropdown banner +
+Settings): **Restart now** / **Remind me in 2 hours** (`snoozedUntil`, timer re-notifies) /
+**Install on next restart** (`Settings.pendingInstallVersion`; `applicationShouldTerminate` swaps
+without relaunch, and `adoptStagedFromDisk()` at the next launch installs + relaunches if the quit
+was missed). `UpdatePolicy.disposition(of:current:latest:)` decides what a stage found on disk is
+worth (keep / discard / replace by a newer release). A stage is re-verified right before every
+install. Download-only installs (`.available`) still open the release page.
 
 - **Core** (pure/TDD): `AppVersion` (`MM.mm.pp`, numeric `Comparable`), `ReleaseDecoder` →
   `ReleaseInfo` (lenient parse of GitHub `releases/latest`; drafts/pre-releases/odd tags → `nil`),
@@ -92,7 +103,8 @@ summary notifies if armed sessions never became eligible.
   `installMode` → in-place only from `/Applications` or `~/Applications`, not translocated, parent
   writable; otherwise download-only = open the release page).
 - **App**: `UpdateService` (@MainActor; first check 60 s after launch, hourly tick that only
-  checks when due, wake hook; "Later" hides until next due check, "Skip this version" persists),
+  checks when due, wake hook; `UpdateService+Choices` holds remind/defer/quit-time install;
+  "Skip this version" persists and discards the stage),
   `GitHubReleaseClient` (unauthenticated API, streaming download), `UpdateInstaller` (download →
   sha256 → `ditto -x -k` → **`BundleVerifier`** → move next to the installed app →
   `replaceItemAt` swap (installed path never empty; old bundle trashed after) → `lsregister -f`

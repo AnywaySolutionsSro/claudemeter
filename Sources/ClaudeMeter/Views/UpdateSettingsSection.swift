@@ -21,6 +21,16 @@ struct UpdateSettingsSection: View {
             Spacer()
             actions
         }
+        if case let .downloading(release, progress) = updates.state {
+            UpdateProgressView(release: release, progress: progress)
+        }
+        if case .ready = updates.state {
+            HStack(spacing: scale.pt(10)) {
+                Spacer()
+                UpdateReadyActions(updates: updates)
+                Button("Skip this version") { updates.skipOffered() }.font(scale.font(11))
+            }
+        }
         if case let .downloadOnly(reason) = updates.installMode {
             Text("Updates open the download page instead of installing in place: \(reason)")
                 .font(scale.font(10)).foregroundStyle(.secondary)
@@ -54,6 +64,15 @@ struct UpdateSettingsSection: View {
                 .foregroundStyle(.blue)
         case let .downloading(release, _):
             secondary("Downloading \(release.version)…")
+        case let .ready(release):
+            if updates.isDeferredToRestart {
+                secondary("\(release.version) installs when ClaudeMeter next restarts")
+            } else if let until = updates.snoozedUntil, updates.isSnoozed {
+                secondary("\(release.version) ready · reminder at \(until.formatted(date: .omitted, time: .shortened))")
+            } else {
+                Text("\(release.version.description) ready to install").font(scale.font(11, weight: .semibold))
+                    .foregroundStyle(.blue)
+            }
         case let .installing(release):
             secondary("Installing \(release.version)…")
         case let .failed(_, message):
@@ -62,8 +81,11 @@ struct UpdateSettingsSection: View {
         }
     }
 
+    /// The `.ready` row has its own action strip below; this covers "found but not
+    /// downloaded" (download-only installs, a failed background download) and a failed
+    /// install, which must keep a way to retry or skip.
     @ViewBuilder private var actions: some View {
-        if let release = updates.state.offeredRelease, !updates.state.isBusy {
+        if let release = updates.state.offeredRelease, !updates.state.isBusy, updates.state.readyRelease == nil {
             Button("Skip this version") { updates.skipOffered() }.font(scale.font(11))
             Button(installLabel) { updates.install() }
                 .buttonStyle(.borderedProminent).font(scale.font(11))
@@ -73,7 +95,7 @@ struct UpdateSettingsSection: View {
 
     private var installLabel: String {
         if case .downloadOnly = updates.installMode { return "Download…" }
-        return "Install"
+        return "Download and restart"
     }
 
     private func secondary(_ text: String) -> some View {

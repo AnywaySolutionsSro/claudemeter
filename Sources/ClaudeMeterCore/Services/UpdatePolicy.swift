@@ -29,6 +29,38 @@ public enum UpdatePolicy {
         return age >= interval || age < 0
     }
 
+    /// A login item relaunches rarely, so every launch runs a real check — throttled to
+    /// once an hour so a crash loop can't hammer the (unauthenticated) GitHub API.
+    public static let launchCheckInterval: TimeInterval = 60 * 60
+
+    public static func isLaunchCheckDue(lastCheck: Date?, now: Date) -> Bool {
+        isCheckDue(lastCheck: lastCheck, now: now, interval: launchCheckInterval)
+    }
+
+    /// "Remind me later" comes back after this long.
+    public static let reminderInterval: TimeInterval = 2 * 60 * 60
+
+    public static func reminderDate(from now: Date) -> Date {
+        now.addingTimeInterval(reminderInterval)
+    }
+
+    /// Download first, ask second: an update this build can install in place is fetched
+    /// and verified as soon as it is found, so the only question the user ever gets is
+    /// "restart now, or later?". Download-only installs still hand over the release page.
+    public static func shouldStage(_ decision: UpdateDecision, mode: InstallMode) -> Bool {
+        guard case .available = decision, case .inPlace = mode else { return false }
+        return true
+    }
+
+    /// A staged bundle is worth keeping only while it is newer than what runs and no
+    /// newer release is known. `current == nil` (dev build) never installs anything.
+    public static func disposition(of staged: StagedUpdate, current: AppVersion?, latest: AppVersion?)
+        -> StagedDisposition {
+        guard let current, staged.version > current else { return .discard }
+        if let latest, latest > staged.version { return .replace }
+        return .keep
+    }
+
     /// `current == nil` means the running build has no parsable version (a dev build
     /// whose Info.plist still holds `$(MARKETING_VERSION)`): never offer an update.
     public static func decide(current: AppVersion?, latest: ReleaseInfo?, skipped: AppVersion?) -> UpdateDecision {

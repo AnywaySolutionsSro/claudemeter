@@ -188,6 +188,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self, self.settings.notificationsEnabled else { return }
             self.notifications.notifyUpdateAvailable(version: release.version.description)
         }
+        // Not gated on the usage-nudge switch: a downloaded update waiting for a
+        // restart is something the user asked to be told about by leaving daily
+        // checks on.
+        updates.onUpdateReady = { [weak self] release in
+            self?.notifications.notifyUpdateReady(version: release.version.description)
+        }
+        updateResponder.onRestartNow = { [weak self] in self?.updates.install() }
+        updateResponder.onRemindLater = { [weak self] in self?.updates.remindLater() }
+        updateResponder.onInstallOnRestart = { [weak self] in self?.updates.installOnNextRestart() }
         updates.onInstallFailed = { [weak self] message in
             self?.notifications.notify("ClaudeMeter update failed", message)
         }
@@ -259,6 +268,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         NSApp.mainMenu = mainMenu
+    }
+
+    /// "Install on next restart": the swap happens here, on the way out (Quit, logout,
+    /// shutdown). It is a rename plus a LaunchServices refresh — well under a second.
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        updates.installPendingOnQuit()
+        return .terminateNow
     }
 
     @objc private func handleSleep() {
