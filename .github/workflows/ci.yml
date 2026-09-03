@@ -15,8 +15,12 @@
 # The package targets macOS 26 / swift-tools 6.2 => macos-26 runner (Xcode 26).
 name: ci
 
+# `edited` is included so a title change re-runs pr-title: the title decides the
+# release bump, and without it a PR opened as `docs:` and renamed to `feat:` in
+# the UI would keep its green check and release without notes.
 on:
   pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -34,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check the PR title (Conventional Commits, no breaking markers)
         env:
@@ -47,10 +51,12 @@ jobs:
 
   tests:
     name: tests
+    # A title edit changes nothing the heavy jobs look at.
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select newest Xcode 26
         run: |
@@ -62,7 +68,7 @@ jobs:
           swift --version
 
       - name: Cache SwiftPM build
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .build
           key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
@@ -79,10 +85,11 @@ jobs:
 
   lint:
     name: lint
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: macos-26
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install SwiftLint and SwiftFormat
         run: brew install swiftlint swiftformat
@@ -95,10 +102,11 @@ jobs:
 
   build-app:
     name: build-app
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select newest Xcode 26
         run: |
@@ -125,10 +133,11 @@ jobs:
 
   scripts:
     name: scripts
+    if: github.event_name != 'pull_request' || github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: shellcheck
         run: shellcheck --version && shellcheck build.sh scripts/*.sh
@@ -136,10 +145,13 @@ jobs:
       - name: actionlint
         env:
           ACTIONLINT_VERSION: 1.7.12
+          # From actionlint_<version>_checksums.txt on the release; bump together.
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
           tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint -version
           /tmp/actionlint -color

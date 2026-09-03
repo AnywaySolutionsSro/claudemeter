@@ -35,6 +35,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="ClaudeMeter"
 DIST="${ROOT}/dist"
+DERIVED_DATA="${ROOT}/.build/xcodedd"
 APP="${DIST}/${APP_NAME}.app"
 APPEX="${APP}/Contents/PlugIns/ClaudeMeterWidget.appex"
 TEAM="${DEVELOPMENT_TEAM:-72K9YQF24J}"
@@ -77,17 +78,19 @@ build_app() {
 	xcodegen generate --spec "${ROOT}/project.yml"
 
 	echo "==> Building Release (app + widget, team ${TEAM})"
+	# A fixed DerivedData path: the default one is per checkout (worktrees, a
+	# second clone), and a glob over ~/Library/.../DerivedData/ClaudeMeter-* picked
+	# an arbitrary — possibly stale — tree's product to stage and sign.
 	xcodebuild -project "${ROOT}/${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" \
 		-configuration Release -destination 'platform=macOS' \
+		-derivedDataPath "${DERIVED_DATA}" \
 		"${XCODEBUILD_SIGNING[@]}" \
 		${XCODEBUILD_VERSION[@]+"${XCODEBUILD_VERSION[@]}"} \
 		${XCODEBUILD_WARNINGS[@]+"${XCODEBUILD_WARNINGS[@]}"} \
 		build
 
-	local built
-	built="$(find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products/Release \
-		-maxdepth 1 -name "${APP_NAME}.app" 2>/dev/null | head -1)"
-	if [ -z "${built}" ]; then echo "ERROR: built app not found" >&2; exit 1; fi
+	local built="${DERIVED_DATA}/Build/Products/Release/${APP_NAME}.app"
+	if [ ! -d "${built}" ]; then echo "ERROR: built app not found at ${built}" >&2; exit 1; fi
 
 	echo "==> Staging ${APP_NAME}.app in dist/"
 	rm -rf "${APP}"
@@ -164,7 +167,7 @@ consolidate_widget_registration() {
 	local target="$1"
 	echo "==> Consolidating widget registration (${target} only)"
 
-	find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products \
+	find ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products "${DERIVED_DATA}/Build/Products" \
 		-maxdepth 2 -name 'ClaudeMeterWidget.appex' -not -path "*/${APP_NAME}.app/*" \
 		-exec rm -rf {} + 2>/dev/null || true
 

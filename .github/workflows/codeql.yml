@@ -22,7 +22,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select newest Xcode 26
         run: |
@@ -38,7 +38,7 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
         with:
           languages: swift
 
@@ -47,6 +47,6 @@ jobs:
           BUILD_UNSIGNED: "1"
         run: ./build.sh
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@6f5948dfacef28e207b48d0905cf90c03365536d # v3.37.9
         with:
           category: /language:swift
