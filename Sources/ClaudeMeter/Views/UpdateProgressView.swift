@@ -24,7 +24,8 @@ struct UpdateProgressView: View {
 }
 
 /// The three ways to answer "the update is ready": now, in two hours, or at the
-/// next restart. Shared by the banner and Settings.
+/// next restart. Shared by the banner and Settings. Once deferred to the next
+/// restart, only "Restart now" is left to offer.
 struct UpdateReadyActions: View {
     @ObservedObject var updates: UpdateService
     @Environment(\.textScale) private var scale
@@ -33,8 +34,10 @@ struct UpdateReadyActions: View {
         HStack(spacing: scale.pt(8)) {
             Button("Restart now") { updates.install() }
                 .font(scale.font(11)).keyboardShortcut(.defaultAction)
-            Button("Remind me in 2 hours") { updates.remindLater() }.font(scale.font(11))
-            Button("Install on next restart") { updates.installOnNextRestart() }.font(scale.font(11))
+            if !updates.isDeferredToRestart {
+                Button("Remind me in 2 hours") { updates.remindLater() }.font(scale.font(11))
+                Button("Install on next restart") { updates.installOnNextRestart() }.font(scale.font(11))
+            }
         }
     }
 }

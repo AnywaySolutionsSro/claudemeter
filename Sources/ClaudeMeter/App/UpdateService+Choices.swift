@@ -35,7 +35,8 @@ extension UpdateService {
     /// Quit-time hook: perform a deferred install synchronously (no relaunch — the user
     /// is leaving). Errors are logged; the stage stays for the next launch to retry.
     func installPendingOnQuit() {
-        guard isDeferredToRestart, let staged, case let .inPlace(bundleURL) = installMode else { return }
+        guard case .ready = state, isDeferredToRestart, let staged, case let .inPlace(bundleURL) = installMode
+        else { return }
         do {
             try installer.installNow(staged, over: bundleURL, relaunch: false)
             settings.pendingInstallVersion = nil

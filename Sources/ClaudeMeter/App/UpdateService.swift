@@ -258,12 +258,16 @@ final class UpdateService: ObservableObject {
         let decision = UpdatePolicy.decide(current: currentVersion, latest: latest, skipped: skipped)
         let latestTag = latest?.tagName ?? "none"
         log.notice("check: latest \(latestTag, privacy: .public) -> \(String(describing: decision), privacy: .public)")
+        // Consumed here, whatever the outcome: a stale "install what you find" must not
+        // survive an up-to-date answer and fire on an unrelated release days later.
+        let wantsInstall = installAfterStage
+        installAfterStage = false
         // A stage on disk: still right, superseded, or now pointless?
         if let staged {
             switch UpdatePolicy.disposition(of: staged, current: currentVersion, latest: latest?.version) {
             case .keep:
                 state = .ready(staged.release)
-                if installAfterStage { installAfterStage = false; install() }
+                if wantsInstall { install() }
                 return
             case .replace, .discard:
                 installer.discard(staged)
@@ -280,6 +284,7 @@ final class UpdateService: ObservableObject {
         case let .available(release):
             state = .available(release)
             if UpdatePolicy.shouldStage(decision, mode: installMode) {
+                installAfterStage = wantsInstall
                 stage(release)
             } else if !userInitiated {
                 onUpdateFound?(release)
@@ -342,6 +347,10 @@ final class UpdateService: ObservableObject {
         }
         snoozedUntil = nil
         reminderTimer?.invalidate()
+        // Clear the deferral before the swap: the relaunch terminates this process, which
+        // re-enters `applicationShouldTerminate` → `installPendingOnQuit()`, and that must
+        // not try to install a bundle the swap has already moved.
+        settings.pendingInstallVersion = nil
         state = .installing(release)
         let installer = installer
         installTask = Task { [weak self] in

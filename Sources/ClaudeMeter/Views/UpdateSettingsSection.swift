@@ -82,9 +82,10 @@ struct UpdateSettingsSection: View {
     }
 
     /// The `.ready` row has its own action strip below; this covers "found but not
-    /// downloaded" (download-only installs, a failed background download).
+    /// downloaded" (download-only installs, a failed background download) and a failed
+    /// install, which must keep a way to retry or skip.
     @ViewBuilder private var actions: some View {
-        if case .available = updates.state, let release = updates.state.offeredRelease {
+        if let release = updates.state.offeredRelease, !updates.state.isBusy, updates.state.readyRelease == nil {
             Button("Skip this version") { updates.skipOffered() }.font(scale.font(11))
             Button(installLabel) { updates.install() }
                 .buttonStyle(.borderedProminent).font(scale.font(11))
