@@ -20,18 +20,22 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      # No default on purpose: "Run workflow" pre-filled with `major` published
+      # an irrevocable v02.00.00 to anyone re-running the workflow after a failed
+      # run. A rebuild or a re-run should pick `patch` (or set rebuild_tag).
       bump:
         description: "Manual release bump (major is only available here)"
         type: choice
-        options: [major, minor, patch]
-        default: major
+        required: true
+        options: [patch, minor, major]
       rebuild_tag:
         description: "Rebuild the assets of an existing release instead (vMM.mm.pp); ignores bump"
         required: false
         type: string
 
+# Read by default; only the job that publishes gets a write token.
 permissions:
-  contents: write
+  contents: read
 
 # Runs queue behind each other so version numbers stay monotonic. A queued run
 # that gets superseded is harmless: the plan folds every commit since the last
@@ -47,6 +51,9 @@ env:
 jobs:
   plan:
     name: plan
+    # Releases come from main only — a manual run from any other branch would
+    # tag and publish that branch's build as the next version.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -55,7 +62,7 @@ jobs:
       previous: ${{ steps.plan.outputs.previous }}
       rebuild: ${{ steps.plan.outputs.rebuild }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -97,6 +104,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.tag != ''
     runs-on: macos-26
+    permissions:
+      contents: write
     # notarytool --wait occasionally stalls; don't hold the runner (and the
     # release concurrency slot) for GitHub's 6-hour default.
     timeout-minutes: 45
@@ -129,7 +138,7 @@ jobs:
       # A rebuild checks out the released tag; a new release builds the commit
       # that triggered the run (the tag is created at that same sha below).
       # Full history: the release notes walk the commits since the previous tag.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.rebuild == 'true' && needs.plan.outputs.tag || github.sha }}
           fetch-depth: 0
@@ -166,7 +175,11 @@ jobs:
 
           cert="$RUNNER_TEMP/cert.p12"
           echo "$MACOS_CERT_P12" | base64 --decode > "$cert"
-          security import "$cert" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          # -T (not -A): only codesign and security may use the private key. -A
+          # would let every process on the runner — including whatever brew just
+          # installed — sign with or export the Developer ID key.
+          security import "$cert" -P "$MACOS_CERT_PASSWORD" -t cert -f pkcs12 -k "$keychain" \
+            -T /usr/bin/codesign -T /usr/bin/security
           rm -f "$cert"
           # Let codesign/notarytool use the key without a UI prompt.
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null

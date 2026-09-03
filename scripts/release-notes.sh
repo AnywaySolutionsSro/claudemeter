@@ -30,9 +30,13 @@ perf_items=()
 
 # Bullets of the "## Release notes" section of a PR body, one per line
 # (everything from that heading up to the next heading; only "- " / "* " lines).
+# `tr -d '\r'`: web-edited PR bodies arrive CRLF and a stray \r would ride into
+# the release body and the in-app notes. `|| true`: a transient `gh` failure
+# falls back to the title below instead of failing the release after the build.
 release_notes_bullets() {
 	local number="$1"
-	gh pr view "$number" --repo "$repo" --json body -q .body 2>/dev/null |
+	{ gh pr view "$number" --repo "$repo" --json body -q .body || true; } |
+		tr -d '\r' |
 		awk '
 			/^## / { in_section = ($0 ~ /^## [Rr]elease [Nn]otes/); next }
 			in_section && /^[-*] / { sub(/^[-*] +/, ""); print }

@@ -53,10 +53,10 @@ bump="$(conventional_bump "$title")"
 # body; the app shows them in the update prompt. See CLAUDE.md "Release notes".
 if [ "$bump" != "none" ]; then
 	[ -f "$body_file" ] || fail "PR '$title' releases ($bump) but has no body with a '## Release notes' section."
-	bullets="$(awk '
+	bullets="$(tr -d '\r' <"$body_file" | awk '
 		/^## / { in_section = ($0 ~ /^## [Rr]elease [Nn]otes/); next }
 		in_section && /^[-*] / { print }
-	' "$body_file")"
+	')"
 	[ -n "$bullets" ] || fail "PR '$title' releases ($bump) but its body has no '## Release notes' section with bullets."
 	if ! LC_ALL=C grep -qE '^[-*] +[^ -~]' <<<"$bullets"; then
 		fail "Release notes bullets must start with an emoji (e.g. '- ✨ …'). See CLAUDE.md."
