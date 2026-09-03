@@ -295,4 +295,28 @@ struct SessionScannerTests {
         // Resumed from the cached offset (1); never re-read line 0 after the failure.
         #expect(disco.chunkCalls["s1"]?.last == 1)
     }
+
+    /// The live process sits at the repo root while the transcript's newest record
+    /// points into `.claude/worktrees/…`: the session must still match its process,
+    /// not hand "running" to an older session in the same folder.
+    @Test func worktreeHopDoesNotHandRunningToAStaleSessionInTheSameFolder() async {
+        func line(cwd: String, at ts: String, output: Int) -> String {
+            #"{"type":"assistant","timestamp":"\#(ts)","cwd":"\#(cwd)","message":{"model":"m","usage":{"output_tokens":\#(output)}}}"#
+        }
+        let disco = FakeDiscoverer(
+            refs: [ref("live", modified: 6_000), ref("stale", modified: 5_000)],
+            linesByID: [
+                "live": [line(cwd: "/p1", at: "2026-06-28T17:00:00Z", output: 800),
+                         line(cwd: "/p1/.claude/worktrees/iap56-prep", at: "2026-06-28T17:30:00Z", output: 10)],
+                "stale": [line(cwd: "/p1", at: "2026-06-28T16:00:00Z", output: 90)],
+            ],
+        )
+        let scanner = SessionScanner(discoverer: disco, processProbe: FakeProbe(counts: ["/p1": 1]),
+                                     desktopDetector: FakeDesktop(running: false))
+        let result = await scanner.scan(now: now)
+        let byID = Dictionary(uniqueKeysWithValues: result.sessions.map { ($0.id, $0) })
+        #expect(byID["live"]?.projectPath == "/p1")
+        #expect(byID["live"]?.running == .running)
+        #expect(byID["stale"]?.running == .idle)
+    }
 }

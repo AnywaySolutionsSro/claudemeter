@@ -385,6 +385,15 @@ CodeQL runs on `main` weekly as an advisory scan (Security tab).
   error made "Remove" impossible in every shipped build. The post-delete `hasKey` check is
   what guarantees the key is really gone.
 
+- **Transcript `cwd` hops into `.claude/worktrees/` are NOT moves.** Worktree tools (EnterWorktree,
+  agents with worktree isolation) stamp `<repo>/.claude/worktrees/<name>` as the `cwd` of records
+  — thousands of them, interleaved with `<repo>` — while the CLI process keeps its cwd at
+  `<repo>`. Following the newest record's cwd made the live session unmatchable for minutes at a
+  time, so an *ended* 3-minute session in the same folder took the "running" slot in the widget
+  with its own model and token count (2026-09-03: "mbx 90K fable-5" instead of the real 810K
+  fable-5-1 session). `ClaudeWorktree.isHop` keeps `lastCwd` on the real folder; a session that
+  *starts* inside a worktree still keeps the worktree path, and a real `cd` elsewhere is still
+  followed. Diagnose with the transcript's cwd transitions vs `lsof -a -p <pid> -d cwd`.
 - **Claude Code CLI processes are matched by executable PATH, not name.** The CLI runs
   versioned binaries (`~/.local/share/claude/versions/<v>`), so `proc_name` returns the version
   string (e.g. `2.1.195`), never `claude`. `LibprocProcessProbe` matches `proc_pidpath` containing
