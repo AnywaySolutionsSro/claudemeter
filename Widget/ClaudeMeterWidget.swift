@@ -174,6 +174,11 @@ struct ClaudeMeterWidgetEntryView: View {
     /// Nothing is armable from a stale snapshot: the processes it names may be gone.
     private var armableIDs: Set<String> { entry.isStale ? [] : Set(entry.snapshot?.armableSessionIDs ?? []) }
     private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
+    /// Paid extra-usage spend, shown only while it is actually costing money.
+    private var extraUsage: ExtraUsage? {
+        guard let usage = entry.snapshot?.extraUsage, usage.isEnabled, !usage.used.isZero else { return nil }
+        return usage
+    }
 
     var body: some View {
         Group {
@@ -345,12 +350,35 @@ struct ClaudeMeterWidgetEntryView: View {
         } else {
             // Rings are a fixed 58pt; systemMedium fits four. Session and Weekly come
             // first, so the cap only ever drops surplus per-model windows.
-            HStack(alignment: .center, spacing: 0) {
-                ForEach(gauges.prefix(4)) { gauge in
-                    GaugeRingView(gauge: gauge, size: 58).frame(maxWidth: .infinity)
+            VStack(spacing: 6) {
+                HStack(alignment: .center, spacing: 0) {
+                    ForEach(gauges.prefix(4)) { gauge in
+                        GaugeRingView(gauge: gauge, size: 58).frame(maxWidth: .infinity)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                extraUsageRow
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// One line of paid spend under the gauges: `Extra usage  €75.09 / €110.00  68%`.
+    @ViewBuilder private var extraUsageRow: some View {
+        if let usage = extraUsage {
+            HStack(spacing: 5) {
+                Image(systemName: "creditcard.fill").font(.system(size: 9))
+                Text("Extra usage").font(.system(size: 10, weight: .medium))
+                Spacer()
+                Text(usage.headline).font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                if let percent = usage.percentUsed {
+                    Text(Formatting.percent(percent))
+                        .font(.system(size: 10)).monospacedDigit()
+                        .foregroundStyle(percent >= 95 ? .red : (percent >= 80 ? .orange : .secondary))
+                }
+            }
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
     }
 
@@ -368,6 +396,7 @@ struct ClaudeMeterWidgetEntryView: View {
             } else {
                 ForEach(sessions.prefix(compact ? 10 : 7)) { sessionBar($0, compact: compact) }
                 Spacer(minLength: 0)
+                extraUsageRow
             }
         }
     }

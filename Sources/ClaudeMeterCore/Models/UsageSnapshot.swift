@@ -8,6 +8,8 @@ public struct UsageSnapshot: Equatable, Sendable {
     public let sevenDaySonnet: UsageBucket?
     /// Per-model weekly windows from `limits[]` (e.g. "Fable"), in server order.
     public let modelWeekly: [ModelWeeklyLimit]
+    /// The paid extra-usage allowance, when the account has one and it read cleanly.
+    public let extraUsage: ExtraUsage?
     public let fetchedAt: Date
 
     public init(
@@ -16,6 +18,7 @@ public struct UsageSnapshot: Equatable, Sendable {
         sevenDayOpus: UsageBucket?,
         sevenDaySonnet: UsageBucket?,
         modelWeekly: [ModelWeeklyLimit] = [],
+        extraUsage: ExtraUsage? = nil,
         fetchedAt: Date,
     ) {
         self.fiveHour = fiveHour
@@ -23,6 +26,7 @@ public struct UsageSnapshot: Equatable, Sendable {
         self.sevenDayOpus = sevenDayOpus
         self.sevenDaySonnet = sevenDaySonnet
         self.modelWeekly = modelWeekly
+        self.extraUsage = extraUsage
         self.fetchedAt = fetchedAt
     }
 

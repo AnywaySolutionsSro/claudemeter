@@ -56,6 +56,43 @@ Scan roots: `~/.claude/projects` (CLI) **and** `~/Library/Application Support/Cl
 local-agent-mode-sessions/**/.claude/projects` (desktop agent/Cowork). Plain desktop chat is
 server-side and not trackable.
 
+### Extra usage feature (paid overage tracking, read-only)
+
+The **extra usage** allowance that bills on top of the subscription comes free with the
+usage reading `UsageStore` already makes every 30s — `extra_usage` and `spend` in the
+same body. `UsageResponseDecoder` turns whichever reads cleanly into `ExtraUsage`
+(**`spend` wins**, mirroring `limits[]` over `seven_day_<model>`); it reaches the
+dropdown (`ExtraUsageSection`) and the widget (through `SessionSnapshot.extraUsage`,
+the *same* file as `usageGauges` — same producer, so they cannot race, unlike
+`api-spend.json`).
+
+**Read-only on purpose; don't add writes.** Enabling, raising the cap and buying credits
+all open `https://claude.ai/settings/usage` (`ClaudeLinks`). The write endpoints exist
+(see [docs/anthropic-endpoints.md](docs/anthropic-endpoints.md)) but Claude Code itself
+has **no off switch** — every write in its binary sends `is_enabled: true` and its own
+"manage" option opens the browser — and the server reports `can_toggle: false` /
+`can_purchase_credits: false` for this account. `Buy credits` only renders when
+`canPurchase` is true, so it is never a dead button.
+
+**Money is minor units plus the server's exponent** (`{7509, "EUR", 2}` = €75.09).
+`Money` carries all three; nothing hardcodes 2 (JPY is 0) or assumes USD — the same
+class of bug as the Cost API's cents trap. A block whose amount, currency or exponent
+doesn't parse yields **no reading**, never a zero: the section hides and the cached
+value stands.
+
+**There is no reset date for the monthly window** (`daily`/`weekly` null, no
+`resets_at`), so a *drop in spend* is the only signal a new billing period began —
+which is what `ExtraUsageAlerts.decide` keys on, the same shape as
+`UsageStats.didRefill`. `ExtraUsageAlerts.State` is deliberately **in memory only**:
+the first reading of each run re-seeds it from the live figure, so a mid-month restart
+neither re-notifies nor goes silent, and no persisted set can be invalidated by a
+month boundary. **Its baseline is the last reading that *parsed*, never the previous
+snapshot** — `decide` reads `previous == nil` as "first reading, seed silently", so
+feeding it a snapshot whose `spend` block failed to parse would make one glitchy poll
+mark a genuine 80% crossing delivered *without notifying*, for the rest of the month.
+`advance` is what keeps a gap and a fresh start apart; don't collapse them again. Three alerts, on by default, one Settings checkbox
+(`extraUsageNotificationsEnabled`): spending started · 80% of cap · cap reached.
+
 ### Auto-Resume feature (type `continue` into armed sessions after a quota refill)
 
 When the 5-hour window refills, each **armed** session that's sitting at a usage-limit cutoff

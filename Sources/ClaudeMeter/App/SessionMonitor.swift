@@ -81,9 +81,14 @@ final class SessionMonitor: ObservableObject {
                "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
             + snapshot.usageGauges
             .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
+            + [Self.extraUsageStructureKey(snapshot.extraUsage)]
         // Display-rounded, so a count that renders the same doesn't count as a change.
+        // The extra-usage amount belongs here rather than in `structure` for the same
+        // reason: spend moves on almost every scan while a session streams, and an
+        // immediate reload per cent is the ~2,400/day regression this split prevents.
         let tokens = snapshot.sessions.map { "\($0.id):\(Formatting.tokenCount($0.totalTokens))" }
-            + ["total:\(Formatting.tokenCount(snapshot.totalTokens))"]
+            + ["total:\(Formatting.tokenCount(snapshot.totalTokens))",
+               "extra:\(snapshot.extraUsage.map(\.headline) ?? "")"]
         let structureChanged = structure != lastStructure
         let tokensChanged = tokens != lastTokens
         lastStructure = structure
@@ -94,6 +99,22 @@ final class SessionMonitor: ObservableObject {
         guard structureChanged || sinceReload >= Self.minReloadInterval else { return }
         lastReloadAt = now
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// The parts of extra usage the widget must not wait five minutes for: whether the
+    /// row appears at all, whether spending is blocked, and which colour band it is in.
+    /// The amount itself is deliberately excluded — it changes far too often to drive an
+    /// immediate reload.
+    private static func extraUsageStructureKey(_ usage: ExtraUsage?) -> String {
+        guard let usage else { return "extra:none" }
+        let band = usage.percentUsed.map { percent -> String in
+            switch percent {
+            case 95...: "critical"
+            case 80...: "warn"
+            default: "normal"
+            }
+        } ?? "uncapped"
+        return "extra:\(usage.isEnabled):\(usage.used.isZero):\(usage.isBlocked):\(band)"
     }
 
     /// Token-only changes reload at most this often (matches the widget's timeline).
@@ -153,12 +174,12 @@ final class SessionMonitor: ObservableObject {
         )
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = result.sessions.filter { $0.running == .running }.count
-        let gauges = usageProvider?()?.gauges ?? []
+        let usage = usageProvider?()
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
-            usageGauges: gauges,
+            usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)

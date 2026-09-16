@@ -70,6 +70,7 @@ struct MenuContentView: View {
                 ForEach(snapshot.allBuckets) { row in
                     UsageRow(title: row.title, bucket: row.bucket, isActive: row.isActive, now: now)
                 }
+                ExtraUsageSection(usage: snapshot.extraUsage)
                 insights
                 cooldownBox
             }
