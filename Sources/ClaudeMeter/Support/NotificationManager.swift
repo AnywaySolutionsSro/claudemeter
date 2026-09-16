@@ -64,6 +64,13 @@ final class NotificationManager {
         )
     }
 
+    /// Paid extra-usage threshold nudge (spending started / 80% of cap / cap reached).
+    /// One identifier per alert, so a repeat within a period replaces rather than stacks.
+    func notifyExtraUsage(_ alert: ExtraUsageAlert, usage: ExtraUsage) {
+        let message = alert.message(for: usage)
+        deliver(title: message.title, body: message.body, id: "extra-usage-\(alert.rawValue)")
+    }
+
     /// Generic one-shot notification for auto-resume status messages.
     func notify(_ title: String, _ body: String) {
         deliver(title: title, body: body, id: UUID().uuidString)

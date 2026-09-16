@@ -240,6 +240,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 notifications.notifyThreshold(threshold, remaining: remaining, etaToReset: eta)
             }
             if threshold >= 90 { ShortcutRunner.run(settings.lowUsageShortcut) }
+        case let .extraUsage(alert, usage):
+            if settings.extraUsageNotificationsEnabled {
+                notifications.notifyExtraUsage(alert, usage: usage)
+            }
         }
     }
 

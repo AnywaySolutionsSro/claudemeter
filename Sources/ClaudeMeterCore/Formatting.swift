@@ -69,6 +69,25 @@ public enum Formatting {
         return amount < 0 ? "-<$0.01" : "<$0.01"
     }
 
+    /// Formats an amount in the currency the server reported it in, to that
+    /// currency's own number of decimal places (`€75.09`, `¥7,509`).
+    ///
+    /// Locale is pinned to `en_US` for the same reason `usd` pins it: the separators
+    /// should match the bill, and the rendering should not shift under the viewer's
+    /// region. The currency symbol still comes from the code, so a EUR amount reads
+    /// `€75.09` wherever the app runs.
+    public static func money(_ money: Money?) -> String {
+        guard let money else { return noValue }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = money.currency
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.roundingMode = .halfUp
+        formatter.minimumFractionDigits = money.exponent
+        formatter.maximumFractionDigits = money.exponent
+        return formatter.string(from: money.decimalValue as NSDecimalNumber) ?? noValue
+    }
+
     /// Labels a UTC cost bucket relative to `now`.
     ///
     /// The Cost API only reports completed days, so the newest bucket is normally

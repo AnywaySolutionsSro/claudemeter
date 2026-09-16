@@ -153,12 +153,12 @@ final class SessionMonitor: ObservableObject {
         )
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = result.sessions.filter { $0.running == .running }.count
-        let gauges = usageProvider?()?.gauges ?? []
+        let usage = usageProvider?()
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
-            usageGauges: gauges,
+            usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)

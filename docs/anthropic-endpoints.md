@@ -22,7 +22,9 @@ Accept: application/json
   "seven_day":        { "utilization": 11.0, "resets_at": "2026-07-04T04:59:59.398532+00:00" },
   "seven_day_opus":   null,
   "seven_day_sonnet": { "utilization": 0.0,  "resets_at": "2026-07-04T04:59:59.398543+00:00" },
-  "extra_usage":      { "is_enabled": false, "monthly_limit": 11000, "...": "..." },
+  "extra_usage":      { "is_enabled": true, "monthly_limit": 11000, "used_credits": 7509.0,
+                        "utilization": 68.26, "currency": "EUR", "decimal_places": 2,
+                        "disabled_reason": null, "spend_limit_reached": false },
   "limits":           [ { "kind": "session", "percent": 55, "resets_at": "...", "is_active": true }, ... ],
   "spend":            { "...": "..." }
 }
@@ -53,7 +55,53 @@ Accept: application/json
   change; `percent` = utilization; `is_active` = the binding window). The Claude Code binary
   describes it as "Server-supplied label for the model bucket (e.g. 'Fable')". If `limits[]`
   and a legacy `seven_day_<model>` bucket name the same model, the scoped entry wins.
+- **`extra_usage` / `spend`** are two overlapping views of the same paid-overage
+  allowance. `spend` is the newer, structured one and **wins** when both are present
+  (the same precedence `limits[]` has over `seven_day_<model>`); `extra_usage` is the
+  fallback. `ExtraUsage` in the core is decoded from whichever reads cleanly.
+
+  ```json
+  "spend": {
+    "used":  { "amount_minor": 7509,  "currency": "EUR", "exponent": 2 },
+    "limit": { "amount_minor": 11000, "currency": "EUR", "exponent": 2 },
+    "percent": 68, "severity": "normal", "enabled": true, "disabled_reason": null,
+    "cap": { "money": { "amount_minor": 11000, … }, "credits": null },
+    "balance": null, "auto_reload": null,
+    "disclaimer": "Usage credits cover you when you hit your plan limits. [Learn more](…)",
+    "can_purchase_credits": false, "can_toggle": false
+  }
+  ```
+
+  - Money is **minor units plus the currency's own exponent** — `{7509, "EUR", 2}` is
+    €75.09. Never assume two decimal places (JPY uses zero) and never assume USD. A
+    block whose amount, currency or exponent doesn't parse yields **no reading**, never
+    a zero.
+  - **There is no reset date for the monthly spend window.** `daily` and `weekly` are
+    null and `spend` carries no `resets_at`, so the only evidence a new billing period
+    began is the spent amount **dropping** (`ExtraUsageAlerts` depends on this).
+  - `can_toggle` and `user_disabled` appear in the response but **not** in the Claude
+    Code binary (2.1.266) — they are newer than the client and what gates them is
+    unverified. Only `can_purchase_credits` is consumed by the CLI.
 - HTTP **429** is returned when polling too often; honor `Retry-After`.
+
+## Extra usage: the write endpoints (NOT used by ClaudeMeter)
+
+Recorded so nobody has to re-derive them. All undocumented, all authenticated as
+`teleport-org`, all moving real money. ClaudeMeter is read-only and opens
+`https://claude.ai/settings/usage` instead.
+
+```
+PUT  /api/oauth/organizations/:orgUUID/overage_spend_limit
+     { "is_enabled": true }                                     # turn on
+     { "is_enabled": true, "monthly_credit_limit": 11000, "currency": "EUR" }
+POST /api/oauth/organizations/:orgUUID/setup_overage_billing    { "org_monthly_spend_limit": … }
+PUT  /api/oauth/organizations/:orgUUID/contracts/auto_reload_settings
+POST /api/oauth/organizations/:orgUUID/contracts/prepaid/credits  # buy, Stripe + 3DS
+```
+
+**Claude Code has no off switch.** Every write in its binary sends `is_enabled: true`;
+its inline dialog offers continue / buy / adjust limit / auto-reload / **manage**, and
+"manage" opens the browser. Turning extra usage *off* is a web action even there.
 
 ## OAuth (authorization code + PKCE)
 

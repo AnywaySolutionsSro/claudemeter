@@ -88,6 +88,14 @@ struct SettingsView: View {
                 .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
                 }
+                Toggle(isOn: $settings.extraUsageNotificationsEnabled) {
+                    Label("Extra usage spend", systemImage: "creditcard")
+                }
+                .onChange(of: settings.extraUsageNotificationsEnabled) { _, enabled in
+                    if enabled { NotificationManager().requestAuthorization() }
+                }
+                Text("Tells you when paid extra usage starts, reaches 80% of your monthly cap, and hits it.")
+                    .font(scale.font(10)).foregroundStyle(.secondary)
             }
 
             Section(header: sectionHeader("Low-usage Shortcut", "bolt.badge.clock", .yellow)) {

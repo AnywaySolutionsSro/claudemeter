@@ -44,6 +44,12 @@ final class Settings: ObservableObject {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
 
+    /// Threshold nudges for paid extra usage (spending started / 80% / cap reached).
+    /// On by default: unnoticed paid spend is the failure this feature exists to prevent.
+    @Published var extraUsageNotificationsEnabled: Bool {
+        didSet { defaults.set(extraUsageNotificationsEnabled, forKey: Keys.extraUsageNotificationsEnabled) }
+    }
+
     @Published var lowUsageShortcut: String {
         didSet { defaults.set(lowUsageShortcut, forKey: Keys.lowUsageShortcut) }
     }
@@ -96,6 +102,8 @@ final class Settings: ObservableObject {
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
+        self.extraUsageNotificationsEnabled =
+            defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
         // Master switch defaults OFF for fresh installs: enabling it in Settings is
         // the deliberate opt-in that also surfaces the iTerm2 Automation consent
@@ -115,6 +123,7 @@ final class Settings: ObservableObject {
         static let displayMode = "displayMode"
         static let textScale = "textScale"
         static let notificationsEnabled = "notificationsEnabled"
+        static let extraUsageNotificationsEnabled = "extraUsageNotificationsEnabled"
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
         static let autoResumeContinueText = "autoResumeContinueText"
