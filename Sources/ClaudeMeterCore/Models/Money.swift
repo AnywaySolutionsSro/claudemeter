@@ -27,8 +27,9 @@ public struct Money: Equatable, Sendable, Codable {
 
     public var isZero: Bool { amountMinor == 0 }
 
-    /// The largest exponent any real currency uses is 4; anything beyond is a shape
-    /// change we should refuse to guess at.
+    /// No circulating currency uses more than 4 decimal places; the range allows a
+    /// little headroom, and anything past it is a shape change we refuse to guess at
+    /// rather than misreport by orders of magnitude.
     private static let exponentRange = 0 ... 6
 
     /// Parses the `{"amount_minor": …, "currency": …, "exponent": …}` object used

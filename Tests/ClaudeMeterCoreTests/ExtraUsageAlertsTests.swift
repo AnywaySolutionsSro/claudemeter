@@ -145,6 +145,48 @@ struct ExtraUsageAlertsTests {
         #expect(outcome.fire.isEmpty)
     }
 
+    // MARK: - Folding polls through `advance`
+
+    @Test func advanceSeedsSilentlyOnTheFirstPollThenNotifiesOnACrossing() {
+        var state = ExtraUsageAlerts.State()
+        let first = ExtraUsageAlerts.advance(state, with: reading(used: 7509))
+        #expect(first.fire.isEmpty)
+        state = first.state
+
+        let second = ExtraUsageAlerts.advance(state, with: reading(used: 8_800))
+        #expect(second.fire == [.nearingCap])
+    }
+
+    /// The regression this state exists for: one poll whose `spend` block failed to
+    /// parse must be a gap, not a fresh start. Treating it as a fresh start made the
+    /// next poll take the silent seed path, marking a genuine 80% crossing delivered
+    /// without ever notifying — for the rest of the billing period.
+    @Test func aPollWithNoReadingDoesNotSwallowTheNextCrossing() {
+        var state = ExtraUsageAlerts.State()
+        state = ExtraUsageAlerts.advance(state, with: reading(used: 7509)).state
+        state = ExtraUsageAlerts.advance(state, with: nil).state
+
+        let outcome = ExtraUsageAlerts.advance(state, with: reading(used: 9_020))
+        #expect(outcome.fire == [.nearingCap])
+    }
+
+    @Test func aPollWithNoReadingLeavesTheStateUntouched() {
+        let seeded = ExtraUsageAlerts.advance(ExtraUsageAlerts.State(), with: reading(used: 7509)).state
+        let gap = ExtraUsageAlerts.advance(seeded, with: nil)
+        #expect(gap.fire.isEmpty)
+        #expect(gap.state == seeded)
+    }
+
+    @Test func advanceStillSeesARolloverAcrossAGap() {
+        var state = ExtraUsageAlerts.State()
+        state = ExtraUsageAlerts.advance(state, with: reading(used: 11_000)).state
+        state = ExtraUsageAlerts.advance(state, with: nil).state
+
+        let rollover = ExtraUsageAlerts.advance(state, with: reading(used: 40))
+        #expect(rollover.fire == [.spendingStarted])
+        #expect(rollover.state.notified == [.spendingStarted])
+    }
+
     // MARK: - Copy
 
     @Test(arguments: ExtraUsageAlert.allCases)

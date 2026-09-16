@@ -48,11 +48,12 @@ final class UsageStore: ObservableObject {
     /// can be a transient server flake, so the session is only declared dead — signing the
     /// user out and dropping their tokens — after two independent refresh cycles agree.
     private var consecutiveAuthFailures = 0
-    /// Extra-usage alerts already delivered for the current billing period. Deliberately
-    /// in memory only: the first reading of every run re-seeds it from the live figure
-    /// (see `ExtraUsageAlerts.decide`), which is both simpler and more correct than
-    /// persisting a set that a month boundary can silently invalidate.
-    private var extraUsageNotified: Set<ExtraUsageAlert> = []
+    /// Extra-usage alert state. Deliberately in memory only: the first reading of every
+    /// run re-seeds it from the live figure (see `ExtraUsageAlerts.advance`), which is
+    /// both simpler and more correct than persisting a set that a month boundary can
+    /// silently invalidate. Only ever fed live readings, so the launch-time on-disk
+    /// cache can never seed it.
+    private var extraUsageState = ExtraUsageAlerts.State()
 
     init(client: UsageClient, refreshInterval: TimeInterval = 300, minFetchInterval: TimeInterval = 30) {
         self.client = client
@@ -91,7 +92,7 @@ final class UsageStore: ObservableObject {
         history = []
         hasLiveBaseline = false
         consecutiveAuthFailures = 0
-        extraUsageNotified = []
+        extraUsageState = ExtraUsageAlerts.State()
         ResponseCache.remove()
         UsageHistory.clear()
     }
@@ -136,7 +137,7 @@ final class UsageStore: ObservableObject {
                 history = UsageHistory.append(sample, to: history)
             }
             recompute(now: now)
-            detectExtraUsage(previous: previous, current: fresh)
+            detectExtraUsage(current: fresh)
             if hasLiveBaseline {
                 detectEvents(previous: previous, current: fresh, now: now)
             }
@@ -198,15 +199,17 @@ final class UsageStore: ObservableObject {
         if !events.isEmpty { onEvents?(events) }
     }
 
-    /// Extra-usage threshold alerts. On the first live reading of a run the (possibly
-    /// days-old) on-disk cache is deliberately withheld as the baseline, so the pass
-    /// only seeds what already holds instead of announcing it.
-    private func detectExtraUsage(previous: UsageSnapshot?, current: UsageSnapshot) {
-        let baseline = hasLiveBaseline ? previous?.extraUsage : nil
-        let outcome = ExtraUsageAlerts.decide(
-            previous: baseline, current: current.extraUsage, notified: extraUsageNotified,
-        )
-        extraUsageNotified = outcome.notified
+    /// Extra-usage threshold alerts.
+    ///
+    /// The state carries its own baseline — the last reading that parsed — rather than
+    /// taking one from the previous snapshot. Two things fall out of that: the
+    /// (possibly days-old) on-disk cache can never act as a baseline, since only live
+    /// readings are ever folded in; and a poll whose `spend` block failed to parse is a
+    /// gap rather than a fresh start, so it cannot silently swallow the next real
+    /// crossing.
+    private func detectExtraUsage(current: UsageSnapshot) {
+        let outcome = ExtraUsageAlerts.advance(extraUsageState, with: current.extraUsage)
+        extraUsageState = outcome.state
         guard let usage = current.extraUsage, !outcome.fire.isEmpty else { return }
         onEvents?(outcome.fire.map { .extraUsage($0, usage) })
     }

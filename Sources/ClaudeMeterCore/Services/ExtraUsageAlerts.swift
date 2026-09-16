@@ -49,6 +49,35 @@ public enum ExtraUsageAlerts {
 
     public typealias Outcome = (fire: [ExtraUsageAlert], notified: Set<ExtraUsageAlert>)
 
+    /// Everything the caller must carry between polls. Held here rather than in the
+    /// store so the whole state machine — including the part that survives a poll
+    /// that produced no reading — is testable.
+    public struct State: Equatable, Sendable {
+        /// The last reading that actually parsed. Deliberately **not** the last
+        /// snapshot: a single unreadable poll must not look like the start of a run.
+        public var lastReading: ExtraUsage?
+        /// Alerts already delivered for the current billing period.
+        public var notified: Set<ExtraUsageAlert>
+
+        public init(lastReading: ExtraUsage? = nil, notified: Set<ExtraUsageAlert> = []) {
+            self.lastReading = lastReading
+            self.notified = notified
+        }
+    }
+
+    /// Fold one poll into the state and report what to notify.
+    ///
+    /// The subtlety this exists for: `decide` reads `previous == nil` as "first reading
+    /// of this run — seed silently". Feeding it the previous *snapshot's* reading makes
+    /// a single unreadable poll indistinguishable from that, and the seed path marks
+    /// thresholds delivered **without notifying** — so one glitchy poll could swallow a
+    /// genuine 80% crossing for the rest of the billing period. Carrying the last
+    /// readable reading across such gaps is what keeps the two cases apart.
+    public static func advance(_ state: State, with current: ExtraUsage?) -> (fire: [ExtraUsageAlert], state: State) {
+        let outcome = decide(previous: state.lastReading, current: current, notified: state.notified)
+        return (outcome.fire, State(lastReading: current ?? state.lastReading, notified: outcome.notified))
+    }
+
     /// - Parameters:
     ///   - previous: the last reading, or `nil` for the first of this run. With no prior
     ///     reading nothing can be said to have been *crossed*, so the result only seeds

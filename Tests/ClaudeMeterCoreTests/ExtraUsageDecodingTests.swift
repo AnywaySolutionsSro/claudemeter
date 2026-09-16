@@ -141,6 +141,30 @@ struct ExtraUsageDecodingTests {
         #expect(extra.blockedMessage == "Monthly limit reached")
     }
 
+    /// `spend_limit_reached` exists only in the legacy block. When a response carries
+    /// `spend` alone — the documented direction of travel — a full cap must still read
+    /// as blocked, or the UI tells the user they can spend when they cannot.
+    @Test func aFullCapWithoutTheLegacyBlockStillReadsAsBlocked() throws {
+        let json = """
+        {"spend":{"used":{"amount_minor":11000,"currency":"EUR","exponent":2},
+          "limit":{"amount_minor":11000,"currency":"EUR","exponent":2},
+          "percent":100,"severity":"critical","enabled":true}}
+        """
+        let extra = try #require(try decode(json))
+        #expect(extra.capReached)
+        #expect(extra.blockedMessage == "Monthly limit reached")
+    }
+
+    @Test func anUncappedAccountIsNeverReportedAsCapReached() throws {
+        let json = """
+        {"spend":{"used":{"amount_minor":900000,"currency":"EUR","exponent":2},
+          "limit":null,"percent":null,"enabled":true}}
+        """
+        let extra = try #require(try decode(json))
+        #expect(!extra.capReached)
+        #expect(!extra.isBlocked)
+    }
+
     @Test func carriesThePurchaseCapabilityFlag() throws {
         let json = """
         {"spend":{"used":{"amount_minor":0,"currency":"USD","exponent":2},

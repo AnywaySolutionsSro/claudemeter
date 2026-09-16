@@ -50,14 +50,22 @@ public struct UsageResponseDecoder {
         let legacy = root["extra_usage"] as? [String: Any]
         if let spend = root["spend"] as? [String: Any], let used = Money.parse(spend["used"]) {
             let limit = Money.parse(spend["limit"]) ?? Money.parse((spend["cap"] as? [String: Any])?["money"])
+            let percent = (spend["percent"] as? NSNumber)?.doubleValue
+            // `spend_limit_reached` lives only in the legacy block, which the newer
+            // `spend` view is expected to outlive — so a full cap is also read from the
+            // numbers themselves. Without this, an account whose response has dropped
+            // `extra_usage` would sit at 100% still telling the user nothing is wrong.
+            let spent = percent ?? limit.map { $0.amountMinor > 0
+                ? Double(used.amountMinor) / Double($0.amountMinor) * 100 : 0
+            }
             return ExtraUsage(
                 // A `spend` block that stopped reporting `enabled` still carries real
                 // numbers; the legacy flag answers it, and "on" is the safer guess.
                 isEnabled: (spend["enabled"] as? Bool) ?? (legacy?["is_enabled"] as? Bool) ?? true,
                 used: used,
                 limit: limit,
-                utilization: (spend["percent"] as? NSNumber)?.doubleValue,
-                capReached: (legacy?["spend_limit_reached"] as? Bool) ?? false,
+                utilization: percent,
+                capReached: (legacy?["spend_limit_reached"] as? Bool) ?? (spent.map { $0 >= 100 } ?? false),
                 disabledReason: reason(spend["disabled_reason"]) ?? reason(legacy?["disabled_reason"]),
                 canPurchase: (spend["can_purchase_credits"] as? Bool) ?? false,
             )

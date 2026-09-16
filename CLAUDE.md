@@ -83,10 +83,14 @@ value stands.
 **There is no reset date for the monthly window** (`daily`/`weekly` null, no
 `resets_at`), so a *drop in spend* is the only signal a new billing period began —
 which is what `ExtraUsageAlerts.decide` keys on, the same shape as
-`UsageStats.didRefill`. Its `notified` set is deliberately **in memory only**: the
-first reading of each run re-seeds it from the live figure, so a mid-month restart
+`UsageStats.didRefill`. `ExtraUsageAlerts.State` is deliberately **in memory only**:
+the first reading of each run re-seeds it from the live figure, so a mid-month restart
 neither re-notifies nor goes silent, and no persisted set can be invalidated by a
-month boundary. Three alerts, on by default, one Settings checkbox
+month boundary. **Its baseline is the last reading that *parsed*, never the previous
+snapshot** — `decide` reads `previous == nil` as "first reading, seed silently", so
+feeding it a snapshot whose `spend` block failed to parse would make one glitchy poll
+mark a genuine 80% crossing delivered *without notifying*, for the rest of the month.
+`advance` is what keeps a gap and a fresh start apart; don't collapse them again. Three alerts, on by default, one Settings checkbox
 (`extraUsageNotificationsEnabled`): spending started · 80% of cap · cap reached.
 
 ### Auto-Resume feature (type `continue` into armed sessions after a quota refill)
