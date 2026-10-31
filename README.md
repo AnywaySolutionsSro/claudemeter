@@ -32,7 +32,9 @@ A tiny native macOS **menu-bar** app that shows your Claude subscription usage a
 The same numbers Claude Code's `/usage` command reports — the real server-side values, not a
 local estimate:
 
-- **Session (5h)** — the rolling 5-hour limit, shown in the menu bar by default.
+- **Session (5h)** — the rolling 5-hour limit, shown in the menu bar by default. Verified Ultra
+  accounts have no such window: it simply isn't shown, and the menu bar, alerts, history and
+  auto-resume all run on the weekly limit instead.
 - **Weekly** — the all-models weekly window.
 - **Weekly · Fable** (and any other per-model weekly window Anthropic reports, e.g. Opus or
   Sonnet) — labelled with the server-supplied model name. The one Anthropic flags as currently

@@ -139,8 +139,7 @@ public struct LibprocProcessProbe: ProcessProbing {
                                 Int32(MemoryLayout<proc_bsdinfo>.size))
         guard code > 0 else { return nil }
         let dev = info.e_tdev
-        guard dev != UInt32.max, dev != 0 else { return nil }
-        guard let cName = devname(dev_t(dev), S_IFCHR) else { return nil }
+        guard dev != UInt32.max, dev != 0, let cName = devname(dev_t(dev), S_IFCHR) else { return nil }
         let name = String(cString: cName)
         return name.isEmpty ? nil : "/dev/\(name)"
     }

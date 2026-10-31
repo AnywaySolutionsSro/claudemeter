@@ -233,13 +233,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func handle(_ event: UsageEvent) {
         switch event {
-        case .reset:
-            if settings.notificationsEnabled { notifications.notifyRefill() }
-        case let .crossedThreshold(threshold, remaining, eta):
+        case let .reset(window):
+            if settings.notificationsEnabled { notifications.notifyRefill(window) }
+        case let .crossedThreshold(threshold, window, eta):
             if settings.notificationsEnabled {
-                notifications.notifyThreshold(threshold, remaining: remaining, etaToReset: eta)
+                notifications.notifyThreshold(threshold, window: window, etaToReset: eta)
             }
-            if threshold >= 90 { ShortcutRunner.run(settings.lowUsageShortcut) }
         case let .extraUsage(alert, usage):
             if settings.extraUsageNotificationsEnabled {
                 notifications.notifyExtraUsage(alert, usage: usage)
@@ -247,18 +246,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    /// Several thresholds crossed in one poll (85 % → 100 %) arrive as separate events;
-    /// the Shortcut and the sound must fire once, for the highest.
+    /// Every window reports only its highest crossing, but two windows can cross in the
+    /// same poll, and the Shortcut must still run once. A model window doesn't run it:
+    /// other models keep working, so the account isn't running low.
     private func handle(_ events: [UsageEvent]) {
-        let crossings = events.compactMap { event -> Double? in
-            if case let .crossedThreshold(threshold, _, _) = event { return threshold }
-            return nil
+        events.forEach(handle)
+        let runningLow = events.contains { event in
+            if case let .crossedThreshold(threshold, window, _) = event {
+                return threshold >= 90 && window.kind != .model
+            }
+            return false
         }
-        let highest = crossings.max()
-        for event in events {
-            if case let .crossedThreshold(threshold, _, _) = event, threshold != highest { continue }
-            handle(event)
-        }
+        if runningLow { ShortcutRunner.run(settings.lowUsageShortcut) }
     }
 
     private func installEditMenu() {

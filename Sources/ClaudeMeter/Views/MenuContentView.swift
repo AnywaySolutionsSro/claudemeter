@@ -87,7 +87,7 @@ struct MenuContentView: View {
         VStack(alignment: .leading, spacing: scale.pt(6)) {
             HStack(spacing: scale.pt(4)) {
                 if let burn = store.burnEstimate, burn.isBurning {
-                    Text("🔥 Spending ~\(Int(burn.percentPerHour.rounded()))%/hr")
+                    Text("🔥 Spending ~\(Formatting.perHour(burn.percentPerHour))")
                         .font(scale.font(11, weight: .medium))
                     Text(burnDetail(burn))
                         .font(scale.font(11)).foregroundColor(.secondary)
@@ -95,6 +95,9 @@ struct MenuContentView: View {
                     Text("💤 Idle — not spending right now")
                         .font(scale.font(11)).foregroundColor(.secondary)
                 }
+            }
+            if let line = weeklyPaceLine {
+                Text(line).font(scale.font(11)).foregroundColor(.secondary)
             }
             if let ratio = store.paceRatio, ratio >= 1.2 || ratio <= 0.8 {
                 Text(String(format: "%.1f× your usual pace", ratio))
@@ -115,16 +118,19 @@ struct MenuContentView: View {
     }
 
     @ViewBuilder private var cooldownBox: some View {
-        if let bucket = store.snapshot?.primary, bucket.percentRemaining <= 0.5,
-           let reset = bucket.timeUntilReset(now: now) {
+        if let window = store.snapshot?.blockingWindow, let reset = window.bucket.timeUntilReset(now: now) {
             VStack(alignment: .leading, spacing: scale.pt(6)) {
                 Text("Cooling down")
                     .font(scale.font(12, weight: .semibold))
-                Text("Session is empty — resets in \(Formatting.countdown(reset)). Good time for a break.")
-                    .font(scale.font(11)).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Your \(window.phrase) is used up — resets in \(Formatting.countdown(reset)). Good time for a break.",
+                )
+                .font(scale.font(11)).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 Button("Remind me when it resets") {
-                    if let resetAt = bucket.resetsAt { NotificationManager().scheduleResetReminder(at: resetAt) }
+                    if let resetAt = window.bucket.resetsAt {
+                        NotificationManager().scheduleResetReminder(at: resetAt, for: window)
+                    }
                 }
                 .font(scale.font(11))
             }
@@ -173,7 +179,9 @@ struct MenuContentView: View {
     // MARK: - Derived
 
     private func burnDetail(_ burn: BurnEstimate) -> String {
-        guard let eta = burn.etaToLimit else { return "" }
+        // A weekly window's verdict is the pace line: an hour's rate says nothing
+        // about whether the week will run out.
+        guard store.snapshot?.fiveHour != nil, let eta = burn.etaToLimit else { return "" }
         let reset = store.snapshot?.primary?.timeUntilReset(now: now)
         if let reset, eta < reset {
             return "· hits limit in ~\(Formatting.countdown(eta))"
@@ -182,11 +190,22 @@ struct MenuContentView: View {
     }
 
     private var sparklineValues: [Double] {
-        guard let resetsAt = store.snapshot?.fiveHour?.resetsAt else { return [] }
-        return store.history
-            .filter { $0.sessionResetsAt == resetsAt }
-            .sorted { $0.timestamp < $1.timestamp }
-            .map(\.sessionUtilization)
+        UsageStats.currentWindowTrend(samples: store.history)
+    }
+
+    /// Only for weekly-only accounts, where the week is the window that matters.
+    private var weeklyPaceLine: String? {
+        guard
+            store.snapshot?.fiveHour == nil,
+            let weekly = store.snapshot?.sevenDay,
+            let pace = WeeklyPace.estimate(weekly, now: now)
+        else {
+            return nil
+        }
+        if let runsOutIn = pace.runsOutIn {
+            return "📈 Ahead of the week — runs out in ~\(Formatting.countdown(runsOutIn))"
+        }
+        return "✅ On track for this week"
     }
 
     private var maxedThisWeek: Int {

@@ -39,27 +39,28 @@ final class NotificationManager {
         }
     }
 
-    /// 80/90/100%-used nudge. `remaining` is percent left; `etaToReset` seconds until reset.
-    func notifyThreshold(_ threshold: Double, remaining: Double, etaToReset: TimeInterval?) {
-        let left = Formatting.percent(remaining)
+    /// 80/90/100%-used nudge for one window. One identifier per window and threshold,
+    /// so the session and weekly alerts don't replace each other.
+    func notifyThreshold(_ threshold: Double, window: LimitWindow, etaToReset: TimeInterval?) {
+        let left = Formatting.percent(window.bucket.percentRemaining)
         let resetPart = etaToReset.map { " · resets in \(Formatting.countdown($0))" } ?? ""
         let (title, body): (String, String)
         switch threshold {
         case 100...:
-            (title, body) = ("Out of session budget ⛽", "0% left\(resetPart).")
+            (title, body) = ("Out of \(window.budgetName) budget ⛽", "0% left\(resetPart).")
         case 90:
-            (title, body) = ("Running on fumes 🔥", "\(left) left\(resetPart).")
+            (title, body) = ("Running on fumes 🔥", "\(left) of your \(window.phrase) left\(resetPart).")
         default:
-            (title, body) = ("Heads up", "\(left) of your session window left\(resetPart).")
+            (title, body) = ("Heads up", "\(left) of your \(window.phrase) left\(resetPart).")
         }
-        deliver(title: title, body: body, id: "threshold-\(Int(threshold))")
+        deliver(title: title, body: body, id: "threshold-\(window.id)-\(Int(threshold))")
     }
 
     /// Window refilled to full.
-    func notifyRefill() {
+    func notifyRefill(_ window: LimitWindow) {
         deliver(
             title: "Tank refilled 🎉",
-            body: "Your session window reset — back to full.",
+            body: "Your \(window.phrase) reset — back to full.",
             id: "refill-\(UUID().uuidString)",
         )
     }
@@ -134,12 +135,12 @@ final class NotificationManager {
     }
 
     /// Schedule a one-shot "it reset" notification for a future date.
-    func scheduleResetReminder(at date: Date) {
+    func scheduleResetReminder(at date: Date, for window: LimitWindow) {
         let interval = date.timeIntervalSinceNow
         guard interval > 1 else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Session refilled 🎉"
-        content.body = "Your Claude session window just reset — back to full."
+        content.title = "\(window.budgetName.capitalized) refilled 🎉"
+        content.body = "Your Claude \(window.phrase) just reset — back to full."
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         add(UNNotificationRequest(identifier: "reset-reminder", content: content, trigger: trigger))

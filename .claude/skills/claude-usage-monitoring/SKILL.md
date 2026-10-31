@@ -21,6 +21,8 @@ Response: buckets `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`
 `null`), each `{ "utilization": <0-100 number>, "resets_at": <ISO-8601 string> }`. There is also
 a `limits` array and `spend`/`extra_usage` objects.
 
+- **`five_hour` is `null` on verified Ultra accounts** (since 2026-10-30); treat the session window
+  as optional and fall back to `seven_day` for anything that tracks usage.
 - **`utilization` is percent USED.** Remaining = `100 - utilization`.
 - **`resets_at` is an ISO-8601 string with microseconds** (`2026-06-27T16:19:59.398499+00:00`),
   NOT epoch seconds. `ISO8601DateFormatter` only handles milliseconds — strip the fractional

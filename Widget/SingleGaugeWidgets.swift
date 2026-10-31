@@ -35,6 +35,9 @@ struct SingleGaugeView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if slot == .session, !gauges.isEmpty {
+                // Not missing data: verified Ultra accounts have no session window.
+                noSessionWindow
             } else {
                 noGaugeData
             }

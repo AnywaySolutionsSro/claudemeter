@@ -16,6 +16,9 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(Formatting.countdown(47 * 60), "47m")
         XCTAssertEqual(Formatting.countdown(8000), "2h13m")
         XCTAssertEqual(Formatting.countdown(2 * 3600), "2h0m")
+        XCTAssertEqual(Formatting.countdown(23 * 3600 + 59 * 60), "23h59m")
+        XCTAssertEqual(Formatting.countdown(24 * 3600), "1d0h")
+        XCTAssertEqual(Formatting.countdown(6 * 86400 + 21 * 3600 + 30 * 60), "6d21h")
     }
 
     func testBucketRemainingAndReset() throws {
@@ -60,5 +63,11 @@ extension FormattingTests {
     func testUSDDistinguishesAbsentDataFromZero() {
         XCTAssertEqual(Formatting.usd(nil), "—")
         XCTAssertEqual(Formatting.usd(Decimal(0)), "$0.00")
+    }
+
+    func testPerHourRate() {
+        XCTAssertEqual(Formatting.perHour(0.42), "0.4%/hr")
+        XCTAssertEqual(Formatting.perHour(7.26), "7.3%/hr")
+        XCTAssertEqual(Formatting.perHour(23.4), "23%/hr")
     }
 }

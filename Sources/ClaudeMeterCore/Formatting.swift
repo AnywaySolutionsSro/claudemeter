@@ -7,7 +7,7 @@ public enum Formatting {
         "\(Int(value.rounded()))%"
     }
 
-    /// Compact countdown for a duration: `2h14m`, `47m`, `8s`, or `now`.
+    /// Compact countdown for a duration: `6d21h`, `2h14m`, `47m`, `8s`, or `now`.
     public static func countdown(_ interval: TimeInterval) -> String {
         let total = Int(interval.rounded())
         guard total > 0 else { return "now" }
@@ -15,9 +15,17 @@ public enum Formatting {
         let hours = total / 3600
         let minutes = (total % 3600) / 60
 
+        if hours >= 24 { return "\(hours / 24)d\(hours % 24)h" }
         if hours > 0 { return "\(hours)h\(minutes)m" }
         if minutes > 0 { return "\(minutes)m" }
         return "\(total)s"
+    }
+
+    /// A burn rate: `23%/hr`, with a decimal below 10 because a weekly window moves in
+    /// fractions of a percent an hour and would otherwise read as `0%/hr`.
+    public static func perHour(_ percent: Double) -> String {
+        let rate = percent < 10 ? String(format: "%.1f", percent) : String(Int(percent.rounded()))
+        return "\(rate)%/hr"
     }
 
     /// Compact human-readable token count: `999`, `1.5K`, `28K`, `1.3M`.

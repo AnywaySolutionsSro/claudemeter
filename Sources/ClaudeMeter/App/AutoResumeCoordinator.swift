@@ -27,8 +27,8 @@ final class AutoResumeCoordinator {
     private let notify: (String) -> Void
     private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "autoresume")
 
-    /// Last seen 5-hour utilization, to detect a refill crossing.
-    private var lastUtilization: Double?
+    /// The windows of the last reading, to detect a refill of any of them.
+    private var lastWindows: [LimitWindow] = []
     /// The active retry window (nil between refills).
     private var window: ResumeWindow?
     /// When the last accepted refill opened a window (feeds the planner's
@@ -108,7 +108,7 @@ final class AutoResumeCoordinator {
 
     /// The account changed (sign-out): the last utilization belongs to someone else.
     func resetBaseline() {
-        lastUtilization = nil
+        lastWindows = []
         lastRefillAt = nil
         window = nil
         notifiedFailures.removeAll()
@@ -139,27 +139,27 @@ final class AutoResumeCoordinator {
             log.debug("skip: master switch off")
             return
         }
-        guard let bucket = usage?.fiveHour else {
-            log.debug("skip: no 5h usage bucket (not signed in / no data yet)")
+        guard let usage else {
+            log.debug("skip: no usage reading (not signed in / no data yet)")
             return
         }
-        // A 5-hour refill under an exhausted weekly window resumes nothing useful:
-        // `continue` hits the weekly limit again, every 5 hours, with a notification
-        // each time. Hold the baseline instead so the eventual weekly reset reads as
-        // the drop that opens the window.
-        if UsageStats.isExhausted(usage?.sevenDay?.utilization) {
-            log.notice("skip: weekly window exhausted; holding refill baseline")
+        // A refill under an exhausted window resumes nothing useful: `continue` hits
+        // that limit again. The baseline still advances, so the blocking window's own
+        // reset is what opens the resume window.
+        let gate = AutoResumePlanner.gate(previous: lastWindows, current: usage)
+        lastWindows = usage.limitWindows
+        guard case let .clear(refilled) = gate else {
+            if case let .blocked(window) = gate {
+                log.notice("skip: \(window.label, privacy: .public) window exhausted")
+            }
             return
         }
-        let current = bucket.utilization
-        let previous = lastUtilization
         let firedBefore = window?.fired ?? []
         let continueText = settings.normalizedContinueText
 
         let plan = AutoResumePlanner.plan(
             now: now(),
-            previousUtilization: lastUtilization,
-            currentUtilization: current,
+            refillObserved: !refilled.isEmpty,
             window: window,
             windowSeconds: resumeWindowSeconds,
             lastRefillAt: lastRefillAt,
@@ -171,14 +171,14 @@ final class AutoResumeCoordinator {
             parentPID: parents,
         )
 
-        lastUtilization = current
         window = plan.window
 
         if plan.refillDetected {
             let armedCount = sessions.filter { self.armed.isArmed($0.id) }.count
+            let names = refilled.map(\.label).joined(separator: ", ")
             log
                 .notice(
-                    "refill detected (\(previous ?? -1, format: .fixed(precision: 1)) -> \(current, format: .fixed(precision: 1))%); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)",
+                    "refill detected (\(names, privacy: .public)); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)",
                 )
             lastRefillAt = now()
             notifiedFailures.removeAll() // a fresh window may notify each session once again

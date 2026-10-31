@@ -1,6 +1,6 @@
 import Foundation
 
-/// How fast the session window is being consumed, and when it will run out.
+/// How fast the tracked window is being consumed, and when it will run out.
 public struct BurnEstimate: Equatable, Sendable {
     /// Percentage points consumed per hour (≥ 0; 0 when idle or refilling).
     public let percentPerHour: Double
@@ -19,11 +19,12 @@ public enum BurnRate {
     /// Minimum span of data before a rate is reported, to avoid wild early estimates.
     public static let minimumSpan: TimeInterval = 300
 
-    /// Estimate burn from recent samples in the *current* session window.
+    /// Estimate burn from recent samples in the *current* window (session, or weekly on
+    /// accounts without one).
     ///
     /// Uses a least-squares trend over all in-window samples within the trailing `lookback`
-    /// (smoothing out the noise a two-point delta would amplify). Only samples sharing the
-    /// latest `sessionResetsAt` are considered, so a window reset never looks like burn.
+    /// (smoothing out the noise a two-point delta would amplify). Only samples of the
+    /// latest sample's window are considered, so a window reset never looks like burn.
     public static func estimate(
         samples: [UsageSample],
         now: Date,
@@ -32,7 +33,7 @@ public enum BurnRate {
         guard let latest = samples.max(by: { $0.timestamp < $1.timestamp }) else { return nil }
 
         let window = samples
-            .filter { $0.sessionResetsAt == latest.sessionResetsAt }
+            .filter { $0.isSameWindow(as: latest) }
             .filter { now.timeIntervalSince($0.timestamp) <= lookback }
             .sorted { $0.timestamp < $1.timestamp }
 
@@ -45,14 +46,14 @@ public enum BurnRate {
         let rate = max(0, slope)
         guard rate > 0.01 else { return BurnEstimate(percentPerHour: 0, etaToLimit: nil) }
 
-        let remaining = max(0, 100 - last.sessionUtilization)
+        let remaining = max(0, 100 - last.trackedUtilization)
         return BurnEstimate(percentPerHour: rate, etaToLimit: remaining / rate * 3600)
     }
 
     /// Slope of utilization vs. time (percentage points per hour), or `nil` if degenerate.
     private static func leastSquaresSlopePerHour(_ samples: [UsageSample], origin: Date) -> Double? {
         let xs = samples.map { $0.timestamp.timeIntervalSince(origin) / 3600 }
-        let ys = samples.map(\.sessionUtilization)
+        let ys = samples.map(\.trackedUtilization)
         let n = Double(samples.count)
         let meanX = xs.reduce(0, +) / n
         let meanY = ys.reduce(0, +) / n

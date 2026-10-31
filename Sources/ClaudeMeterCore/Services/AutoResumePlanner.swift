@@ -84,20 +84,36 @@ public struct ResumePlan: Equatable, Sendable {
     public let windowExpired: Bool
 }
 
+/// Whether armed sessions may be nudged at all right now.
+public enum ResumeGate: Equatable, Sendable {
+    /// An account-wide window is exhausted: `continue` would only hit it again.
+    case blocked(LimitWindow)
+    /// Work can proceed; these windows refilled since the previous reading.
+    case clear(refilled: [LimitWindow])
+}
+
 /// Pure decision core of the auto-resume feature. No AppKit, no Keychain, no
 /// libproc: the PID→path / PID→parent lookups and transcript tail are injected,
 /// exactly like `TerminalDetector`, so the whole policy is unit-testable.
 public enum AutoResumePlanner {
+    /// Compares each window with itself, so any limit's reset can open the resume
+    /// window: on a weekly-only account the weekly reset is the only signal there is,
+    /// and on other plans a session sitting low at a weekly cutoff barely drops. The
+    /// caller always advances its baseline to `current`; a blocked refill is simply
+    /// discarded, and the reset of whichever window was blocking is the one that counts.
+    public static func gate(previous: [LimitWindow], current: UsageSnapshot) -> ResumeGate {
+        if let blocking = current.blockingWindow { return .blocked(blocking) }
+        return .clear(refilled: UsageStats.refilledWindows(previous: previous, current: current.limitWindows))
+    }
+
     // Every input is an injected dependency so the policy stays a pure function;
     // bundling them into a struct would only move the same eleven names around.
     // swiftlint:disable:next function_parameter_count
     public static func plan(
         now: Date,
-        previousUtilization: Double?,
-        currentUtilization: Double,
+        refillObserved: Bool,
         window: ResumeWindow?,
         windowSeconds: Double,
-        dropThreshold: Double = 25,
         lastRefillAt: Date? = nil,
         refillCooldownSeconds: Double = 3600,
         armedIDs: Set<String>,
@@ -107,14 +123,10 @@ public enum AutoResumePlanner {
         executablePath: (Int32) -> String?,
         parentPID: (Int32) -> Int32,
     ) -> ResumePlan {
-        var refilled = UsageStats.didRefill(
-            previousUtilization: previousUtilization,
-            currentUtilization: currentUtilization,
-            dropThreshold: dropThreshold,
-        )
-        // A real 5h refill cannot recur within the cooldown; a second "drop" that
-        // soon is a stale-vs-fresh usage reading flapping (e.g. a cached snapshot
-        // served during rate-limit backoff) and must not reopen the window.
+        var refilled = refillObserved
+        // A real refill cannot recur within the cooldown; a second "drop" that soon is
+        // a stale-vs-fresh usage reading flapping (e.g. a cached snapshot served during
+        // rate-limit backoff) and must not reopen the window.
         if refilled, let last = lastRefillAt, now < last.addingTimeInterval(refillCooldownSeconds) {
             refilled = false
         }
