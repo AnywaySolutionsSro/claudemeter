@@ -24,6 +24,20 @@ Data flow: `AccountStore` (token in own Keychain item) → `UsageClient` (`GET /
 → `UsageResponseDecoder` → `UsageSnapshot` → `UsageStore` (`@Published`) → `MenuBarLabel`
 (NSImage pill) + `MenuContentView` (dropdown).
 
+### Which limit windows exist depends on the account
+
+Anthropic removed the 5-hour window for **verified Ultra** accounts on 2026-10-30 (the renamed
+Max 20x); Pro, Max and an unverified Ultra account keep it, and the API says so by reporting
+`five_hour: null`. **Never branch on a plan name, and never assume a session window**:
+`UsageSnapshot.limitWindows` is what the account has right now, and `LimitWindow.id` is the only
+valid comparison key. The rollout flips accounts mid-run, so comparing "the primary figure" across
+two readings turned a vanishing 80% session into a phantom drop to a 30% weekly reading.
+Consequences: `UsageStats.refilledWindows` / `crossedWindows` compare each window with itself; a
+window with no prior reading crossed nothing; `UsageSample` tracks the session window or, without
+one, the weekly window, and `isSameWindow` keeps the two apart (weekly `resets_at` is matched with
+an hour's tolerance, not `==`). Its stored fields may only gain optionals: `UsageHistory` decodes
+all-or-nothing, so a new required field would silently wipe `history.json`.
+
 ### Live Sessions feature (local token usage per Claude Code session)
 
 A second subsystem reads local Claude Code transcripts and shows per-session token usage:
@@ -95,13 +109,14 @@ mark a genuine 80% crossing delivered *without notifying*, for the rest of the m
 
 ### Auto-Resume feature (type `continue` into armed sessions after a quota refill)
 
-When the 5-hour window refills, each **armed** session that's sitting at a usage-limit cutoff
+When a limit window refills, each **armed** session that's sitting at a usage-limit cutoff
 gets `continue` typed into its iTerm2 tab. Pipeline:
 
 - **Core** (`AutoResumePlanner`, pure/TDD): given the usage reading + armed set + live processes
   + transcript tails, returns a `ResumePlan` (targets to fire, skips with reasons, updated window).
-  Detection is `UsageStats.didRefill` (utilization **drops ≥25** on a 0–100 scale — the only
-  reliable reset signal). Eligibility is `CutoffDetector` (`.eligibleCutoff` only — last
+  Detection is `AutoResumePlanner.gate` → `UsageStats.refilledWindows`: any window, compared with
+  itself, whose utilization **drops ≥25** on a 0–100 scale (the only reliable reset signal),
+  unless an account-wide window is still exhausted (`blockingWindow`). Eligibility is `CutoffDetector` (`.eligibleCutoff` only — last
   meaningful transcript entry is a `<synthetic>` `isApiErrorMessage` containing "limit").
 - **App**: `AutoResumeCoordinator` (@MainActor) runs the planner each ~10s scan and performs the
   side effects — scheduling (staggered), the `ITermDriver` (`NSAppleScript` `write text`, matched
@@ -408,8 +423,9 @@ CodeQL runs on `main` weekly as an advisory scan (Security tab).
   refill cooldown so a genuine refill minutes later was ignored. A cached reading counts only
   while younger than 5 h (an update relaunch, a quick restart). The planner also skips armed
   sessions that are no longer `.running` — their cwd may now host a *different* session's
-  process — and the coordinator holds its baseline while the weekly window is exhausted, so a
-  5-h refill under a weekly cutoff doesn't type `continue` into a wall every 5 hours.
+  process — and `AutoResumePlanner.gate` discards a refill while an account-wide window is still
+  exhausted, so a 5-h refill under a weekly cutoff doesn't type `continue` into a wall every
+  5 hours; the blocking window's own reset then opens the resume window.
 - **Widget reloads are budgeted (~40–70/day for a background app).** `SessionMonitor.publish`
   writes the snapshot file on every scan (the widget reads `generatedAt` to detect a dead
   app) but calls `reloadAllTimelines()` only when the

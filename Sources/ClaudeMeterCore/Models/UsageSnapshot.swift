@@ -56,7 +56,7 @@ public struct UsageSnapshot: Equatable, Sendable {
     }
 
     /// The window shown in the menu bar by default: the frequently-resetting 5-hour
-    /// session limit, falling back to the weekly window if the session bucket is absent.
+    /// session limit, or the weekly window on accounts without one (verified Ultra).
     public var primary: UsageBucket? { fiveHour ?? sevenDay }
 
     /// All present buckets, in display order, for the dropdown detail view.

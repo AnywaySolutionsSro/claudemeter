@@ -143,14 +143,12 @@ struct GaugeRingView: View {
         return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
     }
 
-    /// Compact "4h9m" / "12m" countdown until a window resets; "reset" once it has
+    /// Compact "6d21h" / "4h9m" / "12m" countdown until a window resets; "reset" once it has
     /// passed (the ring then shows a pre-reset figure the app hasn't refreshed yet).
     static func resetShort(_ date: Date) -> String {
         let remaining = date.timeIntervalSinceNow
         guard remaining > 0 else { return "reset" }
-        let secs = Int(remaining)
-        let h = secs / 3600, m = (secs % 3600) / 60
-        return h > 0 ? "\(h)h\(m)m" : "\(m)m"
+        return Formatting.countdown(remaining)
     }
 }
 
@@ -159,6 +157,17 @@ var noGaugeData: some View {
         Image(systemName: "gauge.with.dots.needle.67percent")
             .font(.system(size: 22)).foregroundStyle(.secondary)
         Text("No usage data").font(.system(size: 11)).foregroundStyle(.secondary)
+    }
+}
+
+/// The Session widget on an account that has usage data but no 5-hour window. Its
+/// `kind` has to stay: removing it would make macOS delete every placed copy.
+var noSessionWindow: some View {
+    VStack(spacing: 6) {
+        Image(systemName: "infinity")
+            .font(.system(size: 22)).foregroundStyle(.secondary)
+        Text("No 5-hour limit on your plan")
+            .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
     }
 }
 

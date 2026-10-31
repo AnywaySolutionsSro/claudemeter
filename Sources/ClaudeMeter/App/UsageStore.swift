@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Events worth reacting to (notifications, Shortcut hooks), emitted on each refresh.
 enum UsageEvent {
-    case crossedThreshold(Double, remaining: Double, etaToReset: TimeInterval?)
-    case reset(nextResetsAt: Date?)
+    case crossedThreshold(Double, window: LimitWindow, etaToReset: TimeInterval?)
+    case reset(LimitWindow)
     case extraUsage(ExtraUsageAlert, ExtraUsage)
 }
 
@@ -102,8 +102,8 @@ final class UsageStore: ObservableObject {
     var hasLiveReading: Bool { hasLiveBaseline }
 
     /// The reading auto-resume may compare against to detect a refill: a live one,
-    /// or a cached one young enough to belong to the current 5-hour window (an
-    /// update relaunch, a quick restart). A days-old cache would make the first
+    /// or a cached one young enough to be trusted as a baseline (an update relaunch,
+    /// a quick restart). A days-old cache would make the first
     /// live fetch look like a refill and burn the refill cooldown for nothing.
     var snapshotForRefillDetection: UsageSnapshot? {
         guard let snapshot else { return nil }
@@ -174,26 +174,24 @@ final class UsageStore: ObservableObject {
     /// Emit threshold/reset events — only once a real prior reading exists (so a cold launch
     /// at already-high usage doesn't fire spurious nudges).
     private func detectEvents(previous: UsageSnapshot?, current: UsageSnapshot, now: Date) {
-        guard let previous, let bucket = current.fiveHour else { return }
+        guard let previous else { return }
+        let before = previous.limitWindows
+        let after = current.limitWindows
         var events: [UsageEvent] = []
 
-        if UsageStats.didRefill(
-            previousUtilization: previous.fiveHour?.utilization,
-            currentUtilization: bucket.utilization,
-        ) {
-            events.append(.reset(nextResetsAt: bucket.resetsAt))
+        // Weekly and model windows reset together; one "refilled" is the whole story,
+        // and the weekly one describes it best.
+        let refilled = UsageStats.refilledWindows(previous: before, current: after)
+        if let window = refilled.first(where: { $0.kind == .weekly }) ?? refilled.first {
+            events.append(.reset(window))
         }
 
-        let crossed = UsageStats.crossedThresholds(
-            previous: previous.fiveHour?.utilization,
-            current: bucket.utilization,
-            thresholds: [80, 90, 100],
-        )
-        for threshold in crossed {
+        let crossings = UsageStats.crossedWindows(previous: before, current: after, thresholds: [80, 90, 100])
+        for crossing in crossings {
             events.append(.crossedThreshold(
-                threshold,
-                remaining: bucket.percentRemaining,
-                etaToReset: bucket.timeUntilReset(now: now),
+                crossing.threshold,
+                window: crossing.window,
+                etaToReset: crossing.window.bucket.timeUntilReset(now: now),
             ))
         }
         if !events.isEmpty { onEvents?(events) }

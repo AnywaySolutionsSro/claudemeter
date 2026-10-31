@@ -50,8 +50,7 @@ struct AutoResumePlannerTests {
     ) -> ResumePlan {
         AutoResumePlanner.plan(
             now: now ?? base,
-            previousUtilization: previous,
-            currentUtilization: current,
+            refillObserved: UsageStats.didRefill(previousUtilization: previous, currentUtilization: current),
             window: window,
             windowSeconds: windowSeconds,
             lastRefillAt: lastRefillAt,

@@ -34,6 +34,11 @@ Accept: application/json
 - `resets_at` — **ISO-8601 string** with microsecond precision and timezone offset. NOT epoch
   seconds (the CLI's own doc comment is wrong about this). `ISODate` strips fractional seconds
   before parsing because `ISO8601DateFormatter` only handles milliseconds.
+- **`five_hour` is `null` on verified Ultra accounts** (seen live 2026-10-31; Anthropic removed the
+  window for the $200 plan on 2026-10-30, while Pro, Max and an unverified Ultra account keep one).
+  `limits[]` then carries no session entry. Don't key anything on a plan name: an account can
+  gain or lose the window mid-run. The official test is the same one: no *Current session* bar in
+  Settings → Usage means verified.
 - Buckets may be `null` (plan doesn't have them) or absent. ClaudeMeter consumes `five_hour`,
   `seven_day`, `seven_day_opus`, `seven_day_sonnet`, and the `limits` array.
 - Other bucket keys exist (`seven_day_oauth_apps`, `seven_day_cowork`, codenamed ones such as

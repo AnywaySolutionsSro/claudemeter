@@ -23,24 +23,12 @@ public extension UsageSnapshot {
     /// The account-usage windows as gauges, in display order, with short labels.
     /// Only buckets the API actually returned are included.
     var gauges: [UsageGauge] {
-        var result: [UsageGauge] = []
-        if let b = fiveHour { result.append(UsageGauge(
-            label: "Session",
-            percentLeft: b.percentRemaining,
-            resetsAt: b.resetsAt,
-        )) }
-        if let b = sevenDay { result.append(UsageGauge(
-            label: "Weekly",
-            percentLeft: b.percentRemaining,
-            resetsAt: b.resetsAt,
-        )) }
-        for limit in allModelWeekly {
-            result.append(UsageGauge(
-                label: limit.label,
-                percentLeft: limit.bucket.percentRemaining,
-                resetsAt: limit.bucket.resetsAt,
-            ))
+        limitWindows.map { window in
+            UsageGauge(
+                label: window.label,
+                percentLeft: window.bucket.percentRemaining,
+                resetsAt: window.bucket.resetsAt,
+            )
         }
-        return result
     }
 }
