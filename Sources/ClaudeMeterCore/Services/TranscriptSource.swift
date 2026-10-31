@@ -159,8 +159,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
         }
 
         return projectDirs.flatMap { projectDir -> [TranscriptRef] in
-            guard isDirectory(projectDir) else { return [] }
-            guard let entries = try? fileManager.contentsOfDirectory(
+            guard isDirectory(projectDir), let entries = try? fileManager.contentsOfDirectory(
                 at: projectDir,
                 includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
                 options: [.skipsHiddenFiles],
@@ -217,8 +216,7 @@ public struct TranscriptSource: TranscriptDiscovering, @unchecked Sendable {
 
         var refs: [TranscriptRef] = []
         for case let url as URL in enumerator {
-            guard isTranscriptFile(url) else { continue }
-            guard url.path.contains("/.claude/projects/") else { continue }
+            guard isTranscriptFile(url), url.path.contains("/.claude/projects/") else { continue }
             refs.append(makeRef(url: url, origin: .desktop, parentID: subagentParentID(of: url)))
         }
         return refs

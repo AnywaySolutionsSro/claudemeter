@@ -71,7 +71,7 @@ struct TextScaleTests {
         #expect(fonts == fonts.sorted())
         // Sortedness alone also holds if every scale collapsed to the base font,
         // so assert the ladder actually climbs.
-        #expect(try #require(fonts.first) < fonts.last!)
+        #expect(try #require(fonts.first) < #require(fonts.last))
     }
 
     @Test func neverReturnsBelowBaseEvenWhenNothingFits() {
