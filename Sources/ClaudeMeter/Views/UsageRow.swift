@@ -1,7 +1,8 @@
 import ClaudeMeterCore
 import SwiftUI
 
-/// One rate-limit window: title, a utilization bar, percent-left, and a live reset countdown.
+/// One rate-limit window: title, a utilization bar, percent-left, and a live reset countdown
+/// plus the wall-clock moment it resets (`resets in 4d10h · Sat 28 Nov 06:00`).
 /// `isActive` marks the window Anthropic reports as the binding constraint right now.
 struct UsageRow: View {
     let title: String
@@ -35,8 +36,8 @@ struct UsageRow: View {
                 .progressViewStyle(.linear)
                 .tint(tint)
 
-            if let remaining = bucket.timeUntilReset(now: now) {
-                Text("resets in \(Formatting.countdown(remaining))")
+            if let remaining = bucket.timeUntilReset(now: now), let resetsAt = bucket.resetsAt {
+                Text("resets in \(Formatting.countdown(remaining)) · \(Formatting.resetMoment(resetsAt, now: now))")
                     .font(scale.font(10))
                     .foregroundColor(.secondary)
                     .monospacedDigit()
