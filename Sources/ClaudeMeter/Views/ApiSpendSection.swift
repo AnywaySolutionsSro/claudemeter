@@ -9,6 +9,7 @@ import SwiftUI
 /// isn't — the failure mode that matters most for something denominated in money.
 struct ApiSpendSection: View {
     @EnvironmentObject var store: ApiSpendStore
+    @EnvironmentObject var settings: Settings
     @Environment(\.textScale) private var scale
     let now: Date
 
@@ -36,8 +37,8 @@ struct ApiSpendSection: View {
             Text("API").font(scale.font(11, weight: .semibold)).foregroundStyle(.secondary)
             Spacer()
             if let updated = store.lastUpdated {
-                Text(isStale ? "stale · \(Self.updatedLabel(updated))"
-                    : Self.updatedLabel(updated))
+                Text(isStale ? "stale · \(updatedLabel(updated))"
+                    : updatedLabel(updated))
                     .font(scale.font(10))
                     .foregroundStyle(isStale ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
             }
@@ -81,8 +82,8 @@ struct ApiSpendSection: View {
         }
     }
 
-    private static func updatedLabel(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
+    private func updatedLabel(_ date: Date) -> String {
+        Formatting.dateTime(date, style: settings.clockStyle)
     }
 
     /// `claude-sonnet-5` reads better as `sonnet-5` in a narrow dropdown.

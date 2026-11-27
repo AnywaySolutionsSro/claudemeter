@@ -144,7 +144,8 @@ struct SessionsView: View {
     private var summary: String {
         let running = monitor.sessions.filter { $0.running == .running }.count
         let shownTotal = visibleSessions.reduce(0) { $0 + $1.totalTokens }
-        let updated = monitor.lastUpdated.map { " · updated \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+        let updated = monitor.lastUpdated
+            .map { " · updated \(Formatting.clockTime($0, style: settings.clockStyle))" } ?? ""
         return "\(running) running · \(Formatting.tokenCount(shownTotal)) tokens\(updated)"
     }
 }
