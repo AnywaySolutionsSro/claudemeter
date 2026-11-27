@@ -23,28 +23,28 @@ public struct RunningResolver: Sendable {
             activityAt[session.id] ?? session.lastActivity
         }
 
-        // CLI: per project path, the K newest sessions are running (K = live process count).
-        let cli = sessions.filter { $0.origin == .cli }
+        // Terminal sessions: per project path, the K newest are running (K = live
+        // process count). Each tool is grouped on its own; callers pass the counts
+        // of that tool's processes (Claude and Codex scanners resolve separately).
         var runningCLIIDs: Set<String> = []
-        let groups = Dictionary(grouping: cli, by: \.projectPath)
-        for (path, group) in groups {
-            let k = liveCwdCounts[path] ?? 0
-            guard k > 0 else { continue }
-            let newest = group.sorted { activity($0) > activity($1) }.prefix(k)
-            runningCLIIDs.formUnion(newest.map(\.id))
+        for origin in [SessionOrigin.cli, .codexCLI] {
+            let groups = Dictionary(grouping: sessions.filter { $0.origin == origin }, by: \.projectPath)
+            for (path, group) in groups {
+                let k = liveCwdCounts[path] ?? 0
+                guard k > 0 else { continue }
+                let newest = group.sorted { activity($0) > activity($1) }.prefix(k)
+                runningCLIIDs.formUnion(newest.map(\.id))
+            }
         }
 
         let staleCutoff = now.addingTimeInterval(-desktopRecency)
         return sessions.map { session in
             switch session.origin {
-            case .cli:
+            case .cli, .codexCLI:
                 return session.withRunning(runningCLIIDs.contains(session.id) ? .running : .idle)
-            case .desktop:
+            case .desktop, .codexDesktop:
                 let live = desktopAppRunning && activity(session) >= staleCutoff
                 return session.withRunning(live ? .running : .idle)
-            case .codexCLI, .codexDesktop:
-                // Codex liveness comes from Codex processes, resolved by its own scanner.
-                return session
             }
         }
     }

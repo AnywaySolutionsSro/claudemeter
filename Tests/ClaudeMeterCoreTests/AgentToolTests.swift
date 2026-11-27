@@ -47,11 +47,11 @@ struct AgentToolTests {
         #expect(!SessionOrigin.desktop.isTerminal)
     }
 
-    @Test func runningResolverLeavesCodexSessionsAlone() {
+    @Test func runningResolverIdlesCodexSessionWithoutLiveProcess() {
         let codex = make(tool: .codex).withRunning(.running)
         let resolved = RunningResolver().resolve(
             sessions: [codex], liveCwdCounts: [:], desktopAppRunning: false, now: Date(),
         )
-        #expect(resolved.first?.running == .running)
+        #expect(resolved.first?.running == .idle)
     }
 }

@@ -107,3 +107,36 @@ struct RunningResolverTests {
         #expect(out.map(\.id) == ["a", "b"])
     }
 }
+
+struct RunningResolverCodexTests {
+    private let now = Date(timeIntervalSince1970: 10_000)
+
+    private func session(_ id: String, _ origin: SessionOrigin, path: String, last: TimeInterval) -> SessionUsage {
+        SessionUsage(id: id, origin: origin, projectPath: path, models: ["m"],
+                     tokens: TokenBreakdown(input: 1), messageCount: 1,
+                     firstActivity: .init(timeIntervalSince1970: 0),
+                     lastActivity: .init(timeIntervalSince1970: last), burnRate: 0, tool: .codex)
+    }
+
+    @Test func testCodexCLIUsesLiveCwdCounts() {
+        let out = RunningResolver().resolve(
+            sessions: [
+                session("old", .codexCLI, path: "/p", last: 100),
+                session("new", .codexCLI, path: "/p", last: 900),
+            ],
+            liveCwdCounts: ["/p": 1], desktopAppRunning: false, now: now,
+        )
+        #expect(out.first { $0.id == "new" }?.running == .running)
+        #expect(out.first { $0.id == "old" }?.running == .idle)
+    }
+
+    @Test func testCodexDesktopFollowsDesktopFlag() {
+        let recent = session("d", .codexDesktop, path: "/p", last: 9_900)
+        let idle = RunningResolver().resolve(sessions: [recent], liveCwdCounts: ["/p": 1],
+                                             desktopAppRunning: false, now: now)
+        #expect(idle.first?.running == .idle)
+        let live = RunningResolver().resolve(sessions: [recent], liveCwdCounts: [:],
+                                             desktopAppRunning: true, now: now)
+        #expect(live.first?.running == .running)
+    }
+}
