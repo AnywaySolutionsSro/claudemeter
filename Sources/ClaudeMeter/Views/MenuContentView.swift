@@ -8,11 +8,14 @@ struct MenuContentView: View {
     var onOpenSessions: () -> Void = {}
     /// Invoked when the user opens the Settings window.
     var onOpenSettings: () -> Void = {}
+    /// "Remind me when it resets" for a Codex window (namespaced apart from Claude's).
+    var onRemindCodex: (LimitWindow) -> Void = { _ in }
 
     @EnvironmentObject var store: UsageStore
     @EnvironmentObject var auth: AuthModel
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var updates: UpdateService
+    @EnvironmentObject var monitor: SessionMonitor
     @Environment(\.textScale) private var scale
     @State private var now = Date()
 
@@ -23,12 +26,17 @@ struct MenuContentView: View {
             header
             Divider()
             UpdateBanner()
+            // The tool headings appear only once Codex is present: a Claude-only
+            // dropdown looks exactly as it did before.
+            if monitor.codexPresent { ToolHeader(tool: .claude) }
             if auth.isSignedIn {
                 usageContent
+                codexContent
                 Divider()
                 signedInFooter
             } else {
                 loginContent
+                codexContent
             }
             // Outside the sign-in branch on purpose: API spend uses the admin key, which
             // has nothing to do with the OAuth subscription login.
@@ -59,6 +67,13 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Settings")
+        }
+    }
+
+    @ViewBuilder private var codexContent: some View {
+        if monitor.codexPresent {
+            Divider()
+            CodexSection(now: now, onRemind: onRemindCodex)
         }
     }
 

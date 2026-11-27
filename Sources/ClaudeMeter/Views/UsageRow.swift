@@ -9,6 +9,10 @@ struct UsageRow: View {
     let bucket: UsageBucket
     var isActive = false
     let now: Date
+    /// Bar colour while the window is healthy (Codex rows use Codex green); `nil` is the accent colour.
+    var accent: Color?
+    /// Shown instead of the reset line when the window has no upcoming reset to count down to.
+    var footnote: String?
     @Environment(\.textScale) private var scale
     @EnvironmentObject private var settings: Settings
 
@@ -44,6 +48,11 @@ struct UsageRow: View {
                 .font(scale.font(10))
                 .foregroundColor(.secondary)
                 .monospacedDigit()
+            } else if let footnote {
+                Text(footnote)
+                    .font(scale.font(10))
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
             }
         }
     }
@@ -52,7 +61,7 @@ struct UsageRow: View {
         switch bucket.percentRemaining {
         case ..<10: .red
         case ..<25: .orange
-        default: .accentColor
+        default: accent ?? .accentColor
         }
     }
 }

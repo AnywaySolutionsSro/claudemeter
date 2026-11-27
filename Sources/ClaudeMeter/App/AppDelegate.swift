@@ -103,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sessionMonitor.usageProvider = { [weak self] in self?.store.snapshot }
         bindClockStyle(settings: settings, monitor: sessionMonitor, apiSpend: apiSpend)
             .store(in: &cancellables)
-        installCodexAlerts()
+        installCodex()
         sessionMonitor.onScan = { [weak self] inputs in
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
@@ -306,7 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Re-assert the slot width here, not just at launch: the width is fixed
         // *per scale*, and a text-size change must widen the slot or the new image
         // lands in a stale one. `settings.objectWillChange` already routes here.
+        let codexLeft = codexPillPercentLeft
         statusItem.length = MenuBarLabel.recommendedSlotWidth(for: scale)
+            + (codexLeft == nil ? 0 : MenuBarLabel.codexPillSlotWidth(for: scale))
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -314,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
                 errorMessage: error, now: now, scale: scale,
             )
+            if let codexLeft { image = MenuBarLabel.withCodexPill(image, percentLeft: codexLeft, scale: scale) }
         }
         button.image = image
         button.imagePosition = .imageOnly
@@ -336,7 +339,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let content = MenuContentView(
             onOpenSessions: { [weak self] in self?.openSessions() },
             onOpenSettings: { [weak self] in self?.openSettings() },
+            onRemindCodex: { [weak self] window in
+                self?.limitAlerts.scheduleResetReminder(tool: .codex, window: window)
+            },
         )
+        .environmentObject(sessionMonitor)
         .environmentObject(store)
         .environmentObject(auth)
         .environmentObject(settings)
@@ -396,9 +403,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 // MARK: - Codex
 
 private extension AppDelegate {
-    /// Codex limit readings arrive with each session scan; alerts start only once Codex
+    /// Codex limit readings arrive with each session scan; alerts (and the pill) start only once Codex
     /// is present, and that is also when its alerts first need the notification permission.
-    func installCodexAlerts() {
+    func installCodex() {
         sessionMonitor.onCodexLimits = { [weak self] snapshot, now in
             guard let self, self.sessionMonitor.codexPresent else { return }
             self.limitAlerts.ingest(tool: .codex, snapshot: snapshot, now: now)
@@ -413,5 +420,20 @@ private extension AppDelegate {
                 self.updateLabel()
             }
             .store(in: &cancellables)
+        // A new reading, or a reset passing, changes the Codex pill.
+        sessionMonitor.$codexLimits
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateLabel() }
+            .store(in: &cancellables)
+    }
+
+    /// The Codex pill's figure, or `nil` while it is off or Codex isn't present.
+    var codexPillPercentLeft: Double? {
+        CodexDisplay.pillPercentLeft(
+            enabled: settings.showCodexInMenuBar, present: sessionMonitor.codexPresent,
+            limits: sessionMonitor.codexLimits,
+        )
     }
 }

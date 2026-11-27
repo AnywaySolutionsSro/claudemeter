@@ -19,22 +19,36 @@ enum GaugeSlot {
     }
 }
 
-/// Small widget showing exactly one gauge.
+/// Small widget showing exactly one gauge, from Claude's gauges or Codex's — never a
+/// mix, since both have a "Weekly".
 struct SingleGaugeView: View {
     let entry: SnapshotEntry
     let slot: GaugeSlot
+    var tool: AgentTool = .claude
 
-    private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
+    private var gauges: [UsageGauge] {
+        switch tool {
+        case .claude: entry.snapshot?.usageGauges ?? []
+        case .codex: entry.snapshot?.codexGauges ?? []
+        }
+    }
+
+    /// Codex's widget is always green; Claude's takes its colour only once Codex is around.
+    private var tint: AgentTool? {
+        tool == .codex || entry.snapshot?.includesCodex == true ? tool : nil
+    }
 
     var body: some View {
         Group {
             if let gauge = slot.pick(from: gauges) {
                 VStack {
                     Spacer(minLength: 0)
-                    GaugeRingView(gauge: gauge, size: 96)
+                    GaugeRingView(gauge: gauge, size: 96, tint: tint)
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if tool == .codex {
+                noCodexData
             } else if slot == .session, !gauges.isEmpty {
                 // Not missing data: verified Ultra accounts have no session window.
                 noSessionWindow
@@ -83,6 +97,27 @@ struct ModelGaugeWidget: Widget {
     }
 }
 
+struct CodexWeeklyGaugeWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "CodexGaugeWeekly", provider: Provider()) { entry in
+            SingleGaugeView(entry: entry, slot: .weekly, tool: .codex)
+        }
+        .configurationDisplayName("Codex · Weekly")
+        .description("Codex's weekly usage window as a circular gauge.")
+        .supportedFamilies([.systemSmall])
+    }
+}
+
+/// The Codex widget before any Codex limit reading has reached the app.
+private var noCodexData: some View {
+    VStack(spacing: 6) {
+        Circle().fill(Color(tool: .codex)).frame(width: 10, height: 10)
+        Text("No Codex usage yet").font(.system(size: 11, weight: .semibold))
+        Text("Shows up after your next Codex turn")
+            .font(.system(size: 10)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+    }
+}
+
 // MARK: - Bundle
 
 struct ClaudeMeterWidget: Widget {
@@ -103,6 +138,7 @@ struct ClaudeMeterWidgetBundle: WidgetBundle {
         SessionGaugeWidget()
         WeeklyGaugeWidget()
         ModelGaugeWidget()
+        CodexWeeklyGaugeWidget()
         ApiSpendWidget()
     }
 }

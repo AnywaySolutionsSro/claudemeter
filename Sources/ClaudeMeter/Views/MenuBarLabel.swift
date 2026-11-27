@@ -4,8 +4,12 @@ import ClaudeMeterCore
 /// Renders the menu-bar item per the selected `DisplayMode`. Colours are resolved against the
 /// menu bar's appearance by the caller.
 enum MenuBarLabel {
-    /// Claude brand orange (#D97757).
-    static let claudeOrange = NSColor(srgbRed: 217.0 / 255.0, green: 119.0 / 255.0, blue: 87.0 / 255.0, alpha: 1)
+    /// Claude brand orange, from the shared `ToolPalette`.
+    static let claudeOrange = NSColor(tool: .claude)
+    /// Gap between Claude's item and the Codex pill.
+    private static let codexGap: CGFloat = 4
+    /// The widest Codex pill text, for the fixed slot width.
+    private static let codexReference = "100%"
 
     static func image(
         mode: DisplayMode,
@@ -118,6 +122,30 @@ enum MenuBarLabel {
             let origin = NSPoint(x: (width - textSize.width) / 2, y: (height - textSize.height) / 2)
             (text as NSString).draw(at: origin, withAttributes: attributes)
         }
+    }
+
+    /// The menu-bar item with a second, Codex-green pill (`percentLeft`) beside Claude's
+    /// image. The pill is a plain "% left": the display modes are Claude's.
+    static func withCodexPill(_ claude: NSImage, percentLeft: Double, scale: TextScale) -> NSImage {
+        let (font, verticalPadding) = metrics(for: scale)
+        let borderColor: NSColor = percentLeft < 10 ? .systemRed : NSColor(tool: .codex)
+        let codex = pill(text: Formatting.percent(percentLeft), textColor: color(forRemaining: percentLeft),
+                         borderColor: borderColor, font: font, verticalPadding: verticalPadding)
+        let width = claude.size.width + codexGap + codex.size.width
+        let height = max(claude.size.height, codex.size.height)
+        return draw(width: width, height: height) {
+            claude.draw(at: NSPoint(x: 0, y: (height - claude.size.height) / 2),
+                        from: .zero, operation: .sourceOver, fraction: 1)
+            codex.draw(at: NSPoint(x: claude.size.width + codexGap, y: (height - codex.size.height) / 2),
+                       from: .zero, operation: .sourceOver, fraction: 1)
+        }
+    }
+
+    /// Extra slot width the Codex pill needs.
+    static func codexPillSlotWidth(for scale: TextScale) -> CGFloat {
+        let (font, _) = metrics(for: scale)
+        let textWidth = (codexReference as NSString).size(withAttributes: [.font: font]).width
+        return ceil(textWidth + horizontalPadding * 2 + codexGap)
     }
 
     /// A car-style fuel gauge: a 120° dial with E…F, tick marks, and a needle pointing at the

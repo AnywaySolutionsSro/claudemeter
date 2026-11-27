@@ -43,6 +43,11 @@ struct SettingsView: View {
                 Picker("Time format", selection: $settings.clockStyle) {
                     ForEach(ClockStyle.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
+                if codexPresent {
+                    Toggle(isOn: $settings.showCodexInMenuBar) {
+                        Label("Show Codex in menu bar", systemImage: "menubar.rectangle")
+                    }
+                }
                 Toggle(isOn: launchAtLoginBinding) {
                     Label("Start at login", systemImage: "power")
                 }
