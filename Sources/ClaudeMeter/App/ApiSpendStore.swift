@@ -37,6 +37,8 @@ final class ApiSpendStore: ObservableObject {
     private var lastAttempt: Date?
     private var backoffUntil: Date?
     private var timer: Timer?
+    /// The time-format setting, stamped into the widget's copy of the data.
+    var clockStyleProvider: (() -> ClockStyle)?
 
     init(client: CostClient = CostClient(), keys: AdminKeyStore = AdminKeyStore()) {
         self.client = client
@@ -164,9 +166,15 @@ final class ApiSpendStore: ObservableObject {
             .appendingPathComponent("api-spend.json")
     }
 
+    /// Rewrite the widget's copy of the current reading, e.g. after the time format changed.
+    func redeliverToWidget() {
+        if let snapshot { deliverToWidget(snapshot) }
+    }
+
     private func deliverToWidget(_ snapshot: ApiSpendSnapshot) {
         let url = Self.widgetInboxURL()
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        let stamped = snapshot.withClockStyle(clockStyleProvider?())
+        guard let data = try? JSONEncoder().encode(stamped) else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
         )

@@ -134,4 +134,18 @@ final class ApiSpendSnapshotTests: XCTestCase {
         XCTAssertEqual(try Formatting.usd(XCTUnwrap(Decimal(string: "2.5877"))), "$2.59")
         XCTAssertEqual(Formatting.usd(0), "$0.00")
     }
+
+    func testOldSnapshotDecodesWithoutClockStyle() throws {
+        let json = #"{"days":[],"fetchedAt":0}"#
+        let snap = try JSONDecoder().decode(ApiSpendSnapshot.self, from: Data(json.utf8))
+        XCTAssertNil(snap.clockStyle)
+    }
+
+    func testClockStyleRoundTrips() throws {
+        let stamped = ApiSpendSnapshot(days: [], fetchedAt: utcDay(8, 23), clockStyle: .twentyFour)
+        let data = try JSONEncoder().encode(stamped)
+        XCTAssertEqual(try JSONDecoder().decode(ApiSpendSnapshot.self, from: data).clockStyle, .twentyFour)
+        XCTAssertEqual(snapshot().withClockStyle(.twelve).clockStyle, .twelve)
+        XCTAssertEqual(snapshot().withClockStyle(.twelve).days, snapshot().days)
+    }
 }

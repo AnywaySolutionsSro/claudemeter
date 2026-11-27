@@ -10,6 +10,7 @@ struct UsageRow: View {
     var isActive = false
     let now: Date
     @Environment(\.textScale) private var scale
+    @EnvironmentObject private var settings: Settings
 
     var body: some View {
         VStack(alignment: .leading, spacing: scale.pt(5)) {
@@ -37,10 +38,12 @@ struct UsageRow: View {
                 .tint(tint)
 
             if let remaining = bucket.timeUntilReset(now: now), let resetsAt = bucket.resetsAt {
-                Text("resets in \(Formatting.countdown(remaining)) · \(Formatting.resetMoment(resetsAt, now: now))")
-                    .font(scale.font(10))
-                    .foregroundColor(.secondary)
-                    .monospacedDigit()
+                Text(
+                    "resets in \(Formatting.countdown(remaining)) · \(Formatting.resetMoment(resetsAt, now: now, style: settings.clockStyle))",
+                )
+                .font(scale.font(10))
+                .foregroundColor(.secondary)
+                .monospacedDigit()
             }
         }
     }

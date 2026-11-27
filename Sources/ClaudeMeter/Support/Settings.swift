@@ -40,6 +40,11 @@ final class Settings: ObservableObject {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
 
+    /// 12-hour / 24-hour / follow the system, for every time the app and widgets show.
+    @Published var clockStyle: ClockStyle {
+        didSet { defaults.set(clockStyle.rawValue, forKey: Keys.clockStyle) }
+    }
+
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
@@ -101,6 +106,7 @@ final class Settings: ObservableObject {
         self.defaults = defaults
         self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
+        self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.extraUsageNotificationsEnabled =
             defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
@@ -122,6 +128,7 @@ final class Settings: ObservableObject {
     private enum Keys {
         static let displayMode = "displayMode"
         static let textScale = "textScale"
+        static let clockStyle = "clockStyle"
         static let notificationsEnabled = "notificationsEnabled"
         static let extraUsageNotificationsEnabled = "extraUsageNotificationsEnabled"
         static let lowUsageShortcut = "lowUsageShortcut"

@@ -51,14 +51,14 @@ struct UpdateSettingsSection: View {
         switch updates.state {
         case .idle:
             if let last = settings.lastUpdateCheck {
-                secondary("Last checked \(last.formatted(date: .abbreviated, time: .shortened))")
+                secondary("Last checked \(Formatting.dateTime(last, style: settings.clockStyle))")
             } else {
                 secondary("Not checked yet")
             }
         case .checking:
             HStack(spacing: scale.pt(6)) { ProgressView().controlSize(.small); secondary("Checking…") }
         case let .upToDate(checkedAt):
-            secondary("Up to date · \(checkedAt.formatted(date: .omitted, time: .shortened))")
+            secondary("Up to date · \(Formatting.clockTime(checkedAt, style: settings.clockStyle))")
         case let .available(release):
             Text("\(release.version.description) available").font(scale.font(11, weight: .semibold))
                 .foregroundStyle(.blue)
@@ -68,7 +68,9 @@ struct UpdateSettingsSection: View {
             if updates.isDeferredToRestart {
                 secondary("\(release.version) installs when ClaudeMeter next restarts")
             } else if let until = updates.snoozedUntil, updates.isSnoozed {
-                secondary("\(release.version) ready · reminder at \(until.formatted(date: .omitted, time: .shortened))")
+                secondary(
+                    "\(release.version) ready · reminder at \(Formatting.clockTime(until, style: settings.clockStyle))",
+                )
             } else {
                 Text("\(release.version.description) ready to install").font(scale.font(11, weight: .semibold))
                     .foregroundStyle(.blue)

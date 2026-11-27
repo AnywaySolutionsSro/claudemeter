@@ -98,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sessionMonitor.armedIDsProvider = { [weak self] in Array(self?.armedSessions.armed ?? []) }
         // Carry account usage windows (Session / Weekly / …) into the widget snapshot.
         sessionMonitor.usageProvider = { [weak self] in self?.store.snapshot }
+        bindClockStyle(settings: settings, monitor: sessionMonitor, apiSpend: apiSpend)
+            .store(in: &cancellables)
         sessionMonitor.onScan = { [weak self] inputs in
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
