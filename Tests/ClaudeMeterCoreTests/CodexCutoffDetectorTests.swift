@@ -82,4 +82,20 @@ struct CodexCutoffDetectorTests {
         let line = #"{"type":"event_msg","payload":{"type":"error","error":"You've hit your usage limit."}}"#
         #expect(classify([started, line]) == .eligibleCutoff)
     }
+
+    @Test func cutoffFollowedByTaskCompleteIsStillCutoff() {
+        #expect(classify([started, usageError, tokenReached, complete]) == .eligibleCutoff)
+        #expect(classify([usageError, complete]) == .eligibleCutoff)
+        let aborted = complete.replacingOccurrences(of: "task_complete", with: "turn_aborted")
+        #expect(classify([started, tokenReached, aborted]) == .eligibleCutoff)
+    }
+
+    @Test func cutoffInEarlierTurnThenCleanTurnIsFinished() {
+        #expect(classify([started, usageError, complete, started, userMessage, assistant, complete]) ==
+            .cleanlyFinished)
+    }
+
+    @Test func cutoffThenUserMessageAwaits() {
+        #expect(classify([started, usageError, complete, userMessage]) == .awaitingUserInput)
+    }
 }
