@@ -1,13 +1,13 @@
 import Foundation
 
-/// The small decisions behind how Codex shows up next to Claude: the menu-bar pill's
-/// figure, the note on a window whose reset passed unseen, and the activity line.
+/// The small decisions behind how Codex shows up next to Claude: whether the menu bar
+/// stacks a Codex line, the note on a window whose reset passed unseen, and the activity line.
 public enum CodexDisplay {
-    /// The figure for the green Codex pill: the most constrained window's % left, or
-    /// `nil` when the pill is switched off, Codex isn't present, or there is no reading.
-    public static func pillPercentLeft(enabled: Bool, present: Bool, limits: UsageSnapshot?) -> Double? {
-        guard enabled, present else { return nil }
-        return limits?.mostConstrained?.percentRemaining
+    /// Whether the menu bar stacks a Codex line under Claude's. Decided by the setting
+    /// and Codex's presence only — never by whether a reading exists — so the status
+    /// item's width doesn't change from one scan to the next.
+    public static func showsCodexLine(enabled: Bool, present: Bool) -> Bool {
+        enabled && present
     }
 
     /// `reset at 07:00 · no reading since` for a window whose reset has passed with no

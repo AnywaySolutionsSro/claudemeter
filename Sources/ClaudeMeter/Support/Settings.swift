@@ -54,8 +54,9 @@ final class Settings: ObservableObject {
         didSet { defaults.set(codexNotificationsEnabled, forKey: Keys.codexNotificationsEnabled) }
     }
 
-    /// A second, Codex-green pill in the menu bar (Codex's most constrained window).
-    /// Off by default: the menu bar stays Claude-only unless asked.
+    /// Codex's line under Claude's in the menu bar (Codex's most constrained window).
+    /// On by default, but it only appears once Codex is present: a Claude-only user
+    /// keeps the single-line label.
     @Published var showCodexInMenuBar: Bool {
         didSet { defaults.set(showCodexInMenuBar, forKey: Keys.showCodexInMenuBar) }
     }
@@ -120,7 +121,7 @@ final class Settings: ObservableObject {
         self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.codexNotificationsEnabled = defaults.object(forKey: Keys.codexNotificationsEnabled) as? Bool ?? true
-        self.showCodexInMenuBar = defaults.bool(forKey: Keys.showCodexInMenuBar)
+        self.showCodexInMenuBar = defaults.object(forKey: Keys.showCodexInMenuBar) as? Bool ?? true
         self.extraUsageNotificationsEnabled =
             defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""

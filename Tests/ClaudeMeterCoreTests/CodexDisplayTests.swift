@@ -7,35 +7,10 @@ struct CodexDisplayTests {
     private let utc = TimeZone(identifier: "UTC")!
     private let posix = Locale(identifier: "en_US_POSIX")
 
-    private func limits(session: Double?, weekly: Double?) -> UsageSnapshot {
-        UsageSnapshot(
-            fiveHour: session.map { UsageBucket(utilization: $0, resetsAt: now.addingTimeInterval(3600)) },
-            sevenDay: weekly.map { UsageBucket(utilization: $0, resetsAt: now.addingTimeInterval(86400)) },
-            sevenDayOpus: nil, sevenDaySonnet: nil, fetchedAt: now,
-        )
-    }
-
     private func session(_ id: String, tool: AgentTool?, running: RunningState = .running) -> SessionUsage {
         SessionUsage(id: id, origin: .cli, projectPath: "/code/\(id)", models: [],
                      tokens: TokenBreakdown(input: 1), messageCount: 1,
                      firstActivity: now, lastActivity: now, burnRate: 0, running: running, tool: tool)
-    }
-
-    // MARK: Menu-bar pill
-
-    @Test func pillShowsTheMostConstrainedWindow() {
-        let figure = CodexDisplay.pillPercentLeft(enabled: true, present: true,
-                                                  limits: limits(session: 20, weekly: 70))
-        #expect(figure == 30)
-    }
-
-    @Test func pillIsHiddenWhenOffAbsentOrWithoutReading() {
-        let reading = limits(session: 20, weekly: nil)
-        #expect(CodexDisplay.pillPercentLeft(enabled: false, present: true, limits: reading) == nil)
-        #expect(CodexDisplay.pillPercentLeft(enabled: true, present: false, limits: reading) == nil)
-        #expect(CodexDisplay.pillPercentLeft(enabled: true, present: true, limits: nil) == nil)
-        #expect(CodexDisplay.pillPercentLeft(enabled: true, present: true,
-                                             limits: limits(session: nil, weekly: nil)) == nil)
     }
 
     // MARK: Past-reset note
@@ -143,5 +118,13 @@ struct CodexDisplayTests {
             asOf: now.addingTimeInterval(-2 * 3600), now: now, style: .twelve, timeZone: utc, locale: posix,
         )
         #expect(note == "as of 6:00 AM")
+    }
+}
+
+struct CodexMenuBarLineTests {
+    @Test func theCodexLineNeedsBothTheSettingAndCodex() {
+        #expect(CodexDisplay.showsCodexLine(enabled: true, present: true))
+        #expect(!CodexDisplay.showsCodexLine(enabled: false, present: true))
+        #expect(!CodexDisplay.showsCodexLine(enabled: true, present: false))
     }
 }

@@ -178,6 +178,12 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category ==
   "autoresume"'`; `logCodexTails` dumps the armed sessions' last records) and fix the detector
   against the real shape.
+- **Menu bar:** with Codex present and `showCodexInMenuBar` on (the default), the label is **two
+  stacked lines** — Claude above, Codex (most constrained window) below — each a tool dot plus the
+  display mode's content (`MenuBarContent`, shared with the single pill) at the font
+  `TextScale.stackedMenuBarFont` fits into half the bar (9 pt at 22 pt thickness, any scale).
+  The slot width depends only on presence + toggle + scale, never on a reading. Claude-only
+  users keep the single-line pill unchanged.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool
   (`LimitEvents`, "Codex · …"), so same-named alerts never replace each other. All Codex UI stays

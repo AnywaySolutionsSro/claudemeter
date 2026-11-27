@@ -6,10 +6,6 @@ import ClaudeMeterCore
 enum MenuBarLabel {
     /// Claude brand orange, from the shared `ToolPalette`.
     static let claudeOrange = NSColor(tool: .claude)
-    /// Gap between Claude's item and the Codex pill.
-    private static let codexGap: CGFloat = 4
-    /// The widest Codex pill text, for the fixed slot width.
-    private static let codexReference = "100%"
 
     static func image(
         mode: DisplayMode,
@@ -21,53 +17,26 @@ enum MenuBarLabel {
         scale: TextScale,
     ) -> NSImage {
         let (font, verticalPadding) = metrics(for: scale)
-
-        guard signedIn else {
+        let content = content(mode: mode, signedIn: signedIn, bucket: snapshot?.primary, burn: burn,
+                              errorMessage: errorMessage, now: now)
+        switch content {
+        case .signIn:
             return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange,
                         font: font, verticalPadding: verticalPadding)
-        }
-        guard let bucket = snapshot?.primary else {
-            return glyph(errorMessage == nil ? "…" : "⚠︎",
-                         color: errorMessage == nil ? .labelColor : .systemRed,
-                         font: font, verticalPadding: verticalPadding)
-        }
-
-        let remaining = bucket.percentRemaining
-        let textColor = color(forRemaining: remaining)
-        let borderColor: NSColor = remaining < 10 ? .systemRed : claudeOrange
-
-        let reset = bucket.timeUntilReset(now: now)
-
-        switch mode {
-        case .classic:
-            var text = Formatting.percent(remaining)
-            if let reset { text += " · " + Formatting.countdown(reset) }
+        case let .glyph(text, color):
+            return glyph(text, color: color, font: font, verticalPadding: verticalPadding)
+        case let .gauge(text, remaining):
             return gaugePill(text: text, remaining: remaining, font: font, verticalPadding: verticalPadding)
-
-        case .burnRate:
-            // Only show an ETA when the limit would actually be hit before the window resets.
-            if let burn, burn.isBurning, let eta = burn.etaToLimit, let reset, eta < reset {
-                return pill(text: "🔥 " + Formatting.countdown(eta), textColor: textColor, borderColor: borderColor,
-                            font: font, verticalPadding: verticalPadding)
-            }
-            return pill(text: Formatting.percent(remaining), textColor: textColor, borderColor: borderColor,
+        case let .pill(text, textColor, remaining):
+            let borderColor: NSColor = remaining < 10 ? .systemRed : claudeOrange
+            return pill(text: text, textColor: textColor, borderColor: borderColor,
                         font: font, verticalPadding: verticalPadding)
-
-        case .mood:
-            return pill(text: "\(Personality.moodEmoji(remaining: remaining)) \(Formatting.percent(remaining))",
-                        textColor: textColor, borderColor: borderColor, font: font, verticalPadding: verticalPadding)
-
-        case .pet:
-            let pet = Personality.petEmoji(Personality.petState(remaining: remaining))
-            return pill(text: "\(pet) \(Formatting.percent(remaining))", textColor: textColor, borderColor: borderColor,
-                        font: font, verticalPadding: verticalPadding)
-
-        case .fuelGauge:
+        case let .fuel(remaining):
             return fuelGauge(remaining: remaining)
         }
     }
 
-    private static func color(forRemaining remaining: Double) -> NSColor {
+    static func color(forRemaining remaining: Double) -> NSColor {
         switch remaining {
         case ..<10: .systemRed
         case ..<25: .systemOrange
@@ -81,7 +50,7 @@ enum MenuBarLabel {
     /// never smaller than it was before the text-size setting existed.
     private static let baseFontSize: Double = 11
     private static let basePadding: Double = 2
-    private static let horizontalPadding: CGFloat = 6
+    static let horizontalPadding: CGFloat = 6
     private static let lineWidth: CGFloat = 1.25
     private static let cornerRadius: CGFloat = 4
 
@@ -124,32 +93,6 @@ enum MenuBarLabel {
         }
     }
 
-    /// The menu-bar item with a second, Codex-green pill (`percentLeft`) beside Claude's
-    /// image. The pill is a plain "% left": the display modes are Claude's.
-    static func withCodexPill(_ claude: NSImage, percentLeft: Double, scale: TextScale) -> NSImage {
-        let (font, verticalPadding) = metrics(for: scale)
-        let borderColor: NSColor = percentLeft < 10 ? .systemRed : NSColor(tool: .codex)
-        let codex = pill(text: Formatting.percent(percentLeft), textColor: color(forRemaining: percentLeft),
-                         borderColor: borderColor, font: font, verticalPadding: verticalPadding)
-        let width = claude.size.width + codexGap + codex.size.width
-        let height = max(claude.size.height, codex.size.height)
-        return draw(width: width, height: height) {
-            claude.draw(at: NSPoint(x: 0, y: (height - claude.size.height) / 2),
-                        from: .zero, operation: .sourceOver, fraction: 1)
-            codex.draw(at: NSPoint(x: claude.size.width + codexGap, y: (height - codex.size.height) / 2),
-                       from: .zero, operation: .sourceOver, fraction: 1)
-        }
-    }
-
-    /// Extra slot width the Codex pill needs.
-    static func codexPillSlotWidth(for scale: TextScale) -> CGFloat {
-        let (font, _) = metrics(for: scale)
-        let textWidth = (codexReference as NSString).size(withAttributes: [.font: font]).width
-        return ceil(textWidth + horizontalPadding * 2 + codexGap)
-    }
-
-    /// A car-style fuel gauge: a 120° dial with E…F, tick marks, and a needle pointing at the
-    /// remaining level (echoes the speedometer app icon).
     /// Width of the fixed menu-bar slot, sized to the widest Classic content so the item never
     /// resizes (which would shift the button and misalign the popover).
     static func recommendedSlotWidth(for scale: TextScale) -> CGFloat {
@@ -201,11 +144,14 @@ enum MenuBarLabel {
         return straight + corners
     }
 
+    /// A car-style fuel gauge: a 120° dial with E…F, tick marks, and a needle pointing at the
+    /// remaining level (echoes the speedometer app icon).
+    ///
     /// Deliberately not scaled by `TextScale`: this is a fixed 40x18 vector drawing
     /// whose only text is the 6.5pt E/F labels, so redrawing it at arbitrary sizes
     /// risks regressions in a hand-tuned dial for no readability gain. The pill
     /// modes scale; this one does not.
-    private static func fuelGauge(remaining: Double) -> NSImage {
+    static func fuelGauge(remaining: Double) -> NSImage {
         let width: CGFloat = 40, height: CGFloat = 18
         let pivot = NSPoint(x: width / 2, y: 4)
         let radius: CGFloat = 12.5
@@ -272,7 +218,7 @@ enum MenuBarLabel {
         }
     }
 
-    private static func draw(width: CGFloat, height: CGFloat, _ body: () -> Void) -> NSImage {
+    static func draw(width: CGFloat, height: CGFloat, _ body: () -> Void) -> NSImage {
         let image = NSImage(size: NSSize(width: width, height: height))
         image.lockFocus()
         body()

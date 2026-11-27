@@ -78,4 +78,24 @@ public enum TextScale: String, CaseIterable, Identifiable, Sendable {
         }
         return (base, padding)
     }
+
+    /// The font size for `lines` stacked menu-bar lines (Claude above Codex): the
+    /// scaled `base`, stepped down a point at a time until every line fits
+    /// `thickness`, never below `minimum` (a floor for legibility, accepted even if
+    /// it overflows). `textHeight` is the injected line-height measurement, as in
+    /// `menuBarMetrics`. Unlike the single pill, the stack must shrink below `base`:
+    /// two lines share the height one line had.
+    public func stackedMenuBarFont(
+        base: Double,
+        minimum: Double,
+        lines: Int,
+        thickness: Double,
+        textHeight: (Double) -> Double,
+    ) -> Double {
+        var font = max(base, scaled(base))
+        while font > minimum, Double(lines) * textHeight(font) > thickness {
+            font -= 1
+        }
+        return max(font, minimum)
+    }
 }
