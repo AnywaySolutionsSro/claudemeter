@@ -47,4 +47,17 @@ struct SessionSnapshotTests {
         let data = try JSONEncoder().encode(snap)
         #expect(try JSONDecoder().decode(SessionSnapshot.self, from: data) == snap)
     }
+
+    @Test func oldSnapshotDecodesWithoutClockStyle() throws {
+        let json = #"{"generatedAt":0,"sessions":[],"totalTokens":0,"runningCount":0}"#
+        let snap = try JSONDecoder().decode(SessionSnapshot.self, from: Data(json.utf8))
+        #expect(snap.clockStyle == nil)
+    }
+
+    @Test func clockStyleRoundTrips() throws {
+        let snap = SessionSnapshot(generatedAt: now, sessions: [], totalTokens: 0, runningCount: 0,
+                                   clockStyle: .twelve)
+        let data = try JSONEncoder().encode(snap)
+        #expect(try JSONDecoder().decode(SessionSnapshot.self, from: data).clockStyle == .twelve)
+    }
 }

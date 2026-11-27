@@ -87,7 +87,7 @@ struct ApiSpendWidgetView: View {
             .lineLimit(1)
         // Always say when — a widget renders long after the app stopped refreshing it.
         Text((stale || outdated ? "⚠︎ as of " : "as of ")
-            + snapshot.fetchedAt.formatted(date: .abbreviated, time: .shortened))
+            + Formatting.dateTime(snapshot.fetchedAt, style: snapshot.clockStyle ?? .system))
             .font(.caption2)
             .foregroundStyle(stale || outdated ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
             .lineLimit(1)

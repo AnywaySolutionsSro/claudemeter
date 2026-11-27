@@ -14,10 +14,14 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
     /// own file because it comes from the same `UsageStore` reading as `usageGauges`,
     /// so the two can never race each other.
     public let extraUsage: ExtraUsage?
+    /// The app's time-format setting, for the sandboxed widget that can't read it directly.
+    /// `nil` (an older snapshot) means follow the system.
+    public let clockStyle: ClockStyle?
 
     public init(generatedAt: Date, sessions: [SessionUsage], totalTokens: Int,
                 runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = [],
-                usageGauges: [UsageGauge] = [], extraUsage: ExtraUsage? = nil) {
+                usageGauges: [UsageGauge] = [], extraUsage: ExtraUsage? = nil,
+                clockStyle: ClockStyle? = nil) {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalTokens = totalTokens
@@ -26,6 +30,7 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         self.armableSessionIDs = armableSessionIDs
         self.usageGauges = usageGauges
         self.extraUsage = extraUsage
+        self.clockStyle = clockStyle
     }
 
     // Custom decode so snapshots written before these fields existed still load.
@@ -39,11 +44,12 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         armableSessionIDs = try c.decodeIfPresent([String].self, forKey: .armableSessionIDs) ?? []
         usageGauges = try c.decodeIfPresent([UsageGauge].self, forKey: .usageGauges) ?? []
         extraUsage = try c.decodeIfPresent(ExtraUsage.self, forKey: .extraUsage)
+        clockStyle = try c.decodeIfPresent(ClockStyle.self, forKey: .clockStyle)
     }
 
     private enum CodingKeys: String, CodingKey {
         case generatedAt, sessions, totalTokens, runningCount, armedSessionIDs, armableSessionIDs, usageGauges
-        case extraUsage
+        case extraUsage, clockStyle
     }
 
     /// Build a snapshot of the top sessions by total tokens.

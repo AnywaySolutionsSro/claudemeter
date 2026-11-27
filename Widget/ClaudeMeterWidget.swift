@@ -225,7 +225,7 @@ struct ClaudeMeterWidgetEntryView: View {
 
     @ViewBuilder private var livePill: some View {
         if entry.isStale, let generated = entry.snapshot?.generatedAt {
-            Text("as of " + generated.formatted(date: .omitted, time: .shortened))
+            Text("as of " + Formatting.clockTime(generated, style: entry.snapshot?.clockStyle ?? .system))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.orange)
                 .padding(.horizontal, 7).padding(.vertical, 3)
