@@ -18,9 +18,10 @@ public struct PillRect: Equatable, Sendable {
     public var midX: Double { x + width / 2 }
 }
 
-/// The measured sizes a battery is laid out from. `cellTextWidth` is the width of the
-/// widest figure (`BatteryPill.references`) in the menu-bar font, so the battery never
-/// changes width between scans; the rest are the drawing's fixed proportions.
+/// The measured sizes a battery is laid out from. `cellTextWidth` is the *minimum* figure
+/// width (`BatteryPill.minimumFigure` in the menu-bar font), so a short figure like `5%`
+/// still leaves a readable cell; a wider figure grows its own cell. The rest are the
+/// drawing's fixed proportions.
 public struct BatteryMetrics: Equatable, Sendable {
     public let height: Double
     public let cellTextWidth: Double
@@ -56,7 +57,11 @@ public struct BatteryMetrics: Equatable, Sendable {
 
     /// How far in from the body's edge the fill area starts.
     var edge: Double { lineWidth + inset }
-    var cellWidth: Double { cellTextWidth + 2 * cellPadding }
+
+    /// One cell's width for a figure `textWidth` wide: never below the minimum.
+    func cellWidth(forText textWidth: Double) -> Double {
+        max(cellTextWidth, textWidth) + 2 * cellPadding
+    }
 }
 
 /// One tool's compartment: the area it may fill, the fill for its % left, and its figure.
@@ -90,8 +95,8 @@ public struct BatteryLayout: Equatable, Sendable {
 /// the right; with Codex the body splits in the middle, and each half's fill is anchored
 /// at the divider and drains from its outer edge. The pure geometry.
 public enum BatteryPill {
-    /// Every figure a cell can show at its widest, measured to size the cells.
-    public static let references = ["100%", "—"]
+    /// The narrowest a cell's figure is taken to be (`5%` and `—` still get this much).
+    public static let minimumFigure = "00%"
 
     /// Share of a cell to fill (0...1); an unknown figure fills nothing.
     public static func level(percentLeft: Double?) -> Double {
@@ -105,8 +110,11 @@ public enum BatteryPill {
     }
 
     /// Claude alone: one cell over the whole body, filled from the left.
-    public static func single(claudeLeft: Double?, metrics: BatteryMetrics) -> BatteryLayout {
-        let frame = frame(innerWidth: metrics.cellWidth, metrics: metrics)
+    /// `measure` gives a figure's width in the menu-bar font; the cell follows its figure.
+    public static func single(claudeLeft: Double?, metrics: BatteryMetrics,
+                              measure: (String) -> Double = { _ in 0 }) -> BatteryLayout {
+        let text = figure(percentLeft: claudeLeft)
+        let frame = frame(innerWidth: metrics.cellWidth(forText: measure(text)), metrics: metrics)
         let fillWidth = frame.inner.width * level(percentLeft: claudeLeft)
         let fill = PillRect(x: frame.inner.x, y: frame.inner.y, width: fillWidth, height: frame.inner.height)
         let cell = BatteryCell(tool: .claude, area: frame.inner, fill: fill, text: figure(percentLeft: claudeLeft))
@@ -115,25 +123,30 @@ public enum BatteryPill {
     }
 
     /// Claude on the left, Codex on the right; both fills meet at the divider.
-    public static func dual(claudeLeft: Double?, codexLeft: Double?, metrics: BatteryMetrics) -> BatteryLayout {
-        let cellWidth = metrics.cellWidth
-        let frame = frame(innerWidth: 2 * cellWidth + metrics.dividerWidth, metrics: metrics)
+    /// Each half is as wide as its own figure (see `single` for `measure`).
+    public static func dual(claudeLeft: Double?, codexLeft: Double?, metrics: BatteryMetrics,
+                            measure: (String) -> Double = { _ in 0 }) -> BatteryLayout {
+        let claudeText = figure(percentLeft: claudeLeft)
+        let codexText = figure(percentLeft: codexLeft)
+        let claudeCell = metrics.cellWidth(forText: measure(claudeText))
+        let codexCell = metrics.cellWidth(forText: measure(codexText))
+        let frame = frame(innerWidth: claudeCell + codexCell + metrics.dividerWidth, metrics: metrics)
         let inner = frame.inner
-        let divider = PillRect(x: inner.x + cellWidth, y: metrics.lineWidth, width: metrics.dividerWidth,
+        let divider = PillRect(x: inner.x + claudeCell, y: metrics.lineWidth, width: metrics.dividerWidth,
                                height: max(0, metrics.height - 2 * metrics.lineWidth))
-        let claudeArea = PillRect(x: inner.x, y: inner.y, width: cellWidth, height: inner.height)
-        let codexArea = PillRect(x: divider.maxX, y: inner.y, width: cellWidth, height: inner.height)
-        let claudeWidth = cellWidth * level(percentLeft: claudeLeft)
-        let codexWidth = cellWidth * level(percentLeft: codexLeft)
+        let claudeArea = PillRect(x: inner.x, y: inner.y, width: claudeCell, height: inner.height)
+        let codexArea = PillRect(x: divider.maxX, y: inner.y, width: codexCell, height: inner.height)
+        let claudeWidth = claudeCell * level(percentLeft: claudeLeft)
+        let codexWidth = codexCell * level(percentLeft: codexLeft)
         let claude = BatteryCell(
             tool: .claude, area: claudeArea,
             fill: PillRect(x: divider.x - claudeWidth, y: inner.y, width: claudeWidth, height: inner.height),
-            text: figure(percentLeft: claudeLeft),
+            text: claudeText,
         )
         let codex = BatteryCell(
             tool: .codex, area: codexArea,
             fill: PillRect(x: divider.maxX, y: inner.y, width: codexWidth, height: inner.height),
-            text: figure(percentLeft: codexLeft),
+            text: codexText,
         )
         return BatteryLayout(body: frame.body, inner: inner, innerRadius: frame.innerRadius,
                              nub: frame.nub, divider: divider, cells: [claude, codex])
