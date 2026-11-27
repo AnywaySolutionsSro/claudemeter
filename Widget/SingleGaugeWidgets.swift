@@ -41,9 +41,13 @@ struct SingleGaugeView: View {
     var body: some View {
         Group {
             if let gauge = slot.pick(from: gauges) {
-                VStack {
+                VStack(spacing: 4) {
                     Spacer(minLength: 0)
                     GaugeRingView(gauge: gauge, size: 96, tint: tint)
+                    if tool == .codex, let age = entry.codexReadingAge {
+                        Text(age).font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.orange).lineLimit(1)
+                    }
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -24,6 +24,14 @@ struct SnapshotEntry: TimelineEntry {
 
     static let staleAfter: TimeInterval = 15 * 60
 
+    /// "as of 06:00" once the Codex limit reading is over an hour old: Codex limits
+    /// only refresh when a Codex turn runs, so an old ring must not pass for live.
+    var codexReadingAge: String? {
+        CodexDisplay.readingAgeNote(
+            asOf: snapshot?.codexAsOf, now: date, style: snapshot?.clockStyle ?? .system,
+        )
+    }
+
     /// Representative content for the gallery preview / first paint.
     static var sample: SnapshotEntry {
         let now = Date()
@@ -403,6 +411,10 @@ struct ClaudeMeterWidgetEntryView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if rings.contains(where: { $0.tool == .codex }), let age = entry.codexReadingAge {
+                    Text("Codex " + age).font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.orange).lineLimit(1)
+                }
                 extraUsageRow
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -120,4 +120,28 @@ struct CodexDisplayTests {
         #expect(snapshot(claude: [], codex: []).includesCodex)
         #expect(snapshot(claude: [], codex: nil, sessions: [session("x", tool: .codex)]).includesCodex)
     }
+
+    // MARK: Widget reading age
+
+    @Test func readingAgeShowsOnlyWhenOlderThanAnHour() {
+        func note(_ age: TimeInterval?) -> String? {
+            CodexDisplay.readingAgeNote(
+                asOf: age.map { now.addingTimeInterval(-$0) }, now: now, style: .twentyFour,
+                timeZone: utc, locale: posix,
+            )
+        }
+        #expect(note(nil) == nil)
+        #expect(note(30 * 60) == nil)
+        #expect(note(3600) == nil)
+        // now = 2027-01-15 08:00 UTC
+        #expect(note(2 * 3600) == "as of 06:00")
+        #expect(note(10 * 3600) == "as of 14 Jan 22:00")
+    }
+
+    @Test func readingAgeFollowsTheClockStyle() {
+        let note = CodexDisplay.readingAgeNote(
+            asOf: now.addingTimeInterval(-2 * 3600), now: now, style: .twelve, timeZone: utc, locale: posix,
+        )
+        #expect(note == "as of 6:00 AM")
+    }
 }

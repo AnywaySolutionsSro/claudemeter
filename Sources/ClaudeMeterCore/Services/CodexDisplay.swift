@@ -21,12 +21,36 @@ public enum CodexDisplay {
         locale: Locale = .current,
     ) -> String? {
         guard let resetsAt = bucket.resetsAt, resetsAt <= now else { return nil }
+        let moment = moment(resetsAt, now: now, style: style, timeZone: timeZone, locale: locale)
+        return "reset at \(moment) · no reading since"
+    }
+
+    /// How old a Codex reading may get before the widget says so.
+    public static let readingAgeThreshold: TimeInterval = 3600
+
+    /// `as of 06:00` (`as of 14 Jan 22:00` from an earlier day) for a Codex limit
+    /// reading older than an hour — Codex limits only refresh when a Codex turn runs,
+    /// so an old ring is easy to mistake for a live one. `nil` while fresh or unknown.
+    public static func readingAgeNote(
+        asOf: Date?,
+        now: Date,
+        style: ClockStyle,
+        timeZone: TimeZone = .current,
+        locale: Locale = .current,
+    ) -> String? {
+        guard let asOf, now.timeIntervalSince(asOf) > readingAgeThreshold else { return nil }
+        return "as of \(moment(asOf, now: now, style: style, timeZone: timeZone, locale: locale))"
+    }
+
+    /// The clock time on `now`'s day, else the date and clock time.
+    private static func moment(
+        _ date: Date, now: Date, style: ClockStyle, timeZone: TimeZone, locale: Locale,
+    ) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let moment = calendar.isDate(resetsAt, inSameDayAs: now)
-            ? Formatting.clockTime(resetsAt, style: style, timeZone: timeZone, locale: locale)
-            : Formatting.dateTime(resetsAt, style: style, timeZone: timeZone, locale: locale)
-        return "reset at \(moment) · no reading since"
+        return calendar.isDate(date, inSameDayAs: now)
+            ? Formatting.clockTime(date, style: style, timeZone: timeZone, locale: locale)
+            : Formatting.dateTime(date, style: style, timeZone: timeZone, locale: locale)
     }
 
     /// `2 running · 1 armed`, counting Codex sessions only.
