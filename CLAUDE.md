@@ -186,7 +186,7 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   against the real shape.
 - **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`; new users
   get it, and users on Classic were moved to it once — `batteryModeMigrated` — so picking
-  Classic again sticks). A rounded body with a terminal nub on the right, figures in **white**
+  Classic again sticks). A rounded body (no terminal nub), figures in **white**
   with a dark halo. Claude alone: the whole body is Claude's (orange), filled from the left and
   draining from the right. With Codex present and `showCodexInMenuBar` on (the default), the
   battery is used **whatever the mode** — one item for both tools: a divider splits the body,
