@@ -54,7 +54,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section(header: sectionHeader("Account", "person.crop.circle.fill", .blue)) {
+            Section(header: claudeAccountHeader) {
                 if auth.isSignedIn {
                     HStack {
                         Label("Connected", systemImage: "checkmark.seal.fill")
@@ -73,7 +73,7 @@ struct SettingsView: View {
             }
 
             if codexPresent || chatGPT.isSignedIn {
-                Section(header: sectionHeader("Codex", "circle.hexagongrid.fill", Color(tool: .codex))) {
+                Section(header: sectionHeader("Codex account", "circle.hexagongrid.fill", Color(tool: .codex))) {
                     ChatGPTSettingsSection(chatGPT: chatGPT)
                 }
             }
@@ -201,6 +201,14 @@ struct SettingsView: View {
     }
 
     // MARK: - Helpers
+
+    /// "Account" for a Claude-only user, exactly as before; once Codex has its own account
+    /// group, both say whose account they are.
+    private var claudeAccountHeader: some View {
+        codexPresent || chatGPT.isSignedIn
+            ? sectionHeader("Claude account", "person.crop.circle.fill", Color(tool: .claude))
+            : sectionHeader("Account", "person.crop.circle.fill", .blue)
+    }
 
     private func sectionHeader(_ title: String, _ symbol: String, _ tint: Color) -> some View {
         Label {
