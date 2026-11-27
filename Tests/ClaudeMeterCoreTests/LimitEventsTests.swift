@@ -84,7 +84,26 @@ struct LimitEventsTests {
         #expect(NotificationIDs.resetReminder(tool: .claude) != NotificationIDs.resetReminder(tool: .codex))
         #expect(NotificationIDs.resetReminder(tool: .codex) == "codex-reset-reminder")
         #expect(NotificationIDs.refill(tool: .codex, unique: "x") == "codex-refill-x")
-        #expect(NotificationIDs.title("Heads up", tool: .claude) == "Claude · Heads up")
-        #expect(NotificationIDs.title("Heads up", tool: .codex) == "Codex · Heads up")
+    }
+
+    @Test func claudeTitlesArePrefixedOnlyWhenCodexIsPresent() {
+        #expect(NotificationIDs.title("Heads up", tool: .claude, codexPresent: false) == "Heads up")
+        #expect(NotificationIDs.title("Heads up", tool: .claude, codexPresent: true) == "Claude · Heads up")
+        #expect(NotificationIDs.title("Heads up", tool: .codex, codexPresent: false) == "Codex · Heads up")
+        #expect(NotificationIDs.title("Heads up", tool: .codex, codexPresent: true) == "Codex · Heads up")
+    }
+
+    @Test func resetReminderBodyNamesClaudeOnlyWithoutAPrefix() {
+        #expect(NotificationIDs.resetReminderBody(phrase: "weekly limit", tool: .claude, codexPresent: false)
+            == "Your Claude weekly limit just reset — back to full.")
+        #expect(NotificationIDs.resetReminderBody(phrase: "weekly limit", tool: .claude, codexPresent: true)
+            == "Your weekly limit just reset — back to full.")
+        #expect(NotificationIDs.resetReminderBody(phrase: "weekly limit", tool: .codex, codexPresent: false)
+            == "Your weekly limit just reset — back to full.")
+    }
+
+    @Test func claudeAlertsToggleLabelMatchesMainWithoutCodex() {
+        #expect(NotificationIDs.claudeAlertsLabel(codexPresent: false) == "Usage notifications")
+        #expect(NotificationIDs.claudeAlertsLabel(codexPresent: true) == "Claude limit alerts")
     }
 }

@@ -50,8 +50,28 @@ public enum NotificationIDs {
         "\(tool.rawValue)-refill-\(unique)"
     }
 
-    public static func title(_ title: String, tool: AgentTool) -> String {
-        "\(toolName(tool)) · \(title)"
+    /// A notification title. Codex's always name the tool; Claude's only do once
+    /// Codex is present, so a Claude-only user sees exactly the titles they had.
+    public static func title(_ title: String, tool: AgentTool, codexPresent: Bool) -> String {
+        guard isPrefixed(tool, codexPresent: codexPresent) else { return title }
+        return "\(toolName(tool)) · \(title)"
+    }
+
+    /// Body of the "it reset" reminder. Without a tool prefix in the title, the
+    /// body is what says it is Claude's window (the wording before Codex support).
+    public static func resetReminderBody(phrase: String, tool: AgentTool, codexPresent: Bool) -> String {
+        let owner = isPrefixed(tool, codexPresent: codexPresent) ? "" : "Claude "
+        return "Your \(owner)\(phrase) just reset — back to full."
+    }
+
+    /// Settings label of Claude's limit-alert toggle: tool-specific only when a
+    /// Codex toggle sits next to it.
+    public static func claudeAlertsLabel(codexPresent: Bool) -> String {
+        codexPresent ? "Claude limit alerts" : "Usage notifications"
+    }
+
+    private static func isPrefixed(_ tool: AgentTool, codexPresent: Bool) -> Bool {
+        tool == .codex || codexPresent
     }
 
     private static func toolName(_ tool: AgentTool) -> String {

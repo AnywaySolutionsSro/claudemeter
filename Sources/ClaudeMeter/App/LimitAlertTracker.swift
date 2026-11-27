@@ -11,11 +11,14 @@ import Foundation
 final class LimitAlertTracker {
     private let settings: Settings
     private let notifications: NotificationManager
+    /// Whether Codex is on this machine, which decides if Claude's titles name the tool.
+    private let codexPresent: @MainActor () -> Bool
     private var previous: [AgentTool: UsageSnapshot] = [:]
 
-    init(settings: Settings, notifications: NotificationManager) {
+    init(settings: Settings, notifications: NotificationManager, codexPresent: @escaping @MainActor () -> Bool) {
         self.settings = settings
         self.notifications = notifications
+        self.codexPresent = codexPresent
     }
 
     func ingest(tool: AgentTool, snapshot: UsageSnapshot, now: Date) {
@@ -25,9 +28,11 @@ final class LimitAlertTracker {
         for event in LimitEvents.detect(previous: baseline, current: snapshot, now: now) {
             switch event {
             case let .reset(window):
-                notifications.notifyRefill(window, tool: tool)
+                notifications.notifyRefill(window, tool: tool, codexPresent: codexPresent())
             case let .crossed(threshold, window, eta):
-                notifications.notifyThreshold(threshold, window: window, etaToReset: eta, tool: tool)
+                notifications.notifyThreshold(
+                    threshold, window: window, etaToReset: eta, tool: tool, codexPresent: codexPresent(),
+                )
             }
         }
     }
@@ -36,7 +41,7 @@ final class LimitAlertTracker {
     /// Codex's reminders never replace each other.
     func scheduleResetReminder(tool: AgentTool, window: LimitWindow) {
         guard let resetAt = window.bucket.resetsAt else { return }
-        notifications.scheduleResetReminder(at: resetAt, for: window, tool: tool)
+        notifications.scheduleResetReminder(at: resetAt, for: window, tool: tool, codexPresent: codexPresent())
     }
 
     private func isEnabled(_ tool: AgentTool) -> Bool {

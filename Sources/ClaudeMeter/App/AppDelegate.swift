@@ -10,7 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let settings = Settings()
     private let notifications = NotificationManager()
     /// Codex's limit alerts (Claude's flow through `UsageStore.onEvents`).
-    private lazy var limitAlerts = LimitAlertTracker(settings: settings, notifications: notifications)
+    private lazy var limitAlerts = LimitAlertTracker(
+        settings: settings, notifications: notifications,
+        codexPresent: { [weak self] in self?.sessionMonitor.codexPresent ?? false },
+    )
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
@@ -230,21 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func handle(_ event: UsageEvent) {
-        switch event {
-        case let .reset(window):
-            if settings.notificationsEnabled { notifications.notifyRefill(window, tool: .claude) }
-        case let .crossedThreshold(threshold, window, eta):
-            if settings.notificationsEnabled {
-                notifications.notifyThreshold(threshold, window: window, etaToReset: eta, tool: .claude)
-            }
-        case let .extraUsage(alert, usage):
-            if settings.extraUsageNotificationsEnabled {
-                notifications.notifyExtraUsage(alert, usage: usage)
-            }
-        }
-    }
-
     /// Every window reports only its highest crossing, but two windows can cross in the
     /// same poll, and the Shortcut must still run once. A model window doesn't run it:
     /// other models keep working, so the account isn't running low.
@@ -435,5 +423,29 @@ private extension AppDelegate {
             enabled: settings.showCodexInMenuBar, present: sessionMonitor.codexPresent,
             limits: sessionMonitor.codexLimits,
         )
+    }
+}
+
+extension AppDelegate {
+    /// One Claude usage event → its notification. Claude titles name the tool only
+    /// once Codex is present, so a Claude-only user sees the pre-Codex copy.
+    private func handle(_ event: UsageEvent) {
+        switch event {
+        case let .reset(window):
+            if settings.notificationsEnabled {
+                notifications.notifyRefill(window, tool: .claude, codexPresent: sessionMonitor.codexPresent)
+            }
+        case let .crossedThreshold(threshold, window, eta):
+            if settings.notificationsEnabled {
+                notifications.notifyThreshold(
+                    threshold, window: window, etaToReset: eta, tool: .claude,
+                    codexPresent: sessionMonitor.codexPresent,
+                )
+            }
+        case let .extraUsage(alert, usage):
+            if settings.extraUsageNotificationsEnabled {
+                notifications.notifyExtraUsage(alert, usage: usage)
+            }
+        }
     }
 }

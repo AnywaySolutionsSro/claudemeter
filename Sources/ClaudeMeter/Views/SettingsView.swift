@@ -93,7 +93,7 @@ struct SettingsView: View {
         Form {
             Section(header: sectionHeader("Notifications", "bell.badge.fill", .orange)) {
                 Toggle(isOn: $settings.notificationsEnabled) {
-                    Label("Claude limit alerts", systemImage: "bell")
+                    Label(NotificationIDs.claudeAlertsLabel(codexPresent: codexPresent), systemImage: "bell")
                 }
                 .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
