@@ -17,6 +17,7 @@ struct MenuContentView: View {
     @EnvironmentObject var updates: UpdateService
     @EnvironmentObject var monitor: SessionMonitor
     @EnvironmentObject var chatGPT: ChatGPTAuthModel
+    @EnvironmentObject var apiSpend: ApiSpendStore
     @Environment(\.textScale) private var scale
     @State private var now = Date()
 
@@ -35,9 +36,9 @@ struct MenuContentView: View {
             // Part of the data, outside the sign-in sections on purpose: API spend uses the
             // admin key, which has nothing to do with the OAuth subscription login.
             ApiSpendSection(now: now)
-            // Connect buttons sit directly above the footer.
+            // Connect buttons sit directly above the footer, set off from whatever precedes them.
             ForEach(Array(plan.connectSections.enumerated()), id: \.offset) { index, section in
-                if index > 0 || !plan.dataSections.isEmpty { Divider() }
+                if index > 0 || !plan.dataSections.isEmpty || apiSpend.hasKey { Divider() }
                 view(for: section, plan: plan)
             }
             Divider()

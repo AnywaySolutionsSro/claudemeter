@@ -208,7 +208,8 @@ struct SettingsView: View {
             Label("Show \(ToolPalette.name(for: tool))", systemImage: "eye")
         }
         .disabled(isOn.wrappedValue
-            && !ToolVisibility.canHide(tool, showClaude: settings.showClaude, showCodex: settings.showCodex))
+            && !ToolVisibility.canHide(tool, showClaude: settings.showClaude, showCodex: settings.showCodex,
+                                       codexConnected: chatGPT.isSignedIn))
         .help("Hide it if you only use one subscription; the Sessions window still lists everything")
     }
 

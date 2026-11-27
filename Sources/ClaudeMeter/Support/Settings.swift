@@ -2,38 +2,6 @@ import ClaudeMeterCore
 import Foundation
 import SwiftUI
 
-/// How the menu-bar item presents usage.
-enum DisplayMode: String, CaseIterable, Identifiable {
-    case battery
-    case classic
-    case burnRate
-    case mood
-    case fuelGauge
-    case pet
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .battery: "Battery"
-        case .classic: "Classic" // percentage + reset countdown
-        case .burnRate: "Burn rate"
-        case .mood: "Mood face"
-        case .fuelGauge: "Fuel gauge"
-        case .pet: "Pet"
-        }
-    }
-
-    /// Map persisted values, including the legacy `"percentage"` key, to a mode. New users
-    /// get the battery. Until `migrated`, Classic (the old default) also becomes the
-    /// battery — once only, so someone who picks Classic again afterwards keeps it.
-    static func fromStored(_ raw: String?, migrated: Bool) -> DisplayMode {
-        let stored = raw == "percentage" ? DisplayMode.classic : DisplayMode(rawValue: raw ?? "")
-        guard let stored else { return .battery }
-        return stored == .classic && !migrated ? .battery : stored
-    }
-}
-
 /// User preferences, backed by `UserDefaults`.
 @MainActor
 final class Settings: ObservableObject {
@@ -126,13 +94,7 @@ final class Settings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let displayMode = DisplayMode.fromStored(
-            defaults.string(forKey: Keys.displayMode),
-            migrated: defaults.bool(forKey: Keys.batteryModeMigrated),
-        )
-        defaults.set(displayMode.rawValue, forKey: Keys.displayMode)
-        defaults.set(true, forKey: Keys.batteryModeMigrated)
-        self.displayMode = displayMode
+        self.displayMode = DisplayMode.fromStored(defaults.string(forKey: Keys.displayMode))
         self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
         self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
@@ -168,7 +130,6 @@ final class Settings: ObservableObject {
 
     private enum Keys {
         static let displayMode = "displayMode"
-        static let batteryModeMigrated = "batteryModeMigrated"
         static let textScale = "textScale"
         static let clockStyle = "clockStyle"
         static let notificationsEnabled = "notificationsEnabled"

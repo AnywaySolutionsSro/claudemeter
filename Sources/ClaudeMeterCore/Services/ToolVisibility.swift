@@ -30,10 +30,12 @@ public struct ToolVisibility: Equatable, Sendable {
     }
 
     /// Whether `tool`'s toggle may be switched off: only while the other one is on, so
-    /// the last remaining toggle is disabled and both are never hidden.
-    public static func canHide(_ tool: AgentTool, showClaude: Bool, showCodex: Bool) -> Bool {
+    /// the last remaining toggle is disabled and both are never hidden. Claude also needs
+    /// Codex connected (its limits visible), or hiding it would leave only a "Sign in" pill.
+    public static func canHide(_ tool: AgentTool, showClaude: Bool, showCodex: Bool,
+                               codexConnected: Bool) -> Bool {
         switch tool {
-        case .claude: showCodex
+        case .claude: showCodex && codexConnected
         case .codex: showClaude
         }
     }

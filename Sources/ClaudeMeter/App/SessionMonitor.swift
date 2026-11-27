@@ -132,7 +132,8 @@ final class SessionMonitor: ObservableObject {
             + [Self.extraUsageStructureKey(snapshot.extraUsage),
                "clock:\(snapshot.clockStyle?.rawValue ?? "")"]
             + (snapshot.codexGauges ?? [])
-            .map { "codex:\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
+            // Codex's reset time jitters by seconds between readings; to the minute.
+            .map { "codex:\($0.label):\(Int($0.percentLeft)):\(Int(($0.resetsAt?.timeIntervalSince1970 ?? 0) / 60))" }
         // Display-rounded, so a count that renders the same doesn't count as a change.
         // The extra-usage amount belongs here rather than in `structure` for the same
         // reason: spend moves on almost every scan while a session streams, and an

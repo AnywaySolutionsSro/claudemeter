@@ -5,8 +5,8 @@ import ClaudeMeterCore
 /// independent of how it is drawn.
 enum MenuBarContent: Equatable {
     case signIn
-    /// Claude's battery; `nil` without a reading (an empty track and "—").
-    case battery(remaining: Double?)
+    /// Claude's battery (no reading yet is a `glyph`, as in every mode).
+    case battery(remaining: Double)
     case glyph(String, NSColor)
     /// Classic: "% · countdown" with the receding fuel ring.
     case gauge(text: String, remaining: Double)
@@ -26,9 +26,9 @@ extension MenuBarLabel {
         now: Date,
     ) -> MenuBarContent {
         guard signedIn else { return .signIn }
-        if mode == .battery { return .battery(remaining: bucket?.percentRemaining) }
         guard let bucket else {
-            return .glyph(errorMessage == nil ? "…" : "⚠︎", errorMessage == nil ? .labelColor : .systemRed)
+            let missing = NoReading(errorMessage: errorMessage)
+            return .glyph(missing.glyph, missing.isError ? .systemRed : .labelColor)
         }
         let remaining = bucket.percentRemaining
         let textColor = color(forRemaining: remaining)

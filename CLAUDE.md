@@ -224,9 +224,10 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category ==
   "autoresume"'`; `logCodexTails` dumps the armed sessions' last records) and fix the detector
   against the real shape.
-- **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`; new users
-  get it, and users on Classic were moved to it once — `batteryModeMigrated` — so picking
-  Classic again sticks). A rounded body (no terminal nub), figures in **white**
+- **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`, in core;
+  `DisplayMode.fromStored` gives it to anyone with no stored mode — **no migration**: a mode
+  someone explicitly picked, Classic included, is respected). Without a reading a signed-in
+  label shows `…` while loading and a red `⚠︎` on error (`NoReading`), in every mode. A rounded body (no terminal nub), figures in **white**
   with a dark halo. **The battery shows only CONNECTED, shown tools**
   (`ToolVisibility.limitTools(claudeSignedIn:codexConnected:)`, test table in
   `ToolVisibilityTests`; Codex "connected" = signed in to ChatGPT, transcripts don't count):

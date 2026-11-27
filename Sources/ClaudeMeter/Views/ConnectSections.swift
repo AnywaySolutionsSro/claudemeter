@@ -13,6 +13,7 @@ struct ClaudeConnectSection: View {
             VStack(alignment: .leading, spacing: scale.pt(4)) {
                 HStack(spacing: scale.pt(8)) {
                     Button("Connect Claude account") { auth.beginLogin() }
+                        .keyboardShortcut(.defaultAction)
                     Button("Paste code manually") { auth.beginManualLogin() }
                         .buttonStyle(.link).font(scale.font(10))
                 }

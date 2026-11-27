@@ -38,10 +38,16 @@ struct ToolVisibilityTests {
     }
 
     @Test func theLastRemainingToggleCannotBeSwitchedOff() {
-        #expect(ToolVisibility.canHide(.claude, showClaude: true, showCodex: true))
-        #expect(ToolVisibility.canHide(.codex, showClaude: true, showCodex: true))
-        #expect(!ToolVisibility.canHide(.claude, showClaude: true, showCodex: false))
-        #expect(!ToolVisibility.canHide(.codex, showClaude: false, showCodex: true))
+        #expect(ToolVisibility.canHide(.claude, showClaude: true, showCodex: true, codexConnected: true))
+        #expect(ToolVisibility.canHide(.codex, showClaude: true, showCodex: true, codexConnected: true))
+        #expect(!ToolVisibility.canHide(.claude, showClaude: true, showCodex: false, codexConnected: true))
+        #expect(!ToolVisibility.canHide(.codex, showClaude: false, showCodex: true, codexConnected: true))
+    }
+
+    /// Hiding Claude while Codex shows no limits would leave only a "Sign in" pill.
+    @Test func claudeCannotBeHiddenUntilCodexIsConnected() {
+        #expect(!ToolVisibility.canHide(.claude, showClaude: true, showCodex: true, codexConnected: false))
+        #expect(ToolVisibility.canHide(.codex, showClaude: true, showCodex: true, codexConnected: false))
     }
 
     // MARK: Menu-bar battery and widget gauges: connected and shown

@@ -36,6 +36,9 @@ final class AutoResumeCoordinator {
     /// Per-tool auto-resume state.
     /// Bumped when a tool is hidden; a scheduled resume from an earlier epoch is dropped.
     private var epochs: [AgentTool: Int] = [:]
+    /// Tools with a resume scheduled since the last cancel, so a hide bumps the epoch
+    /// only when there is something to invalidate.
+    private var scheduledTools: Set<AgentTool> = []
 
     private struct ToolState {
         /// The windows of the last reading, to detect a refill of any of them.
@@ -329,6 +332,7 @@ final class AutoResumeCoordinator {
                                 tool: AgentTool) {
         let tag = Self.tag(tool)
         let epoch = epochs[tool, default: 0]
+        scheduledTools.insert(tool)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             guard self.epochs[tool, default: 0] == epoch else {
@@ -407,6 +411,6 @@ extension AutoResumeCoordinator {
     /// A hidden tool: drop its baseline and cancel its already-scheduled resumes.
     private func cancelPending(_ tool: AgentTool) {
         if states[tool] != nil { states[tool] = nil }
-        epochs[tool, default: 0] += 1
+        if scheduledTools.remove(tool) != nil { epochs[tool, default: 0] += 1 }
     }
 }
