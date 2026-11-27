@@ -169,12 +169,14 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   keychain** — the same accepted trade-off as the admin key (see API spend), don't reopen it.
   **Refresh-token rotation rule:** OpenAI rotates the refresh token on every refresh and the
   item is shared by every ClaudeMeter process, so `ChatGPTAccountStore` re-reads the Keychain
-  before each refresh (another process may already have refreshed), keeps refreshed tokens in
-  memory *before* writing them (a failed write is logged, never loses them), and on a dead
-  grant re-reads again: if the stored refresh token differs from the one that failed, it
-  retries once with it instead of deleting good tokens (`ChatGPTRotation`). Only a dead refresh
-  grant that is still the stored one (401, or 400/403 with `invalid_grant` /
-  `refresh_token_*`) signs out with "sign in again"; a 401 from the usage endpoint after a
+  before each refresh and uses a stored token whose access token is still valid instead of
+  refreshing again. Refreshed tokens go into memory *before* the write; a failed write marks
+  them **pending** — memory stays authoritative, reads never replace it, and the write is
+  retried every poll. Only a *missing* item means signed out; any other read error backs off
+  and keeps everything. On a dead grant it re-reads: a newer stored token is adopted (valid) or
+  retried once (expired), and with the retry spent it is kept, never deleted. Decisions are
+  pure in `ChatGPTRotation`. Only a dead refresh grant that is the newest token there is (401,
+  or 400/403 with `invalid_grant` / `refresh_token_*`) signs out with "sign in again"; a 401 from the usage endpoint after a
   successful refresh keeps the login and backs off 10 min. `--codex-usage-dump` **never
   refreshes** (expired token → message, exit 1). `CodexLiveLimits` polls
   `GET chatgpt.com/backend-api/wham/usage` (`Authorization: Bearer` + `chatgpt-account-id`,

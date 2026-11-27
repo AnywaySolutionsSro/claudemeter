@@ -24,6 +24,8 @@ enum ChatGPTError: Error, LocalizedError, Equatable {
     case tokenRefused
     /// The access token has expired and this caller may not refresh (diagnostics).
     case tokenExpired
+    /// The Keychain item couldn't be read (not "not found"). Says nothing about the login.
+    case keychainUnreadable
     case network(String)
     case http(Int)
     case rateLimited(retryAfter: TimeInterval?)
@@ -54,6 +56,8 @@ enum ChatGPTError: Error, LocalizedError, Equatable {
             "ChatGPT refused the Codex usage request — retrying in 10 minutes."
         case .tokenExpired:
             "The stored ChatGPT access token has expired; let the app refresh it."
+        case .keychainUnreadable:
+            "Couldn't read the ChatGPT login from the Keychain — will retry."
         case let .network(message):
             "Couldn't reach ChatGPT: \(message)"
         case let .http(code):
