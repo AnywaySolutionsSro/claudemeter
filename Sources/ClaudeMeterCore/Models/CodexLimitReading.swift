@@ -17,8 +17,8 @@ public struct CodexWindowReading: Sendable, Equatable, Codable {
     }
 }
 
-/// The account's Codex limits as one transcript line saw them. Only as fresh as the
-/// last Codex turn: `observedAt` is that line's timestamp.
+/// The account's Codex limits as one transcript line — or one live ChatGPT usage
+/// fetch — saw them. `observedAt` is that line's timestamp, or the fetch time.
 public struct CodexLimitReading: Sendable, Equatable, Codable {
     /// `rate_limits.limit_id` (`"codex"` for the main allowance).
     public let limitID: String
@@ -27,11 +27,17 @@ public struct CodexLimitReading: Sendable, Equatable, Codable {
     public let windows: [CodexWindowReading]
     /// `rate_limit_reached_type` — non-nil once a limit has cut the session off.
     public let reachedType: String?
+    /// The ChatGPT plan (`plan_type`), when the live usage endpoint reports it.
+    public let planType: String?
 
-    public init(limitID: String, observedAt: Date, windows: [CodexWindowReading], reachedType: String?) {
+    public init(
+        limitID: String, observedAt: Date, windows: [CodexWindowReading], reachedType: String?,
+        planType: String? = nil,
+    ) {
         self.limitID = limitID
         self.observedAt = observedAt
         self.windows = windows
         self.reachedType = reachedType
+        self.planType = planType
     }
 }
