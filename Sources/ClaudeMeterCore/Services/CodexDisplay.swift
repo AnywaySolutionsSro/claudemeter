@@ -1,12 +1,12 @@
 import Foundation
 
 /// The small decisions behind how Codex shows up next to Claude: whether the menu-bar
-/// pill carries a Codex ring, the note on a window whose reset passed unseen, and the activity line.
+/// battery carries a Codex half, the note on a window whose reset passed unseen, and the activity line.
 public enum CodexDisplay {
-    /// Whether the menu-bar pill carries Codex's ring and figure next to Claude's.
+    /// Whether the menu-bar battery carries Codex's half and figure next to Claude's.
     /// Decided by the setting and Codex's presence only — never by whether a reading
     /// exists — so the status item's width doesn't change from one scan to the next.
-    public static func showsCodexRing(enabled: Bool, present: Bool) -> Bool {
+    public static func showsCodexInMenuBar(enabled: Bool, present: Bool) -> Bool {
         enabled && present
     }
 

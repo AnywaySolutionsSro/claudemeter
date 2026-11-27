@@ -66,7 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Fixed width (content centered) so switching modes / changing the countdown never
         // resizes the item — that would shift the button and misalign the open popover.
         statusItem = NSStatusBar.system
-            .statusItem(withLength: MenuBarLabel.recommendedSlotWidth(for: settings.textScale))
+            .statusItem(withLength: MenuBarLabel.slotWidth(mode: settings.displayMode, codexShown: false,
+                                                           for: settings.textScale))
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
@@ -284,22 +285,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let error = store.errorMessage
         let now = Date()
 
-        // Re-assert the slot width here, not just at launch: the width is fixed
-        // *per scale* (and per pill), and a text-size change must widen the slot or
-        // the new image lands in a stale one. `settings.objectWillChange` already
-        // routes here. The two-ring pill depends only on the setting and Codex's
-        // presence, never on a reading, so the width holds still from scan to scan.
-        let dualRing = showsCodexRing
-        statusItem.length = dualRing
-            ? MenuBarLabel.dualRingSlotWidth(for: scale)
-            : MenuBarLabel.recommendedSlotWidth(for: scale)
+        // Re-assert the slot width here, not just at launch: the width is fixed per
+        // mode, scale and Codex's presence, and a change must resize the slot or the new
+        // image lands in a stale one. `settings.objectWillChange` already routes here.
+        // It never depends on a reading, so it holds still from scan to scan.
+        let codexShown = showsCodexInMenuBar
+        statusItem.length = MenuBarLabel.slotWidth(mode: mode, codexShown: codexShown, for: scale)
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            if dualRing {
-                image = MenuBarLabel.dualRingPill(
+            if codexShown {
+                // One item for both tools: the two-tool battery, whatever the mode.
+                image = MenuBarLabel.dualBattery(
                     claudeLeft: signedIn ? snapshot?.primary?.percentRemaining : nil,
-                    codexLeft: sessionMonitor.codexLimits?.mostConstrained?.percentRemaining,
+                    codexLeft: sessionMonitor.codexLimits?.primary?.percentRemaining,
                     scale: scale,
                 )
             } else {
@@ -431,7 +430,7 @@ private extension AppDelegate {
                 self.updateLabel()
             }
             .store(in: &cancellables)
-        // A new reading, or a reset passing, changes the Codex ring.
+        // A new reading, or a reset passing, changes Codex's half of the battery.
         sessionMonitor.$codexLimits
             .removeDuplicates()
             .dropFirst()
@@ -455,9 +454,10 @@ private extension AppDelegate {
         if chatGPTAuth.isSignedIn { codexLive.start() }
     }
 
-    /// Whether the menu-bar pill carries Codex's ring next to Claude's.
-    var showsCodexRing: Bool {
-        CodexDisplay.showsCodexRing(enabled: settings.showCodexInMenuBar, present: sessionMonitor.codexPresent)
+    /// Whether the menu-bar battery carries Codex's half next to Claude's.
+    var showsCodexInMenuBar: Bool {
+        CodexDisplay.showsCodexInMenuBar(enabled: settings.showCodexInMenuBar,
+                                         present: sessionMonitor.codexPresent)
     }
 }
 

@@ -1,0 +1,166 @@
+import Foundation
+
+/// An axis-aligned rect in points (origin bottom-left, as AppKit draws).
+public struct PillRect: Equatable, Sendable {
+    public let x: Double
+    public let y: Double
+    public let width: Double
+    public let height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    public var maxX: Double { x + width }
+    public var midX: Double { x + width / 2 }
+}
+
+/// The measured sizes a battery is laid out from. `cellTextWidth` is the width of the
+/// widest figure (`BatteryPill.references`) in the menu-bar font, so the battery never
+/// changes width between scans; the rest are the drawing's fixed proportions.
+public struct BatteryMetrics: Equatable, Sendable {
+    public let height: Double
+    public let cellTextWidth: Double
+    /// Clear space either side of the figure inside its cell.
+    public let cellPadding: Double
+    /// The outline's stroke width.
+    public let lineWidth: Double
+    /// Gap between the outline's inner edge and the fill.
+    public let inset: Double
+    public let cornerRadius: Double
+    public let dividerWidth: Double
+    /// Gap between the body and the terminal nub.
+    public let nubGap: Double
+    public let nubWidth: Double
+    /// The nub's height as a share of the body's.
+    public let nubHeightRatio: Double
+
+    public init(
+        height: Double, cellTextWidth: Double, cellPadding: Double, lineWidth: Double, inset: Double,
+        cornerRadius: Double, dividerWidth: Double, nubGap: Double, nubWidth: Double, nubHeightRatio: Double,
+    ) {
+        self.height = height
+        self.cellTextWidth = cellTextWidth
+        self.cellPadding = cellPadding
+        self.lineWidth = lineWidth
+        self.inset = inset
+        self.cornerRadius = cornerRadius
+        self.dividerWidth = dividerWidth
+        self.nubGap = nubGap
+        self.nubWidth = nubWidth
+        self.nubHeightRatio = nubHeightRatio
+    }
+
+    /// How far in from the body's edge the fill area starts.
+    var edge: Double { lineWidth + inset }
+    var cellWidth: Double { cellTextWidth + 2 * cellPadding }
+}
+
+/// One tool's compartment: the area it may fill, the fill for its % left, and its figure.
+public struct BatteryCell: Equatable, Sendable {
+    public let tool: AgentTool
+    public let area: PillRect
+    /// Anchored per layout; zero-width without a reading (an empty track, never a fake 0%).
+    public let fill: PillRect
+    public let text: String
+}
+
+/// Where everything in a battery goes. `MenuBarLabel` does the drawing.
+public struct BatteryLayout: Equatable, Sendable {
+    /// The body's outer edge (the outline is stroked half a line inside it).
+    public let body: PillRect
+    /// The area inside the outline and its inset, which the cells share.
+    public let inner: PillRect
+    public let innerRadius: Double
+    public let nub: PillRect
+    /// The line between Claude's and Codex's halves; `nil` with Claude alone.
+    public let divider: PillRect?
+    public let cells: [BatteryCell]
+
+    /// Width of the whole image: body, gap and nub.
+    public var width: Double { nub.maxX }
+    public var height: Double { body.height }
+}
+
+/// The menu-bar battery: a rounded body with a terminal nub on the right, filled with
+/// each tool's % left. Claude alone fills the whole body from the left and drains from
+/// the right; with Codex the body splits in the middle, and each half's fill is anchored
+/// at the divider and drains from its outer edge. The pure geometry.
+public enum BatteryPill {
+    /// Every figure a cell can show at its widest, measured to size the cells.
+    public static let references = ["100%", "—"]
+
+    /// Share of a cell to fill (0...1); an unknown figure fills nothing.
+    public static func level(percentLeft: Double?) -> Double {
+        guard let percentLeft else { return 0 }
+        return max(0, min(1, percentLeft / 100))
+    }
+
+    /// `68%`, or `—` without a reading.
+    public static func figure(percentLeft: Double?) -> String {
+        percentLeft.map(Formatting.percent) ?? "—"
+    }
+
+    /// Claude alone: one cell over the whole body, filled from the left.
+    public static func single(claudeLeft: Double?, metrics: BatteryMetrics) -> BatteryLayout {
+        let frame = frame(innerWidth: metrics.cellWidth, metrics: metrics)
+        let fillWidth = frame.inner.width * level(percentLeft: claudeLeft)
+        let fill = PillRect(x: frame.inner.x, y: frame.inner.y, width: fillWidth, height: frame.inner.height)
+        let cell = BatteryCell(tool: .claude, area: frame.inner, fill: fill, text: figure(percentLeft: claudeLeft))
+        return BatteryLayout(body: frame.body, inner: frame.inner, innerRadius: frame.innerRadius,
+                             nub: frame.nub, divider: nil, cells: [cell])
+    }
+
+    /// Claude on the left, Codex on the right; both fills meet at the divider.
+    public static func dual(claudeLeft: Double?, codexLeft: Double?, metrics: BatteryMetrics) -> BatteryLayout {
+        let cellWidth = metrics.cellWidth
+        let frame = frame(innerWidth: 2 * cellWidth + metrics.dividerWidth, metrics: metrics)
+        let inner = frame.inner
+        let divider = PillRect(x: inner.x + cellWidth, y: metrics.lineWidth, width: metrics.dividerWidth,
+                               height: max(0, metrics.height - 2 * metrics.lineWidth))
+        let claudeArea = PillRect(x: inner.x, y: inner.y, width: cellWidth, height: inner.height)
+        let codexArea = PillRect(x: divider.maxX, y: inner.y, width: cellWidth, height: inner.height)
+        let claudeWidth = cellWidth * level(percentLeft: claudeLeft)
+        let codexWidth = cellWidth * level(percentLeft: codexLeft)
+        let claude = BatteryCell(
+            tool: .claude, area: claudeArea,
+            fill: PillRect(x: divider.x - claudeWidth, y: inner.y, width: claudeWidth, height: inner.height),
+            text: figure(percentLeft: claudeLeft),
+        )
+        let codex = BatteryCell(
+            tool: .codex, area: codexArea,
+            fill: PillRect(x: divider.maxX, y: inner.y, width: codexWidth, height: inner.height),
+            text: figure(percentLeft: codexLeft),
+        )
+        return BatteryLayout(body: frame.body, inner: inner, innerRadius: frame.innerRadius,
+                             nub: frame.nub, divider: divider, cells: [claude, codex])
+    }
+
+    /// Origin that centres a `textWidth`×`textHeight` figure in `cell`.
+    public static func textOrigin(textWidth: Double, textHeight: Double, in cell: PillRect) -> (x: Double, y: Double) {
+        (cell.x + (cell.width - textWidth) / 2, cell.y + (cell.height - textHeight) / 2)
+    }
+
+    /// The parts every battery shares, before the cells are laid in.
+    private struct Frame {
+        let body: PillRect
+        let inner: PillRect
+        let innerRadius: Double
+        let nub: PillRect
+    }
+
+    private static func frame(innerWidth: Double, metrics: BatteryMetrics) -> Frame {
+        let edge = metrics.edge
+        let height = metrics.height
+        let body = PillRect(x: 0, y: 0, width: innerWidth + 2 * edge, height: height)
+        let inner = PillRect(x: edge, y: edge, width: innerWidth, height: max(0, height - 2 * edge))
+        let nubHeight = height * metrics.nubHeightRatio
+        let nub = PillRect(x: body.maxX + metrics.nubGap, y: (height - nubHeight) / 2,
+                           width: metrics.nubWidth, height: nubHeight)
+        let radius = max(0, min(metrics.cornerRadius - edge, inner.width / 2, inner.height / 2))
+        return Frame(body: body, inner: inner, innerRadius: radius, nub: nub)
+    }
+}

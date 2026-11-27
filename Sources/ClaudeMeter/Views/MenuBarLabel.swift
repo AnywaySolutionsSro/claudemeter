@@ -23,6 +23,8 @@ enum MenuBarLabel {
         case .signIn:
             return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange,
                         font: font, verticalPadding: verticalPadding)
+        case let .battery(remaining):
+            return battery(claudeLeft: remaining, scale: scale)
         case let .glyph(text, color):
             return glyph(text, color: color, font: font, verticalPadding: verticalPadding)
         case let .gauge(text, remaining):
@@ -93,8 +95,23 @@ enum MenuBarLabel {
         }
     }
 
-    /// Width of the fixed menu-bar slot, sized to the widest Classic content so the item never
-    /// resizes (which would shift the button and misalign the popover).
+    /// Width of the fixed menu-bar slot for `mode`, so the item never resizes between scans
+    /// (which would shift the button and misalign the popover). With Codex shown the
+    /// two-tool battery is used whatever the mode.
+    static func slotWidth(mode: DisplayMode, codexShown: Bool, for scale: TextScale) -> CGFloat {
+        if codexShown { return batterySlotWidth(dual: true, for: scale) }
+        guard mode == .battery else { return recommendedSlotWidth(for: scale) }
+        // Signed out, the battery slot still has to hold the "Sign in" pill.
+        return max(batterySlotWidth(dual: false, for: scale), signInSlotWidth(for: scale))
+    }
+
+    private static func signInSlotWidth(for scale: TextScale) -> CGFloat {
+        let (font, _) = metrics(for: scale)
+        let textWidth = ("Sign in" as NSString).size(withAttributes: [.font: font]).width
+        return ceil(ceil(textWidth) + horizontalPadding * 2 + 4)
+    }
+
+    /// Width of the fixed menu-bar slot, sized to the widest Classic content.
     static func recommendedSlotWidth(for scale: TextScale) -> CGFloat {
         let reference = "100% · 4h59m"
         let (font, _) = metrics(for: scale)
