@@ -13,6 +13,7 @@ public extension Formatting {
         now: Date,
         timeZone: TimeZone = .current,
         locale: Locale = .current,
+        style: ClockStyle = .system,
     ) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -20,7 +21,7 @@ public extension Formatting {
             [.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date),
         ).day ?? 0
 
-        let time = format(date, uses12Hour(locale) ? "h:mm a" : "HH:mm", timeZone)
+        let time = clockTime(date, style: style, timeZone: timeZone, locale: locale)
         switch days {
         case ...0: return "today \(time)"
         case 1: return "tomorrow \(time)"
@@ -28,9 +29,24 @@ public extension Formatting {
         }
     }
 
-    private static func uses12Hour(_ locale: Locale) -> Bool {
-        let pattern = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
-        return pattern.contains("a")
+    /// A wall-clock time: `14:05` or `2:05 PM`.
+    static func clockTime(
+        _ date: Date,
+        style: ClockStyle,
+        timeZone: TimeZone = .current,
+        locale: Locale = .current,
+    ) -> String {
+        format(date, style.uses12Hour(locale: locale) ? "h:mm a" : "HH:mm", timeZone)
+    }
+
+    /// A short date plus clock time: `27 Nov 14:05`. Month words are English, like `resetMoment`.
+    static func dateTime(
+        _ date: Date,
+        style: ClockStyle,
+        timeZone: TimeZone = .current,
+        locale: Locale = .current,
+    ) -> String {
+        "\(format(date, "d MMM", timeZone)) \(clockTime(date, style: style, timeZone: timeZone, locale: locale))"
     }
 
     private static func format(_ date: Date, _ pattern: String, _ timeZone: TimeZone) -> String {
