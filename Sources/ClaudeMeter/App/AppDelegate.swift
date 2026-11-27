@@ -54,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popover = NSPopover()
     private var labelTimer: Timer?
     private var outsideClickMonitor: Any?
+    /// A status-item length that arrived while the popover was open; applied when it closes.
+    private var pendingSlotLength: CGFloat?
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -63,8 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // permission even when the usage nudges are switched off.
         if settings.notificationsEnabled || settings.autoResumeEnabled { notifications.requestAuthorization() }
 
-        // Fixed width (content centered) so switching modes / changing the countdown never
-        // resizes the item — that would shift the button and misalign the open popover.
+        // Launch width; `updateLabel` resizes it while the popover is closed (see applySlotLength).
         statusItem = NSStatusBar.system
             .statusItem(withLength: MenuBarLabel.slotWidth(mode: settings.displayMode, codexShown: false,
                                                            for: settings.textScale))
@@ -285,12 +286,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let error = store.errorMessage
         let now = Date()
 
-        // Re-assert the slot width here, not just at launch: the width is fixed per
-        // mode, scale and Codex's presence, and a change must resize the slot or the new
-        // image lands in a stale one. `settings.objectWillChange` already routes here.
-        // It never depends on a reading, so it holds still from scan to scan.
         let codexShown = showsCodexInMenuBar
-        statusItem.length = MenuBarLabel.slotWidth(mode: mode, codexShown: codexShown, for: scale)
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -311,6 +307,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.image = image
         button.imagePosition = .imageOnly
         button.title = ""
+        // Classic modes keep a fixed slot per mode and scale; the battery's slot follows its
+        // image, which follows the figures.
+        applySlotLength(for: image, mode: mode, codexShown: codexShown, scale: scale)
     }
 
     // MARK: - Popover
@@ -389,6 +388,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
+        if let length = pendingSlotLength {
+            pendingSlotLength = nil
+            statusItem.length = length
+        }
+    }
+}
+
+// MARK: - Slot width
+
+private extension AppDelegate {
+    /// Resizing the item while the popover is open shifts the button under it, so a new
+    /// length waits for `popoverDidClose`; an unchanged one is skipped.
+    private func applySlotLength(for image: NSImage, mode: DisplayMode, codexShown: Bool, scale: TextScale) {
+        let length = MenuBarLabel.followsFigures(mode: mode, codexShown: codexShown)
+            ? MenuBarLabel.batterySlotWidth(imageWidth: image.size.width)
+            : MenuBarLabel.slotWidth(mode: mode, codexShown: codexShown, for: scale)
+        guard popover.isShown else {
+            pendingSlotLength = nil
+            if statusItem.length != length { statusItem.length = length }
+            return
+        }
+        pendingSlotLength = length
     }
 }
 

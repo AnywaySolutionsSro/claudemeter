@@ -25,7 +25,38 @@ struct UsageInsightsTests {
         #expect(insights.burn == BurnRate.estimate(samples: history, now: t0.addingTimeInterval(30 * 60)))
         #expect(insights.burn?.isBurning == true)
         #expect(insights.trend == [10, 12, 14, 30])
-        #expect(insights.paceRatio != nil)
+        // Half an hour is no "usual pace" yet.
+        #expect(insights.paceRatio == nil)
         #expect(insights.history == history)
+    }
+
+    private func weekly(_ hours: Double, _ used: Double) -> UsageSample {
+        UsageSample(timestamp: t0.addingTimeInterval(hours * 3600), sessionUtilization: nil,
+                    sessionResetsAt: nil, weeklyUtilization: used,
+                    weeklyResetsAt: t0.addingTimeInterval(7 * 86400))
+    }
+
+    @Test func noPaceLineWithoutADayOfHistory() {
+        let short = [weekly(0, 10), weekly(0.2, 10.5), weekly(0.4, 11)]
+        #expect(!UsageInsights.hasPaceBaseline(short))
+        #expect(UsageInsights.paceRatio(history: short,
+                                        burn: BurnEstimate(percentPerHour: 3.7, etaToLimit: nil)) == nil)
+        #expect(!UsageInsights.hasPaceBaseline([]))
+    }
+
+    @Test func aDayOfHistoryGivesAPaceRatio() throws {
+        let long = [weekly(0, 1), weekly(10, 3), weekly(24, 5)]
+        #expect(UsageInsights.hasPaceBaseline(long))
+        let ratio = UsageInsights.paceRatio(history: long, burn: BurnEstimate(percentPerHour: 0.4, etaToLimit: nil))
+        let typical = try #require(UsageStats.typicalPercentPerHour(samples: long))
+        #expect(ratio == 0.4 / typical)
+    }
+
+    @Test func noPaceLineWithoutATypicalRate() {
+        // A day long but flat: no typical rate to divide by.
+        let flat = [weekly(0, 5), weekly(30, 5)]
+        #expect(UsageInsights.hasPaceBaseline(flat))
+        #expect(UsageInsights.paceRatio(history: flat,
+                                        burn: BurnEstimate(percentPerHour: 1, etaToLimit: nil)) == nil)
     }
 }

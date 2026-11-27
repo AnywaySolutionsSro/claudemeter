@@ -194,8 +194,14 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 - **History:** `codex-history.json` (beside `history.json`, never mixed with it, survives a Claude
   sign-out) feeds the Codex section's burn/pace lines and green sparkline (`UsageInsights`,
   `UsageInsightsView`, shared with Claude). `CodexHistory.samplesToRecord` adds one sample per
-  reading (`observedAt`), never per scan, plus **one** 0% reset point (in a new window) once the
-  tracked window's reset passes unseen.
+  reading (`observedAt`), never per scan (an unchanged figure at most every 5 min), plus **one**
+  0% reset point (in a new window) once the tracked window's reset passes unseen. **Backfill:**
+  after the first scan of a run, if the history lacks the tracked window's start,
+  `CodexHistory.backfilled` replays the readings already in the rollouts (kept per session,
+  one per minute, `CodexScanner.limitReadingHistory`, imports excluded) through the same rules
+  and merges them in — recording only began at install, so a fresh graph was ~20 min of 10→11%.
+  Sparklines (both tools) scale to the data (`SparklineScale.top`: 10…100, +15%, round 5), and
+  "N× your usual pace" hides under 24 h of history (`UsageInsights.paceRatio`).
 - **Processes:** only Codex CLI binaries that own a tty count — the standalone installer
   (`~/.codex/packages/standalone`), npm's vendored binary (`node_modules/@openai/codex/`) and
   Homebrew (`Cellar/codex/`, `Caskroom/codex/`); the Codex `app-server-daemon` and anything in
@@ -223,9 +229,12 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   weekly (`snapshot.primary`; Codex's past-reset window reads as full); no reading = empty
   track and "—", never a fake 0%. The drained track is the tool colour darkened at half alpha
   so white stays legible in light and dark bars. Geometry is pure in `BatteryPill` (tested);
-  drawing in `MenuBarLabel+Battery`. The width is sized from `BatteryPill.references` at the
-  text scale and depends only on mode + presence + toggle + scale, never on a reading (a
-  signed-out Claude-only slot also fits the "Sign in" pill). The other modes render as before,
+  drawing in `MenuBarLabel+Battery`. **Width follows the figures:** each
+  cell is as wide as its own figure (`5%`, `89%`, `100%`, `—`) with a minimum of `00%`'s width,
+  and the status item is the image plus 1 pt either side (no extra padding, so gaps to
+  neighbours are macOS's own). `AppDelegate.applySlotLength` applies a new `statusItem.length`
+  **only while the popover is closed** (otherwise it waits for `popoverDidClose`) and skips
+  no-ops, since resizing under an open popover misaligns it. The other modes keep a fixed slot and render as before,
   Claude only.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool

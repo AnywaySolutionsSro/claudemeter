@@ -34,7 +34,7 @@ struct UsageInsightsView: View {
             }
 
             if sparklineValues.count >= 2 {
-                Sparkline(values: sparklineValues, color: tint)
+                Sparkline(values: sparklineValues, top: SparklineScale.top(for: sparklineValues), color: tint)
                     .frame(height: scale.pt(28))
                     .padding(.top, scale.pt(2))
             }

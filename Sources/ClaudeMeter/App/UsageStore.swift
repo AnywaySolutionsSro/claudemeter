@@ -165,10 +165,7 @@ final class UsageStore: ObservableObject {
 
     private func recompute(now: Date) {
         burnEstimate = BurnRate.estimate(samples: history, now: now)
-        paceRatio = UsageStats.paceRatio(
-            current: burnEstimate?.percentPerHour ?? 0,
-            typical: UsageStats.typicalPercentPerHour(samples: history),
-        )
+        paceRatio = UsageInsights.paceRatio(history: history, burn: burnEstimate)
     }
 
     /// Emit threshold/reset events — only once a real prior reading exists (so a cold launch

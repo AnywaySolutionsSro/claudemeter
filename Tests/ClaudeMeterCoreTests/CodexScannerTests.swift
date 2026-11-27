@@ -174,6 +174,25 @@ struct CodexScannerTests {
         #expect(second.limits?.windows.first?.usedPercent == 12)
     }
 
+    @Test func testLimitReadingHistoryExcludesImports() async {
+        let source = FakeSource(
+            refs: [ref("a"), ref("imp", origin: .codexDesktop)],
+            linesByID: [
+                "a": [meta("a", cwd: "/p1"),
+                      tokens(5, at: "2026-11-27T10:01:00Z", limits: limits(used: 10)),
+                      tokens(6, at: "2026-11-27T10:03:00Z", limits: limits(used: 11))],
+                "imp": [meta("imp", cwd: "/p2", originator: "Codex Desktop", legacy: true),
+                        limitsOnly(limits(used: 50))],
+            ],
+        )
+        source.imported = ["imp"]
+        let scanner = scanner(source)
+        #expect(await scanner.limitReadingHistory().isEmpty)
+        _ = await scanner.scan(now: now)
+        let readings = await scanner.limitReadingHistory()
+        #expect(readings.map { $0.windows.first?.usedPercent }.sorted { ($0 ?? 0) < ($1 ?? 0) } == [10, 11])
+    }
+
     @Test func testImportsFileAppearingLaterIsHonoured() async {
         let importedLines = [meta("imp", cwd: "/p1", originator: "Codex Desktop", legacy: true),
                              limitsOnly(limits(used: 50))]

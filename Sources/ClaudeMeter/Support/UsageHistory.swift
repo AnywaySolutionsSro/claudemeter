@@ -37,4 +37,10 @@ enum CodexUsageHistory {
         file.save(all)
         return all
     }
+
+    /// Persist `samples` as the whole history (a backfill) and return them.
+    static func replace(with samples: [UsageSample]) -> [UsageSample] {
+        file.save(samples)
+        return samples
+    }
 }

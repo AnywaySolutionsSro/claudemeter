@@ -13,26 +13,42 @@ extension MenuBarLabel {
     private static let batteryNubGap: CGFloat = 1
     private static let batteryNubWidth: CGFloat = 2
     private static let batteryNubHeightRatio: CGFloat = 0.4
+    /// Clear space between the image and the status item's edge.
+    private static let batterySlotMargin: CGFloat = 1
 
     /// Claude alone: the whole body is Claude's, filled from the left.
     static func battery(claudeLeft: Double?, scale: TextScale) -> NSImage {
-        drawBattery(BatteryPill.single(claudeLeft: claudeLeft, metrics: batteryMetrics(for: scale)), scale: scale)
+        drawBattery(BatteryPill.single(claudeLeft: claudeLeft, metrics: batteryMetrics(for: scale),
+                                       measure: figureMeasure(for: scale)), scale: scale)
     }
 
     /// Claude on the left, Codex on the right, both fills anchored at the divider.
     static func dualBattery(claudeLeft: Double?, codexLeft: Double?, scale: TextScale) -> NSImage {
         let metrics = batteryMetrics(for: scale)
-        return drawBattery(BatteryPill.dual(claudeLeft: claudeLeft, codexLeft: codexLeft, metrics: metrics),
+        return drawBattery(BatteryPill.dual(claudeLeft: claudeLeft, codexLeft: codexLeft, metrics: metrics,
+                                            measure: figureMeasure(for: scale)),
                            scale: scale)
     }
 
-    /// Fixed status-item width for the battery at `scale`; it never depends on a reading.
+    /// Status-item width for a battery image: just the image and 1 pt either side, so the
+    /// outline is never clipped and the gap to neighbours is macOS's own spacing.
+    static func batterySlotWidth(imageWidth: CGFloat) -> CGFloat {
+        ceil(imageWidth) + 2 * batterySlotMargin
+    }
+
+    /// Width for the launch-time item, before the first reading: the battery with no figure.
     static func batterySlotWidth(dual: Bool, for scale: TextScale) -> CGFloat {
         let metrics = batteryMetrics(for: scale)
+        let measure = figureMeasure(for: scale)
         let layout = dual
-            ? BatteryPill.dual(claudeLeft: nil, codexLeft: nil, metrics: metrics)
-            : BatteryPill.single(claudeLeft: nil, metrics: metrics)
-        return ceil(CGFloat(layout.width) + 4)
+            ? BatteryPill.dual(claudeLeft: nil, codexLeft: nil, metrics: metrics, measure: measure)
+            : BatteryPill.single(claudeLeft: nil, metrics: metrics, measure: measure)
+        return batterySlotWidth(imageWidth: CGFloat(layout.width))
+    }
+
+    private static func figureMeasure(for scale: TextScale) -> (String) -> Double {
+        let bold = batteryFont(for: scale)
+        return { Double(ceil(($0 as NSString).size(withAttributes: [.font: bold]).width)) }
     }
 
     /// Semibold so the white figures hold up over a coloured fill at the smallest size;
@@ -44,9 +60,7 @@ extension MenuBarLabel {
     private static func batteryMetrics(for scale: TextScale) -> BatteryMetrics {
         let (font, verticalPadding) = metrics(for: scale)
         let bold = batteryFont(for: scale)
-        let textWidth = BatteryPill.references
-            .map { ceil(($0 as NSString).size(withAttributes: [.font: bold]).width) }
-            .max() ?? 0
+        let textWidth = ceil((BatteryPill.minimumFigure as NSString).size(withAttributes: [.font: bold]).width)
         let textHeight = ceil(("0" as NSString).size(withAttributes: [.font: font]).height)
         return BatteryMetrics(
             height: Double(textHeight + verticalPadding * 2), cellTextWidth: Double(textWidth),

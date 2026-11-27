@@ -23,8 +23,39 @@ struct BatteryPillTests {
         #expect(BatteryPill.figure(percentLeft: 67.6) == "68%")
         #expect(BatteryPill.figure(percentLeft: 0) == "0%")
         #expect(BatteryPill.figure(percentLeft: nil) == "—")
-        #expect(BatteryPill.references.contains("100%"))
-        #expect(BatteryPill.references.contains("—"))
+        #expect(BatteryPill.minimumFigure == "00%")
+    }
+
+    // MARK: - Width follows the figures
+
+    /// 10 pt per character, so "5%" is 20 (below the 30 minimum), "89%" 30, "100%" 40.
+    private let measure: (String) -> Double = { Double($0.count) * 10 }
+
+    @Test func aShortFigureGetsTheMinimumCellAndALongOneGrows() {
+        let short = BatteryPill.single(claudeLeft: 5, metrics: metrics, measure: measure)
+        let mid = BatteryPill.single(claudeLeft: 89, metrics: metrics, measure: measure)
+        let full = BatteryPill.single(claudeLeft: 100, metrics: metrics, measure: measure)
+        #expect(short.width == mid.width)
+        #expect(short.cells[0].area.width == 38)
+        #expect(full.cells[0].area.width == 48)
+        #expect(full.width == short.width + 10)
+    }
+
+    @Test func dualWidthIsTheSumOfItsCellsDividerAndNub() {
+        let layout = BatteryPill.dual(claudeLeft: 5, codexLeft: 100, metrics: metrics, measure: measure)
+        #expect(layout.cells[0].area.width == 38)
+        #expect(layout.cells[1].area.width == 48)
+        // 2 + 38 + 1 + 48 + 2 (body) + 1 (gap) + 2 (nub)
+        #expect(layout.width == 94)
+        #expect(layout.divider?.x == 40)
+        let narrow = BatteryPill.dual(claudeLeft: 5, codexLeft: 89, metrics: metrics, measure: measure)
+        #expect(narrow.width < layout.width)
+    }
+
+    @Test func fillsStayProportionalToTheirOwnCell() {
+        let layout = BatteryPill.dual(claudeLeft: 50, codexLeft: 100, metrics: metrics, measure: measure)
+        #expect(layout.cells[0].fill.width == 19)
+        #expect(layout.cells[1].fill.width == 48)
     }
 
     // MARK: - Claude only

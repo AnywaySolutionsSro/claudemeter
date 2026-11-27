@@ -26,11 +26,29 @@ public struct UsageInsights: Equatable, Sendable {
         return UsageInsights(
             history: history,
             burn: burn,
-            paceRatio: UsageStats.paceRatio(
-                current: burn?.percentPerHour ?? 0,
-                typical: UsageStats.typicalPercentPerHour(samples: history),
-            ),
+            paceRatio: paceRatio(history: history, burn: burn),
             trend: UsageStats.currentWindowTrend(samples: history),
         )
+    }
+
+    /// History shorter than this is no "usual pace" to compare against: a first
+    /// half-hour's median rate reads as a meaningless "0.0× your usual pace".
+    public static let paceBaselineSpan: TimeInterval = 24 * 3600
+
+    /// Current burn relative to the typical one, or `nil` while there is no baseline:
+    /// under `paceBaselineSpan` of history, or no typical rate to divide by.
+    public static func paceRatio(history: [UsageSample], burn: BurnEstimate?) -> Double? {
+        guard hasPaceBaseline(history) else { return nil }
+        return UsageStats.paceRatio(
+            current: burn?.percentPerHour ?? 0,
+            typical: UsageStats.typicalPercentPerHour(samples: history),
+        )
+    }
+
+    /// Whether `history` spans at least `paceBaselineSpan`.
+    public static func hasPaceBaseline(_ history: [UsageSample]) -> Bool {
+        let times = history.map(\.timestamp)
+        guard let first = times.min(), let last = times.max() else { return false }
+        return last.timeIntervalSince(first) >= paceBaselineSpan
     }
 }
