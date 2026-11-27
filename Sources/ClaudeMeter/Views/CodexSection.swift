@@ -37,6 +37,9 @@ struct CodexSection: View {
     @EnvironmentObject private var monitor: SessionMonitor
     @EnvironmentObject private var settings: Settings
     @Environment(\.textScale) private var scale
+    /// The window (id + reset moment) a reminder was scheduled for, so a second click
+    /// neither schedules twice nor leaves the user guessing.
+    @State private var remindedKey: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: scale.pt(10)) {
@@ -77,8 +80,17 @@ struct CodexSection: View {
                 Text("Codex's \(window.phrase) is used up — resets in \(Formatting.countdown(reset)).")
                     .font(scale.font(11)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Remind me when it resets") { onRemind(window) }
+                let key = "\(window.id)|\(window.bucket.resetsAt?.timeIntervalSince1970 ?? 0)"
+                if remindedKey == key {
+                    Label("Reminder set", systemImage: "checkmark")
+                        .font(scale.font(11)).foregroundColor(.secondary)
+                } else {
+                    Button("Remind me when it resets") {
+                        onRemind(window)
+                        remindedKey = key
+                    }
                     .font(scale.font(11))
+                }
             }
             .padding(scale.pt(8))
             .background(RoundedRectangle(cornerRadius: scale.pt(8)).fill(Color(tool: .codex).opacity(0.12)))

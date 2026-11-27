@@ -136,6 +136,14 @@ struct GaugeRingView: View {
                     .foregroundStyle(.secondary).lineLimit(1)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityValue("\(Int(gauge.percentLeft.rounded())) percent left")
+    }
+
+    /// "Codex Weekly" once tools are told apart by colour; the visible label is unchanged.
+    private var accessibilityTitle: String {
+        tint.map { "\(ToolPalette.name(for: $0)) \(gauge.label)" } ?? gauge.label
     }
 
     /// A tinted ring is the tool's colour; the tightening warning moves to the number.
