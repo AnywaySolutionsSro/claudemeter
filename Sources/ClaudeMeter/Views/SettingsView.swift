@@ -8,6 +8,8 @@ struct SettingsView: View {
     @ObservedObject var auth: AuthModel
     @ObservedObject var updates: UpdateService
     @ObservedObject var apiSpend: ApiSpendStore
+    /// Whether Codex has been seen on this machine; its alert toggle stays hidden until then.
+    var codexPresent = false
 
     /// Read from `settings` directly rather than the environment: this view sets
     /// the environment value for its own children, and a value set in `body`
@@ -86,10 +88,18 @@ struct SettingsView: View {
         Form {
             Section(header: sectionHeader("Notifications", "bell.badge.fill", .orange)) {
                 Toggle(isOn: $settings.notificationsEnabled) {
-                    Label("Usage notifications", systemImage: "bell")
+                    Label("Claude limit alerts", systemImage: "bell")
                 }
                 .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
+                }
+                if codexPresent {
+                    Toggle(isOn: $settings.codexNotificationsEnabled) {
+                        Label("Codex limit alerts", systemImage: "bell")
+                    }
+                    .onChange(of: settings.codexNotificationsEnabled) { _, enabled in
+                        if enabled { NotificationManager().requestAuthorization() }
+                    }
                 }
                 Toggle(isOn: $settings.extraUsageNotificationsEnabled) {
                     Label("Extra usage spend", systemImage: "creditcard")

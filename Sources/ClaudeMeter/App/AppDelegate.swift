@@ -236,10 +236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func handle(_ event: UsageEvent) {
         switch event {
         case let .reset(window):
-            if settings.notificationsEnabled { notifications.notifyRefill(window) }
+            if settings.notificationsEnabled { notifications.notifyRefill(window, tool: .claude) }
         case let .crossedThreshold(threshold, window, eta):
             if settings.notificationsEnabled {
-                notifications.notifyThreshold(threshold, window: window, etaToReset: eta)
+                notifications.notifyThreshold(threshold, window: window, etaToReset: eta, tool: .claude)
             }
         case let .extraUsage(alert, usage):
             if settings.extraUsageNotificationsEnabled {

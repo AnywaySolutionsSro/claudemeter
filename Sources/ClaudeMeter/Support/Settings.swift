@@ -49,6 +49,11 @@ final class Settings: ObservableObject {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
     }
 
+    /// Threshold and refill alerts for Codex's limits, reported separately from Claude's.
+    @Published var codexNotificationsEnabled: Bool {
+        didSet { defaults.set(codexNotificationsEnabled, forKey: Keys.codexNotificationsEnabled) }
+    }
+
     /// Threshold nudges for paid extra usage (spending started / 80% / cap reached).
     /// On by default: unnoticed paid spend is the failure this feature exists to prevent.
     @Published var extraUsageNotificationsEnabled: Bool {
@@ -108,6 +113,7 @@ final class Settings: ObservableObject {
         self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
         self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
+        self.codexNotificationsEnabled = defaults.object(forKey: Keys.codexNotificationsEnabled) as? Bool ?? true
         self.extraUsageNotificationsEnabled =
             defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
@@ -130,6 +136,7 @@ final class Settings: ObservableObject {
         static let textScale = "textScale"
         static let clockStyle = "clockStyle"
         static let notificationsEnabled = "notificationsEnabled"
+        static let codexNotificationsEnabled = "codexNotificationsEnabled"
         static let extraUsageNotificationsEnabled = "extraUsageNotificationsEnabled"
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
