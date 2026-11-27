@@ -52,8 +52,28 @@ struct CodexTranscriptSourceTests {
         #expect(byID[CodexFixtures.tuiSessionID]?.title == "Show render")
         #expect(byID[CodexFixtures.importedSessionID]?.origin == .codexDesktop)
         #expect(byID[CodexFixtures.importedSessionID]?.title == nil)
-        #expect(byID[bareID]?.origin == .codexCLI)
+        // No originator: not provably a terminal session, so never resumable.
+        #expect(byID[bareID]?.origin == .codexDesktop)
         #expect(refs.allSatisfy { $0.parentID == nil })
+    }
+
+    @Test func testOnlyCodexTUIOriginatorIsTerminal() throws {
+        defer { cleanup() }
+        let cases = ["codex-tui": SessionOrigin.codexCLI, "Codex Desktop": .codexDesktop,
+                     "codex_exec": .codexDesktop, "codex_vscode": .codexDesktop]
+        for (index, originator) in cases.keys.sorted().enumerated() {
+            let id = "01a21d99-0000-7000-8000-00000000001\(index)"
+            try write("""
+            {"type":"session_meta","payload":{"id":"\(id)","originator":"\(originator)"}}\n
+            """, to: "sessions/2026/11/27/rollout-2026-11-27T16-00-0\(index)-\(id).jsonl")
+        }
+        let refs = CodexTranscriptSource(codexHome: home, fileManager: fm).discover()
+        let origins = try Dictionary(uniqueKeysWithValues: refs.map { ref in
+            let line = try #require(TranscriptFileReader.firstLine(of: ref.url))
+            let originator = cases.keys.first { line.contains("\"\($0)\"") }
+            return try (#require(originator), ref.origin)
+        })
+        #expect(origins == cases)
     }
 
     @Test func missingHomeDiscoversNothing() {

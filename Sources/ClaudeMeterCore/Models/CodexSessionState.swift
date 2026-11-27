@@ -16,8 +16,9 @@ public struct CodexSessionState: Sendable, Equatable {
     public var tokens: TokenBreakdown
     public var firstActivity: Date?
     public var lastActivity: Date?
-    /// Newest `rate_limits` reading in this transcript.
-    public var latestLimits: CodexLimitReading?
+    /// Newest `rate_limits` reading in this transcript **per `limit_id`**: a later
+    /// reading under another id must not replace the "codex" one.
+    public var latestLimitsByID: [String: CodexLimitReading]
     /// Turns started (`task_started` events).
     public var turnCount: Int
     /// `session_meta.history_mode == "legacy"`.
@@ -36,7 +37,7 @@ public struct CodexSessionState: Sendable, Equatable {
         tokens: TokenBreakdown = .zero,
         firstActivity: Date? = nil,
         lastActivity: Date? = nil,
-        latestLimits: CodexLimitReading? = nil,
+        latestLimitsByID: [String: CodexLimitReading] = [:],
         turnCount: Int = 0,
         isLegacyHistory: Bool = false,
         isImportedLegacy: Bool = false,
@@ -49,16 +50,21 @@ public struct CodexSessionState: Sendable, Equatable {
         self.tokens = tokens
         self.firstActivity = firstActivity
         self.lastActivity = lastActivity
-        self.latestLimits = latestLimits
+        self.latestLimitsByID = latestLimitsByID
         self.turnCount = turnCount
         self.isLegacyHistory = isLegacyHistory
         self.isImportedLegacy = isImportedLegacy
     }
 
+    /// The reading to show for this transcript: the newest "codex" one, else the newest of any id.
+    public var latestLimits: CodexLimitReading? {
+        CodexLimits.newest(Array(latestLimitsByID.values))
+    }
+
     /// Real Codex work: not an untouched import, and it has used tokens or seen limits.
     /// One such session is what makes Codex "present" in the UI.
     public var isCodexWork: Bool {
-        !isImportedLegacy && (tokens.total > 0 || latestLimits != nil)
+        !isImportedLegacy && (tokens.total > 0 || !latestLimitsByID.isEmpty)
     }
 
     /// This state with `lines` applied. Malformed lines are skipped. `importedIDs`
@@ -91,8 +97,8 @@ public struct CodexSessionState: Sendable, Equatable {
                 tokens = newTokens
                 if newTokens.total > 0 { isImportedLegacy = false }
             }
-            if let limits, limits.observedAt >= latestLimits?.observedAt ?? .distantPast {
-                latestLimits = limits
+            if let limits, limits.observedAt >= latestLimitsByID[limits.limitID]?.observedAt ?? .distantPast {
+                latestLimitsByID[limits.limitID] = limits
             }
         case .other:
             break

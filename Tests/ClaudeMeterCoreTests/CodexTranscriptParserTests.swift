@@ -127,6 +127,25 @@ struct CodexTranscriptParserTests {
         #expect(reading.windows[1].resetsAt == nil)
     }
 
+    @Test func testNewestReadingKeptPerLimitID() {
+        func limits(_ id: String, _ used: Double) -> String {
+            """
+            {"limit_id":"\(id)","primary":{"used_percent":\(used),"window_minutes":300,"resets_at":1796000000},\
+            "secondary":null,"rate_limit_reached_type":null}
+            """
+        }
+        let state = CodexSessionState().folding([
+            tokenCount(at: "2026-11-27T10:00:00Z", input: 1, cached: 0, output: 1, rateLimits: limits("codex", 10)),
+            tokenCount(at: "2026-11-27T10:05:00Z", input: 1, cached: 0, output: 1, rateLimits: limits("codex", 30)),
+            tokenCount(at: "2026-11-27T10:06:00Z", input: 1, cached: 0, output: 1, rateLimits: limits("other", 70)),
+        ])
+        #expect(state.latestLimitsByID["codex"]?.windows.first?.usedPercent == 30)
+        #expect(state.latestLimitsByID["other"]?.windows.first?.usedPercent == 70)
+        // A later reading under another id must not hide the "codex" one.
+        #expect(state.latestLimits?.limitID == "codex")
+        #expect(state.latestLimits?.windows.first?.usedPercent == 30)
+    }
+
     @Test func foldingIsIncrementalAndPure() throws {
         let lines = try CodexFixtures.lines(CodexFixtures.tuiURL)
         let whole = CodexSessionState().folding(lines)

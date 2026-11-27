@@ -11,7 +11,8 @@ public protocol CodexTranscriptDiscovering: TranscriptDiscovering {
 ///
 /// - `sessions/YYYY/MM/DD/rollout-<timestamp>-<sessionId>.jsonl`, walked recursively.
 ///   The id is `session_meta.payload.id` (first line), else the filename's uuid suffix.
-///   Origin comes from `session_meta.payload.originator` (`Codex Desktop` → desktop).
+///   Origin comes from `session_meta.payload.originator`: only `codex-tui` is a
+///   terminal session; anything else (or none) is `.codexDesktop`.
 /// - Titles from `session_index.jsonl` (`id`, `thread_name`; the last entry per id wins).
 ///
 /// Never touches `auth.json`. A missing home or file contributes nothing.
@@ -75,13 +76,19 @@ public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Send
     private func makeRef(url: URL, titles: [String: String]) -> TranscriptRef {
         let meta = sessionMeta(of: url)
         let id = meta.id ?? fallbackID(of: url)
-        let isDesktop = meta.originator?.lowercased().contains("desktop") == true
         let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? Date(timeIntervalSince1970: 0)
         return TranscriptRef(
-            id: id, url: url, origin: isDesktop ? .codexDesktop : .codexCLI,
+            id: id, url: url, origin: Self.origin(ofOriginator: meta.originator),
             title: titles[id], modifiedAt: modifiedAt,
         )
+    }
+
+    /// The terminal CLI identifies itself as `codex-tui`. Anything else — Codex
+    /// Desktop, `codex_exec`, an IDE, a missing or unknown originator — is treated as
+    /// non-terminal: monitored, never resumable (the safe default).
+    static func origin(ofOriginator originator: String?) -> SessionOrigin {
+        originator == "codex-tui" ? .codexCLI : .codexDesktop
     }
 
     /// `id` / `originator` from the first line when it is a `session_meta` entry.
