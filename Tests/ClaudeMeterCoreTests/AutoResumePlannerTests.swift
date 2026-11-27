@@ -109,6 +109,22 @@ struct AutoResumePlannerTests {
         #expect(p.targets.map(\.sessionID) == ["s1"])
     }
 
+    @Test func testPlannerUsesInjectedClassifier() {
+        // The Claude tail would be a cutoff, but the injected classifier decides.
+        func run(_ verdict: SessionEligibility) -> ResumePlan {
+            AutoResumePlanner.plan(
+                now: base, refillObserved: true, window: nil, windowSeconds: windowSeconds,
+                armedIDs: ["s1"], sessions: [session("s1", path: "/p1")],
+                processes: [proc(10, cwd: "/p1")],
+                transcriptTail: { _ in [self.cutoff] },
+                executablePath: iTerm, parentPID: rootParent,
+                classify: { _ in verdict },
+            )
+        }
+        #expect(run(.eligibleCutoff).targets.map(\.sessionID) == ["s1"])
+        #expect(run(.cleanlyFinished).targets.isEmpty)
+    }
+
     // MARK: - The retry window (the core hardening)
 
     @Test func sessionNotYetEligibleRetriesOnLaterCycleWithinWindow() {

@@ -44,6 +44,33 @@ struct ProcessProbeTests {
         #expect(!LibprocProcessProbe.isClaudeCodeExecutable("/Applications/ClaudeMeter.app/Contents/MacOS/ClaudeMeter"))
     }
 
+    // MARK: Codex terminal processes
+
+    @Test func testStandaloneCodexMatched() {
+        #expect(LibprocProcessProbe.isCodexTerminalExecutable("/Users/u/.codex/packages/standalone/0.172.0/bin/codex"))
+    }
+
+    @Test func testDaemonAndDesktopHelpersExcluded() {
+        #expect(!LibprocProcessProbe
+            .isCodexTerminalExecutable("/Users/u/.codex/packages/app-server-daemon/releases/1/bin/codex"))
+        #expect(!LibprocProcessProbe.isCodexTerminalExecutable(
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        ))
+    }
+
+    @Test func claudeAndCodexMatchersAreDisjoint() {
+        let codex = "/Users/u/.codex/packages/standalone/0.172.0/bin/codex"
+        #expect(!LibprocProcessProbe.isClaudeCodeExecutable(codex))
+        #expect(!LibprocProcessProbe.isCodexTerminalExecutable("/Users/x/.local/share/claude/versions/2.1.195"))
+    }
+
+    @Test func probesWithoutCodexSupportReportNone() {
+        struct Fake: ProcessProbing {
+            func liveClaudeProcesses() -> [LiveProcess] { [] }
+        }
+        #expect(Fake().liveCodexProcesses().isEmpty)
+    }
+
     // MARK: smoke test
 
     @Test func liveCountsAreAlwaysPositive() {
