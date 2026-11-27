@@ -142,7 +142,10 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 (nil = Claude, so old snapshots still decode). Codex never touches Claude's pipeline state.
 
 - **Sources:** `~/.codex/sessions` rollout JSONL (`CodexTranscriptParser`, `CodexScanner`, same
-  incremental mtime/offset folding), titles from `session_index.jsonl`. Sessions listed in
+  incremental mtime/offset folding), titles from `session_index.jsonl`. Each rollout's ~28 KB
+  `session_meta` first line is read once per path and the index only when its mtime/size change
+  (`CodexSourceCache`) — discovery runs every 10 s. `RunningResolver.resolve` takes a `tool` and
+  only touches that tool's sessions, so one tool's process counts can't mark the other's live. Sessions listed in
   `external_agent_session_imports.json` are imports of *Claude* transcripts and are skipped.
   **Never read `auth.json`** — no Codex credential is needed.
 - **Tokens:** Codex logs *cumulative* `total_token_usage`, so a session's figure is the last
@@ -154,21 +157,28 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 - **Refill rule:** past-reset **or** a ≥25-point drop (`CodexLimits.gate`). Unlike Claude's 5-h
   on-disk carry-over, a Codex baseline is **not** carried across an app restart, by design: a
   restart reseeds from the live transcript, so a stale reading can't fire `continue`.
-- **Processes:** only binaries under `~/.codex/packages/standalone` that own a tty count; the
-  Codex daemon and ChatGPT.app are excluded, and only originator `codex-tui` is armable.
+- **Processes:** only Codex CLI binaries that own a tty count — the standalone installer
+  (`~/.codex/packages/standalone`), npm's vendored binary (`node_modules/@openai/codex/`) and
+  Homebrew (`Cellar/codex/`, `Caskroom/codex/`); the Codex `app-server-daemon` and anything in
+  ChatGPT.app are excluded, and only originator `codex-tui` is armable.
 - **Auto-resume:** `AutoResumeCoordinator` keeps state per tool; `ToolResumeGuard` skips a tty
   shared by a Claude and a Codex session, so one `continue` never lands in the wrong agent.
   Decisions log in category `autoresume`, prefixed `codex:`.
 - **`CodexCutoffDetector` is PROVISIONAL.** No real limit hit has been observed; it treats an
   `error`/`stream_error` event containing "usage limit", or a `rate_limit_reached_type`, as the
-  cutoff. On the first real hit read the `codex:` lines in the `autoresume` log (`/usr/bin/log
+  cutoff — judged over the **last turn** (since the last `task_started`), because Codex closes a
+  cut-off turn with `task_complete`/`turn_aborted`; a later user message cancels it. A reached
+  type also **blocks the gate** (`CodexLimits.reachedWindow`, the reading's fullest window until
+  its reset), so a 5-h refill under a weekly limit reached below 100% doesn't resume. On the first real hit read the `codex:` lines in the `autoresume` log (`/usr/bin/log
   show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category ==
   "autoresume"'`; `logCodexTails` dumps the armed sessions' last records) and fix the detector
   against the real shape.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool
   (`LimitEvents`, "Codex · …"), so same-named alerts never replace each other. All Codex UI stays
-  hidden until `codexPresent`. The new widget kind `CodexGaugeWeekly` needs the chrono purge
+  hidden until `codexPresent` — and so is the "Claude · " title prefix and the "Claude limit
+  alerts" label (`NotificationIDs.title(_:tool:codexPresent:)`): a Claude-only user sees exactly
+  the pre-Codex copy. Codex widget rings say "as of …" once their reading is over an hour old. The new widget kind `CodexGaugeWeekly` needs the chrono purge
   (see API spend gotchas). Widget rings carry the tool in their accessibility label ("Codex
   Weekly") without changing the visible one.
 
