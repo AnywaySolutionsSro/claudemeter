@@ -149,7 +149,7 @@ struct MenuContentView: View {
             HStack {
                 quickLinksMenu
                 Spacer()
-                Button("Sign out") { auth.signOut() }.font(scale.font(11))
+                // Signing out lives in Settings, next to each account it belongs to.
                 Button("Quit") { NSApplication.shared.terminate(nil) }.font(scale.font(11))
             }
         }
