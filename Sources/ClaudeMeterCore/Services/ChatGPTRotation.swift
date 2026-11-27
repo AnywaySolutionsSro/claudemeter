@@ -1,27 +1,44 @@
 import Foundation
 
-/// Refresh-token rotation rules for ClaudeMeter's ChatGPT login.
+/// Refresh-token rotation rules for ClaudeMeter's ChatGPT login (used by `ChatGPTTokenVault`).
 ///
 /// The Keychain item is shared by every ClaudeMeter process (the app, `--codex-usage-dump`),
 /// and OpenAI rotates the refresh token on each refresh, so the old one is spent the moment a
-/// new one is issued. A rotated token must never be lost: not to another process (re-read the
-/// item and adopt its newer token), not to a failed Keychain write (memory stays authoritative
-/// while a write is pending), and not to a read error (only a *missing* item is a sign-out).
+/// new one is issued. A rotated token must never be lost: not to another process, not to a
+/// failed Keychain write, not to a read error.
+///
+/// `staleStored` is the pending-write marker: the spent refresh token the item still holds
+/// because writing our newer tokens failed (nil = nothing pending). It is what tells *our*
+/// stale item apart from a newer token another process wrote.
 public enum ChatGPTRotation {
     /// What a read of the Keychain item found.
     public enum Stored: Equatable, Sendable {
         /// `accessValid`: its access token has not expired.
-        case found(refreshToken: String, accessValid: Bool)
+        case found(refreshToken: String, accessToken: String, accessValid: Bool)
         /// No item: signed out.
         case missing
         /// The read failed (not "not found"): says nothing about the login.
         case unreadable
     }
 
+    /// How the in-memory tokens relate to the item.
+    public enum Reconcile: Equatable, Sendable {
+        /// The item is the truth (nothing pending, or it was replaced elsewhere): adopt it.
+        case adoptStored
+        /// A write is pending and the item still holds our stale token: memory wins,
+        /// and the item may be overwritten.
+        case keepMemoryWritable
+        /// A write is pending and the item can't be read: memory wins, don't write.
+        case keepMemoryUnreadable
+        /// No item — never signed in, or signed out (perhaps elsewhere). Never recreate it.
+        case signedOut
+        /// Nothing pending and the item can't be read: keep memory, change nothing.
+        case unreadable
+    }
+
     public enum Start: Equatable, Sendable {
         /// Use the stored tokens as they are; no refresh.
         case useStored
-        /// Refresh the stored tokens.
         case refreshStored
         /// Refresh the in-memory tokens (a write is pending, or the item is unreadable).
         case refreshMemory
@@ -31,9 +48,9 @@ public enum ChatGPTRotation {
     }
 
     public enum Refreshed: Equatable, Sendable {
-        /// Keep and persist the result (a failed write leaves it pending, in memory).
+        /// Keep and persist the result (a failed write leaves it pending).
         case save
-        /// A newer grant replaced the one we renewed (a new sign-in, another process).
+        /// The item now holds a token neither renewed by us nor ours: someone else's newer grant.
         case superseded
         /// Signed out while the request ran: writing would resurrect the login.
         case signedOut
@@ -46,52 +63,58 @@ public enum ChatGPTRotation {
         case retry
         /// The item holds a newer token but the retry is spent: keep it, try next poll.
         case superseded
-        /// The token that failed is the newest there is: the login is dead.
+        /// The token that died is ours and the newest there is: the login is dead.
         case signOut
-        /// Nothing stored any more: already signed out.
         case signedOut
         /// The item can't be read: keep everything and try again later.
         case backOff
     }
 
-    /// Whether a Keychain read may replace the in-memory tokens. Not while a write is
-    /// pending: the item then holds the token we already spent.
-    public static func mayReplaceMemory(pendingWrite: Bool) -> Bool {
-        !pendingWrite
-    }
-
-    /// What to do when a refresh is due. `memory` is the in-memory refresh token.
-    public static func beforeRefresh(memory: String?, stored: Stored, pendingWrite: Bool, force: Bool) -> Start {
-        if pendingWrite { return memory == nil ? .backOff : .refreshMemory }
+    public static func reconcile(stored: Stored, staleStored: String?) -> Reconcile {
         switch stored {
         case .missing:
             return .signedOut
         case .unreadable:
-            return memory == nil ? .backOff : .refreshMemory
-        case let .found(token, accessValid):
-            // Valid and not the token the server just refused: someone already refreshed.
-            if accessValid, !force || token != memory { return .useStored }
-            return .refreshStored
+            return staleStored == nil ? .unreadable : .keepMemoryUnreadable
+        case let .found(token, _, _):
+            guard let staleStored else { return .adoptStored }
+            return token == staleStored ? .keepMemoryWritable : .adoptStored
         }
     }
 
-    public static func afterRefresh(used: String, stored: Stored, pendingWrite: Bool) -> Refreshed {
+    /// What to do when a refresh is due. `refusedAccess` is the access token the server
+    /// just rejected (a forced refresh), never the in-memory copy: a read may already have
+    /// replaced memory with the stored tokens.
+    public static func beforeRefresh(stored: Stored, staleStored: String?, hasMemory: Bool,
+                                     refusedAccess: String?) -> Start {
+        switch reconcile(stored: stored, staleStored: staleStored) {
+        case .signedOut:
+            return .signedOut
+        case .keepMemoryWritable, .keepMemoryUnreadable, .unreadable:
+            return hasMemory ? .refreshMemory : .backOff
+        case .adoptStored:
+            guard case let .found(_, access, valid) = stored else { return .backOff }
+            return valid && access != refusedAccess ? .useStored : .refreshStored
+        }
+    }
+
+    public static func afterRefresh(used: String, stored: Stored, staleStored: String?) -> Refreshed {
         switch stored {
         case .missing: .signedOut
         case .unreadable: .save
-        case let .found(token, _): token == used || pendingWrite ? .save : .superseded
+        case let .found(token, _, _): token == used || token == staleStored ? .save : .superseded
         }
     }
 
-    public static func afterDeadGrant(used: String, stored: Stored, pendingWrite: Bool, canRetry: Bool) -> DeadGrant {
+    public static func afterDeadGrant(used: String, stored: Stored, staleStored: String?,
+                                      canRetry: Bool) -> DeadGrant {
         switch stored {
         case .missing:
             return .signedOut
         case .unreadable:
             return .backOff
-        case let .found(token, accessValid):
-            // With a write pending the item holds a token we spent before `used`.
-            if token == used || pendingWrite { return .signOut }
+        case let .found(token, _, accessValid):
+            if token == used || token == staleStored { return .signOut }
             if accessValid { return .adopt }
             return canRetry ? .retry : .superseded
         }

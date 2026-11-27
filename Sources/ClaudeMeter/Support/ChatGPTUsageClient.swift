@@ -36,7 +36,7 @@ struct ChatGPTUsageClient {
         do {
             return try await request(tokens, now: now)
         } catch ChatGPTError.http(401) {
-            let fresh = try await account.forceRefresh(now: now)
+            let fresh = try await account.forceRefresh(refused: tokens, now: now)
             do {
                 return try await request(fresh, now: now)
             } catch ChatGPTError.http(401) {
