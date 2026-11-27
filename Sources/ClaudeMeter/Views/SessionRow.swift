@@ -11,6 +11,8 @@ struct SessionRow: View {
     /// Mirrors the widget: a disabled toggle is dimmed, not just non-interactive.
     var armDisabledReason: String?
     var isArmed: Bool = false
+    /// Show the coloured Claude/Codex tag (only once Codex is present on this Mac).
+    var showsTool = false
     var onArmChange: (Bool) -> Void = { _ in }
     @Environment(\.textScale) private var scale
 
@@ -24,6 +26,7 @@ struct SessionRow: View {
                     Text(session.projectName)
                         .font(scale.font(12, weight: .semibold))
                         .lineLimit(1)
+                    if showsTool { toolTag }
                     originBadge
                 }
                 Text(subtitle)
@@ -78,10 +81,23 @@ struct SessionRow: View {
             .background(RoundedRectangle(cornerRadius: scale.pt(3)).fill(Color.secondary.opacity(0.12)))
     }
 
+    /// Claude or Codex, in the tool's brand colour.
+    private var toolTag: some View {
+        let tool = session.effectiveTool
+        return Text(ToolPalette.name(for: tool))
+            .font(scale.font(8, weight: .bold))
+            .foregroundColor(Color(tool: tool))
+            .padding(.horizontal, scale.pt(4))
+            .padding(.vertical, scale.pt(1))
+            .background(RoundedRectangle(cornerRadius: scale.pt(3)).fill(Color(tool: tool).opacity(0.15)))
+    }
+
     private var subtitle: String {
         // The model currently in use, not the alphabetically-last one ever seen.
         let model = (session.lastModel ?? session.models.last).map(shortModel) ?? "—"
-        return "\(model) · \(relativeActivity)"
+        // Codex Desktop (ChatGPT.app) sessions are monitored, never typed into.
+        let note = session.origin == .codexDesktop ? " · desktop — not resumable" : ""
+        return "\(model) · \(relativeActivity)\(note)"
     }
 
     private var secondary: String {

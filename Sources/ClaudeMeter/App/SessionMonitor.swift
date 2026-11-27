@@ -5,9 +5,16 @@ import WidgetKit
 
 /// Inputs the AppDelegate forwards to the AutoResumeCoordinator after each scan.
 struct UsageContextInputs {
+    /// Claude and Codex sessions together (IDs are unique across tools).
     let sessions: [SessionUsage]
+    /// Live Claude Code CLI processes.
     let processes: [LiveProcess]
+    /// Live terminal Codex CLI processes.
+    let codexProcesses: [LiveProcess]
+    /// Claude and Codex armable IDs together.
     let armableIDs: [String]
+    /// The Codex limit reading as of this scan (past-reset windows read as full), or nil.
+    let codexLimits: UsageSnapshot?
 }
 
 /// Observable view-model that periodically scans local Claude Code transcripts
@@ -22,6 +29,15 @@ final class SessionMonitor: ObservableObject {
     @Published private(set) var snapshot: SessionSnapshot?
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var latestProcesses: [LiveProcess] = []
+    @Published private(set) var latestCodexProcesses: [LiveProcess] = []
+    /// Codex's limit windows as of the last scan (a window whose reset passed reads as
+    /// full), or nil with no reading. Never merged with Claude's: both have a "Weekly".
+    @Published private(set) var codexLimits: UsageSnapshot?
+    /// When the Codex limit reading was observed (the last Codex turn that carried one).
+    @Published private(set) var codexAsOf: Date?
+    /// Codex is in use on this Mac (≥ 1 non-import session with tokens or a limit
+    /// reading). Every Codex surface is gated on it.
+    @Published private(set) var codexPresent = false
 
     /// Set by AppDelegate so the published snapshot can mark armed sessions and
     /// the post-scan hook can drive auto-resume.
@@ -31,8 +47,12 @@ final class SessionMonitor: ObservableObject {
     var usageProvider: (() -> UsageSnapshot?)?
     /// The time-format setting, stamped into each snapshot for the widget.
     var clockStyleProvider: (() -> ClockStyle)?
+    /// Called after every scan that has a Codex limit reading, with that snapshot and
+    /// the scan time — the hook for Codex limit alerts.
+    var onCodexLimits: ((UsageSnapshot, Date) -> Void)?
 
     private let scanner: SessionScanner
+    private let codexScanner: CodexScanner
     private let interval: TimeInterval
     private let snapshotStore = SnapshotStore()
     private var timer: Timer?
@@ -85,6 +105,8 @@ final class SessionMonitor: ObservableObject {
             .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
             + [Self.extraUsageStructureKey(snapshot.extraUsage),
                "clock:\(snapshot.clockStyle?.rawValue ?? "")"]
+            + (snapshot.codexGauges ?? [])
+            .map { "codex:\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
         // Display-rounded, so a count that renders the same doesn't count as a change.
         // The extra-usage amount belongs here rather than in `structure` for the same
         // reason: spend moves on almost every scan while a session streams, and an
@@ -124,9 +146,16 @@ final class SessionMonitor: ObservableObject {
     private static let minReloadInterval: TimeInterval = 5 * 60
 
     init(scanner: SessionScanner = SessionMonitor.makeDefaultScanner(),
+         codexScanner: CodexScanner = SessionMonitor.makeDefaultCodexScanner(),
          interval: TimeInterval = 10) {
         self.scanner = scanner
+        self.codexScanner = codexScanner
         self.interval = interval
+    }
+
+    /// The production Codex scanner: `~/.codex/sessions` and the live Codex CLI processes.
+    nonisolated static func makeDefaultCodexScanner() -> CodexScanner {
+        CodexScanner(source: CodexTranscriptSource(), processProbe: LibprocProcessProbe())
     }
 
     /// The production scanner wired to the real filesystem and process table.
@@ -162,43 +191,71 @@ final class SessionMonitor: ObservableObject {
         isScanning = true
         defer { isScanning = false }
 
-        let result = await scanner.scan(now: Date())
+        let now = Date()
+        async let claudeScan = scanner.scan(now: now)
+        async let codexScan = codexScanner.scan(now: now)
+        let result = await claudeScan
+        let codex = await codexScan
         let processes = result.processes
         let armedIDs = armedIDsProvider?() ?? []
 
-        sessions = result.sessions
+        // No Codex surface at all until Codex is present (a fresh zero-token thread
+        // or an imported Claude thread alone must not change anything).
+        let codexSessions = codex.isPresent ? codex.sessions : []
+        let allSessions = (result.sessions + codexSessions).sorted { $0.totalTokens > $1.totalTokens }
+        sessions = allSessions
         latestProcesses = processes
+        latestCodexProcesses = codex.processes
+        // Rebuilt from the reading every scan: a window whose reset passed since must
+        // read as full now, not when the next Codex turn happens to arrive.
+        let codexUsage = codex.limits.map { CodexLimits.snapshot(from: $0, now: now) }
+        codexLimits = codexUsage
+        codexAsOf = codex.limits?.observedAt
+        codexPresent = codex.isPresent
         let armedSet = Set(armedIDs)
-        let armable = result.armableSessionIDs
-        let widgetSessions = result.sessions.filter { $0.running == .running || armedSet.contains($0.id) }
+        let armable = result.armableSessionIDs + (codex.isPresent ? codex.armableSessionIDs : [])
+        let widgetSessions = allSessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
             from: widgetSessions, now: result.snapshot.generatedAt,
             limit: 20, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable,
         )
         // Preserve the true running count across ALL sessions, not just the filtered set.
-        let trueRunning = result.sessions.filter { $0.running == .running }.count
+        let trueRunning = allSessions.filter { $0.running == .running }.count
         let usage = usageProvider?()
+        let showCodex = codex.isPresent ? codexUsage : nil
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
-            totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
+            totalTokens: allSessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
             usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
             clockStyle: clockStyleProvider?(),
+            codexGauges: showCodex?.gauges, codexAsOf: showCodex == nil ? nil : codex.limits?.observedAt,
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)
 
-        onScan?(UsageContextInputs(sessions: result.sessions, processes: processes,
-                                   armableIDs: armable))
+        if let codexUsage { onCodexLimits?(codexUsage, now) }
+        onScan?(UsageContextInputs(sessions: allSessions, processes: processes,
+                                   codexProcesses: codex.processes, armableIDs: armable,
+                                   codexLimits: codexUsage))
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.
     /// Reads only the file's tail: this runs on the main actor every scan while a
     /// resume window is open, and transcripts reach hundreds of MB.
-    nonisolated static func tailLines(forSessionID id: String, maxLines: Int = 40) -> [String] {
-        let roots = [TranscriptSource.defaultCLIRoot, TranscriptSource.defaultDesktopRoot]
+    /// Codex transcripts are `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl`.
+    nonisolated static func tailLines(forSessionID id: String, tool: AgentTool = .claude,
+                                      maxLines: Int = 40) -> [String] {
+        let roots = switch tool {
+        case .claude: [TranscriptSource.defaultCLIRoot, TranscriptSource.defaultDesktopRoot]
+        case .codex: [CodexTranscriptSource.defaultHome.appendingPathComponent("sessions", isDirectory: true)]
+        }
+        let matches: (String) -> Bool = switch tool {
+        case .claude: { $0 == "\(id).jsonl" }
+        case .codex: { $0.hasPrefix("rollout-") && $0.hasSuffix("-\(id).jsonl") }
+        }
         for root in roots {
-            if let url = findTranscript(id: id, under: root) {
+            if let url = findTranscript(under: root, matching: matches) {
                 guard let tail = tailBytes(of: url, count: tailReadBytes) else { return [] }
                 let content = String(decoding: tail.data, as: UTF8.self)
                 var lines = content.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
@@ -224,10 +281,10 @@ final class SessionMonitor: ObservableObject {
         return (data, truncated)
     }
 
-    private nonisolated static func findTranscript(id: String, under root: URL) -> URL? {
+    private nonisolated static func findTranscript(under root: URL, matching matches: (String) -> Bool) -> URL? {
         let fm = FileManager.default
         guard let e = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
-        for case let url as URL in e where url.lastPathComponent == "\(id).jsonl" { return url }
+        for case let url as URL in e where matches(url.lastPathComponent) { return url }
         return nil
     }
 }

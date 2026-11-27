@@ -19,7 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             self.autoResume.testResume(
                 session: session,
-                processes: self.sessionMonitor.latestProcesses,
+                processes: session.effectiveTool == .codex
+                    ? self.sessionMonitor.latestCodexProcesses : self.sessionMonitor.latestProcesses,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
                 parents: { LibprocProcessProbe.parentPIDForPID($0) },
             )
@@ -121,15 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             // Keep the Mac awake while anything is armed.
             self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
-            // Drive auto-resume.
-            self.autoResume.handleSnapshot(
-                usage: self.store.snapshotForRefillDetection,
-                sessions: inputs.sessions,
-                processes: inputs.processes,
-                transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
-                paths: { LibprocProcessProbe.executablePathForPID($0) },
-                parents: { LibprocProcessProbe.parentPIDForPID($0) },
-            )
+            // Drive auto-resume: Claude and Codex plan independently.
+            self.autoResume.handleScan(claudeUsage: self.store.snapshotForRefillDetection, inputs: inputs)
         }
         // React to arming changes immediately (sleep assertion + republish).
         // Arming is also the fallback moment to surface the iTerm2 Automation

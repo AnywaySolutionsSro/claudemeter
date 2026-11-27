@@ -15,6 +15,12 @@ import os
 ///
 /// The pure decision lives in `AutoResumePlanner`; this type only performs the
 /// side effects (scheduling, driving iTerm2, notifications, the tty-reuse probe).
+///
+/// Claude and Codex run **independent** plans: each tool has its own baseline, retry
+/// window, refill cooldown and failure-notification gate (`ToolState`), its own refill
+/// gate (`AutoResumePlanner.gate` / `CodexLimits.gate`) and only ever targets its own
+/// sessions and processes. The armed set is shared (session IDs are unique). Codex
+/// decisions log in the same category, prefixed `codex:`.
 @MainActor
 final class AutoResumeCoordinator {
     private let armed: ArmedSessions
@@ -27,18 +33,29 @@ final class AutoResumeCoordinator {
     private let notify: (String) -> Void
     private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "autoresume")
 
-    /// The windows of the last reading, to detect a refill of any of them.
-    private var lastWindows: [LimitWindow] = []
-    /// The active retry window (nil between refills).
-    private var window: ResumeWindow?
-    /// When the last accepted refill opened a window (feeds the planner's
-    /// cooldown so flapping usage readings can't reopen windows all day).
-    private var lastRefillAt: Date?
-    /// Sessions whose failure was already notified this window. The retry loop
-    /// attempts every scan (~10s for 5 min); without this gate a persistent
-    /// failure (e.g. missing Automation permission) fires dozens of identical
-    /// notifications per window. Retries still log at .error every attempt.
-    private var notifiedFailures: Set<String> = []
+    /// Per-tool auto-resume state.
+    private struct ToolState {
+        /// The windows of the last reading, to detect a refill of any of them.
+        var lastWindows: [LimitWindow] = []
+        /// When that reading was taken (Codex: a window refills when its reset passes
+        /// between two scans).
+        var lastScanAt: Date?
+        /// The active retry window (nil between refills).
+        var window: ResumeWindow?
+        /// When the last accepted refill opened a window (feeds the planner's
+        /// cooldown so flapping usage readings can't reopen windows all day).
+        var lastRefillAt: Date?
+        /// Sessions whose failure was already notified this window. The retry loop
+        /// attempts every scan (~10s for 5 min); without this gate a persistent
+        /// failure (e.g. missing Automation permission) fires dozens of identical
+        /// notifications per window. Retries still log at .error every attempt.
+        var notifiedFailures: Set<String> = []
+        /// The blocking window whose armed-session tails were already logged (Codex:
+        /// the cutoff format is unverified, so the first real one is worth a look).
+        var loggedBlock: String?
+    }
+
+    private var states: [AgentTool: ToolState] = [:]
     /// When the Mac went to sleep, so a window open across the sleep can be extended
     /// by the slept time instead of expiring while nothing could run.
     private var sleptAt: Date?
@@ -60,6 +77,7 @@ final class AutoResumeCoordinator {
     }
 
     /// User-initiated test fire: runs the exact resume pipeline for one session —
+    /// `processes` must be the session's own tool's processes —
     /// process match, tty validation, terminal detection, tty-reuse defense, the
     /// AppleScript drive — bypassing only refill detection and the cutoff gate.
     /// This is the debugging path for e.g. Automation (TCC) permission: outcome
@@ -87,13 +105,17 @@ final class AutoResumeCoordinator {
             notify("Test \(name): \(kind.displayName) is not supported (iTerm2 only).")
             return
         }
-        log.notice("TEST resume: typing into \(name, privacy: .public) on \(tty, privacy: .public)")
-        notifiedFailures.remove(session.id) // a test always reports its outcome
+        let tool = session.effectiveTool
+        log
+            .notice(
+                "\(Self.tag(tool), privacy: .public)TEST resume: typing into \(name, privacy: .public) on \(tty, privacy: .public)",
+            )
+        states[tool, default: ToolState()].notifiedFailures.remove(session.id) // a test always reports its outcome
         scheduleResume(
             ResumeTarget(sessionID: session.id, tty: tty,
                          continueText: settings.normalizedContinueText,
                          expectedPID: proc.pid, expectedCwd: proc.cwd),
-            after: 0, projectName: name,
+            after: 0, projectName: name, tool: tool,
         )
     }
 
@@ -107,11 +129,9 @@ final class AutoResumeCoordinator {
     }
 
     /// The account changed (sign-out): the last utilization belongs to someone else.
-    func resetBaseline() {
-        lastWindows = []
-        lastRefillAt = nil
-        window = nil
-        notifiedFailures.removeAll()
+    /// Only that tool's state is dropped — a Claude sign-out says nothing about Codex.
+    func resetBaseline(tool: AgentTool = .claude) {
+        states[tool] = nil
     }
 
     func noteSleep() { sleptAt = now() }
@@ -122,71 +142,137 @@ final class AutoResumeCoordinator {
         guard let sleptAt else { return }
         self.sleptAt = nil
         let slept = now().timeIntervalSince(sleptAt)
-        guard slept > 0, window != nil else { return }
-        window?.deadline.addTimeInterval(slept)
-        log.notice("wake: extended resume window by \(Int(slept), format: .decimal)s slept")
+        guard slept > 0 else { return }
+        for tool in AgentTool.allCases where states[tool]?.window != nil {
+            states[tool]?.window?.deadline.addTimeInterval(slept)
+            log
+                .notice(
+                    "\(Self.tag(tool), privacy: .public)wake: extended resume window by \(Int(slept), format: .decimal)s slept",
+                )
+        }
     }
 
+    /// Log prefix: Codex decisions share the `autoresume` category, prefixed `codex:`.
+    private static func tag(_ tool: AgentTool) -> String {
+        tool == .codex ? "codex: " : ""
+    }
+
+    /// The transcript-tail classifier for a tool's sessions.
+    static func classifier(for tool: AgentTool) -> ([String]) -> SessionEligibility {
+        switch tool {
+        case .claude: { CutoffDetector().classify(tailLines: $0, isRunning: false) }
+        case .codex: { CodexCutoffDetector().classify(tailLines: $0, isRunning: false) }
+        }
+    }
+
+    /// Run the Claude and the Codex plan for one scan, against the live process table.
+    func handleScan(claudeUsage: UsageSnapshot?, inputs: UsageContextInputs) {
+        let paths: (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) }
+        let parents: (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
+        handleSnapshot(tool: .claude, usage: claudeUsage, sessions: inputs.sessions,
+                       processes: inputs.processes,
+                       transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
+                       paths: paths, parents: parents)
+        handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
+                       processes: inputs.codexProcesses,
+                       transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },
+                       paths: paths, parents: parents)
+    }
+
+    /// Run one tool's plan for this scan. `sessions` may hold every tool's sessions:
+    /// only `tool`'s are planned, and armed sessions of another tool are left out of
+    /// this tool's window. `processes` must be `tool`'s own live processes.
     func handleSnapshot(
+        tool: AgentTool = .claude,
         usage: UsageSnapshot?,
         sessions: [SessionUsage],
         processes: [LiveProcess],
         transcriptTail: (String) -> [String],
+        classify: (([String]) -> SessionEligibility)? = nil,
         paths: @escaping (Int32) -> String?,
         parents: @escaping (Int32) -> Int32,
     ) {
+        let tag = Self.tag(tool)
         guard settings.autoResumeEnabled else {
-            log.debug("skip: master switch off")
+            log.debug("\(tag, privacy: .public)skip: master switch off")
             return
         }
         guard let usage else {
-            log.debug("skip: no usage reading (not signed in / no data yet)")
+            log.debug("\(tag, privacy: .public)skip: no usage reading (not signed in / no data yet)")
             return
         }
+        let toolSessions = sessions.filter { $0.effectiveTool == tool }
+        let otherIDs = Set(sessions.filter { $0.effectiveTool != tool }.map(\.id))
+        let armedIDs = armed.armed.subtracting(otherIDs)
+        let scanAt = now()
+        var state = states[tool] ?? ToolState()
+        defer { states[tool] = state }
+
         // A refill under an exhausted window resumes nothing useful: `continue` hits
         // that limit again. The baseline still advances, so the blocking window's own
         // reset is what opens the resume window.
-        let gate = AutoResumePlanner.gate(previous: lastWindows, current: usage)
-        lastWindows = usage.limitWindows
+        let gate: ResumeGate = switch tool {
+        case .claude: AutoResumePlanner.gate(previous: state.lastWindows, current: usage)
+        case .codex: CodexLimits.gate(previous: state.lastWindows, previousAt: state.lastScanAt,
+                                      current: usage, now: scanAt)
+        }
+        state.lastWindows = usage.limitWindows
+        state.lastScanAt = scanAt
         guard case let .clear(refilled) = gate else {
             if case let .blocked(window) = gate {
-                log.notice("skip: \(window.label, privacy: .public) window exhausted")
+                log.notice("\(tag, privacy: .public)skip: \(window.label, privacy: .public) window exhausted")
+                if tool == .codex, state.loggedBlock != window.id {
+                    state.loggedBlock = window.id
+                    logCodexTails(toolSessions.filter { armedIDs.contains($0.id) }, transcriptTail: transcriptTail)
+                }
             }
             return
         }
-        let firedBefore = window?.fired ?? []
-        let continueText = settings.normalizedContinueText
+        state.loggedBlock = nil
+        let firedBefore = state.window?.fired ?? []
 
         let plan = AutoResumePlanner.plan(
-            now: now(),
+            now: scanAt,
             refillObserved: !refilled.isEmpty,
-            window: window,
+            window: state.window,
             windowSeconds: resumeWindowSeconds,
-            lastRefillAt: lastRefillAt,
-            armedIDs: armed.armed,
-            sessions: sessions,
+            lastRefillAt: state.lastRefillAt,
+            armedIDs: armedIDs,
+            sessions: toolSessions,
             processes: processes,
             transcriptTail: transcriptTail,
             executablePath: paths,
             parentPID: parents,
+            classify: classify ?? Self.classifier(for: tool),
         )
 
-        window = plan.window
+        state.window = plan.window
 
         if plan.refillDetected {
-            let armedCount = sessions.filter { self.armed.isArmed($0.id) }.count
+            let armedCount = toolSessions.filter { self.armed.isArmed($0.id) }.count
             let names = refilled.map(\.label).joined(separator: ", ")
             log
                 .notice(
-                    "refill detected (\(names, privacy: .public)); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)",
+                    "\(tag, privacy: .public)refill detected (\(names, privacy: .public)); opening \(Int(self.resumeWindowSeconds / 60))-min resume window over \(armedCount, format: .decimal) armed session(s)",
                 )
-            lastRefillAt = now()
-            notifiedFailures.removeAll() // a fresh window may notify each session once again
+            state.lastRefillAt = scanAt
+            state.notifiedFailures.removeAll() // a fresh window may notify each session once again
         }
 
+        perform(plan, tool: tool, armedIDs: armedIDs, firedBefore: firedBefore)
+    }
+
+    /// Log the plan's skips, schedule its targets (staggered) and report a window that
+    /// closed with armed sessions that never became eligible.
+    private func perform(_ plan: ResumePlan, tool: AgentTool, armedIDs: Set<String>, firedBefore: Set<String>) {
+        let tag = Self.tag(tool)
+        let continueText = settings.normalizedContinueText
         // Diagnostic: every armed session not fired this cycle, with its reason.
         for skip in plan.skipped {
-            log.notice("\(skip.projectName, privacy: .public): waiting — \(skip.reason.detail, privacy: .public)")
+            log
+                .notice(
+                    "\(tag, privacy: .public)\(skip.projectName, privacy: .public): waiting — \(skip.reason.detail, privacy: .public)",
+                )
         }
 
         // Schedule each eligible session, staggered.
@@ -194,57 +280,90 @@ final class AutoResumeCoordinator {
         for target in plan.targets {
             log
                 .notice(
-                    "\(target.projectName, privacy: .public): eligible — scheduling resume on \(target.tty, privacy: .public) in \(delay, format: .fixed(precision: 1))s",
+                    "\(tag, privacy: .public)\(target.projectName, privacy: .public): eligible — scheduling resume on \(target.tty, privacy: .public) in \(delay, format: .fixed(precision: 1))s",
                 )
             scheduleResume(
                 ResumeTarget(sessionID: target.sessionID, tty: target.tty,
                              continueText: continueText, expectedPID: target.pid,
                              expectedCwd: target.cwd),
-                after: delay, projectName: target.projectName,
+                after: delay, projectName: target.projectName, tool: tool,
             )
             delay += staggerSeconds
         }
 
         // One-time summary when the window closes with sessions that never became eligible.
         if plan.windowExpired {
-            let missed = armed.armed.subtracting(firedBefore).count
+            let missed = armedIDs.subtracting(firedBefore).count
             if missed > 0 {
-                log.notice("resume window closed — \(missed, format: .decimal) armed session(s) never became eligible")
+                log
+                    .notice(
+                        "\(tag, privacy: .public)resume window closed — \(missed, format: .decimal) armed session(s) never became eligible",
+                    )
+                let what = tool == .codex ? "Codex auto-resume" : "Auto-resume"
                 notify(
-                    "Auto-resume window ended — \(missed) armed session(s) never became eligible (limit cutoff not detected).",
+                    "\(what) window ended — \(missed) armed session(s) never became eligible (limit cutoff not detected).",
                 )
             }
         }
     }
 
-    private func scheduleResume(_ target: ResumeTarget, after delay: Double, projectName: String) {
+    /// The Codex cutoff format is unverified: when a Codex window is exhausted, log
+    /// what each armed session's transcript ends with, so the first real cutoff can
+    /// be checked against `CodexCutoffDetector`. Once per blocking window.
+    private func logCodexTails(_ sessions: [SessionUsage], transcriptTail: (String) -> [String]) {
+        for session in sessions {
+            let tail = transcriptTail(session.id)
+            let verdict = CodexCutoffDetector().classify(tailLines: tail, isRunning: false)
+            let last = tail.last.map(Self.entryType) ?? "none"
+            log
+                .notice(
+                    "codex: \(session.projectName, privacy: .public): window exhausted — last entry \(last, privacy: .public), detector says \(String(describing: verdict), privacy: .public)",
+                )
+        }
+    }
+
+    /// `type/payload.type` of one transcript line (content is never logged).
+    private static func entryType(_ line: String) -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
+            return "unparseable"
+        }
+        let type = object["type"] as? String ?? "?"
+        let payloadType = (object["payload"] as? [String: Any])?["type"] as? String
+        return payloadType.map { "\(type)/\($0)" } ?? type
+    }
+
+    private func scheduleResume(_ target: ResumeTarget, after delay: Double, projectName: String,
+                                tool: AgentTool) {
+        let tag = Self.tag(tool)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
-            // tty-reuse defense (spec): re-verify the tty still maps to the same unique live claude process.
-            let live = LibprocProcessProbe().liveClaudeProcesses()
+            // tty-reuse defense (spec): re-verify the tty still maps to the same unique
+            // live process of this tool.
+            let probe = LibprocProcessProbe()
+            let live = tool == .codex ? probe.liveCodexProcesses() : probe.liveClaudeProcesses()
             let onTTY = live.filter { $0.tty == target.tty }
             guard onTTY.count == 1, onTTY[0].pid == target.expectedPID, onTTY[0].cwd == target.expectedCwd else {
                 self.log
                     .notice(
-                        "\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense); will retry within window",
+                        "\(tag, privacy: .public)\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense); will retry within window",
                     )
-                self.window?.fired.remove(target.sessionID) // allow a later scan to retry
+                self.states[tool]?.window?.fired.remove(target.sessionID) // allow a later scan to retry
                 return
             }
             do {
                 try self.driver.resume(target)
-                self.log.notice("resumed \(projectName, privacy: .public)")
-                self.notify("▶︎ Resumed \(projectName)")
+                self.log.notice("\(tag, privacy: .public)resumed \(projectName, privacy: .public)")
+                self.notify(tool == .codex ? "▶︎ Resumed \(projectName) (Codex)" : "▶︎ Resumed \(projectName)")
             } catch {
                 // Most likely on the first ever fire: macOS Automation (TCC) permission
                 // not yet granted. Un-mark so the window keeps retrying — but notify
                 // only once per session per window (retries log every attempt).
                 self.log
                     .error(
-                        "\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)",
+                        "\(tag, privacy: .public)\(projectName, privacy: .public): resume FAILED — \(String(describing: error), privacy: .public)",
                     )
-                self.window?.fired.remove(target.sessionID)
-                if self.notifiedFailures.insert(target.sessionID).inserted {
+                self.states[tool]?.window?.fired.remove(target.sessionID)
+                if self.states[tool, default: ToolState()].notifiedFailures.insert(target.sessionID).inserted {
                     self
                         .notify(
                             "Couldn't resume \(projectName): \(String(describing: error)) — retrying quietly; check System Settings → Privacy & Security → Automation if this persists.",

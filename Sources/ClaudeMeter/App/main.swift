@@ -9,19 +9,35 @@ if CommandLine.arguments.contains("--dump-sessions") {
         processProbe: LibprocProcessProbe(),
         desktopDetector: DesktopAppProbe(),
     )
+    let codexScanner = SessionMonitor.makeDefaultCodexScanner()
     let semaphore = DispatchSemaphore(value: 0)
     Task {
-        let result = await scanner.scan(now: Date())
+        let now = Date()
+        let result = await scanner.scan(now: now)
+        let codex = await codexScanner.scan(now: now)
         print(
             "sessions: \(result.sessions.count)  running: \(result.snapshot.runningCount)  total: \(Formatting.tokenCount(result.snapshot.totalTokens))",
         )
-        for s in result.sessions.prefix(20) {
+        let rows = (result.sessions.prefix(20) + codex.sessions.prefix(20)).sorted { $0.totalTokens > $1.totalTokens }
+        for s in rows {
             let dot = s.running == .running ? "●" : "○"
             let origin = s.origin.isTerminal ? "CLI" : "APP"
+            let tool = s.effectiveTool == .codex ? "CODEX " : "CLAUDE"
             let burn = String(format: "%.0f", s.burnRate)
             print(
-                "\(dot) \(origin)  \(Formatting.tokenCount(s.totalTokens).padding(toLength: 6, withPad: " ", startingAt: 0))  +\(Formatting.tokenCount(s.cacheReadTokens)) cached  \(burn) t/m  \(s.projectName)",
+                "\(dot) \(tool) \(origin)  \(Formatting.tokenCount(s.totalTokens).padding(toLength: 6, withPad: " ", startingAt: 0))  +\(Formatting.tokenCount(s.cacheReadTokens)) cached  \(burn) t/m  \(s.projectName)",
             )
+        }
+        let running = codex.sessions.filter { $0.running == .running }.count
+        print(
+            "codex: present \(codex.isPresent)  sessions: \(codex.sessions.count)  running: \(running)  processes: \(codex.processes.count)  armable: \(codex.armableSessionIDs.count)",
+        )
+        if let reading = codex.limits {
+            for gauge in CodexLimits.snapshot(from: reading, now: now).gauges {
+                print(
+                    "codex limit: \(gauge.label) \(Int(gauge.percentLeft))% left  resets \(gauge.resetsAt.map { "\($0)" } ?? "—")  as of \(reading.observedAt)",
+                )
+            }
         }
         semaphore.signal()
     }
