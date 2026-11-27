@@ -122,4 +122,29 @@ struct WhamUsageDecoderTests {
         ))
         #expect(reading.windows.first?.windowMinutes == 300)
     }
+
+    /// Absurd numbers must never reach an `Int` conversion (a trap) — the window or its
+    /// reset is dropped instead.
+    @Test func outOfRangeWindowLengthsAreDropped() {
+        for length in ["1e300", "-18000", "1e400", "\"inf\"", "\"1e400\"", "31536000000"] {
+            let json = #"{"rate_limit":{"primary_window":{"used_percent":5,"limit_window_seconds":\#(length)}}}"#
+            #expect(decode(json) == nil, "length \(length)")
+        }
+        #expect(decode(#"{"rate_limit":{"primary_window":{"used_percent":5,"window_minutes":1e300}}}"#) == nil)
+        #expect(decode(#"{"rate_limit":{"primary_window":{"used_percent":5,"window_minutes":525600}}}"#) != nil)
+    }
+
+    @Test func absurdResetsAreDroppedNotTheWindow() throws {
+        for reset in [#""reset_at":1e300"#, #""reset_after_seconds":1e300"#, #""reset_at":"inf""#,
+                      #""reset_after_seconds":-5"#] {
+            let json = #"{"rate_limit":{"primary_window":{"used_percent":5,"limit_window_seconds":18000,\#(reset)}}}"#
+            let window = try #require(decode(json)?.windows.first, "reset \(reset)")
+            #expect(window.resetsAt == nil, "reset \(reset)")
+        }
+    }
+
+    @Test func absurdUsedPercentDropsTheWindow() {
+        #expect(decode(#"{"rate_limit":{"primary_window":{"used_percent":1e300,"limit_window_seconds":18000}}}"#) ==
+            nil)
+    }
 }

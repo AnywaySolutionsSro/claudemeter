@@ -24,6 +24,9 @@ final class ChatGPTAuthModel: ObservableObject {
     private let account: ChatGPTAccountStore
     private let login: ChatGPTLoginService
     private let defaults: UserDefaults
+    /// Bumped by every begin/cancel/sign-out, so a login that finishes after it was
+    /// cancelled (or superseded) never saves its tokens.
+    private var loginGeneration = 0
 
     init(account: ChatGPTAccountStore, login: ChatGPTLoginService? = nil, defaults: UserDefaults = .standard) {
         self.account = account
@@ -43,12 +46,18 @@ final class ChatGPTAuthModel: ObservableObject {
         guard state != .waitingForBrowser else { return }
         errorMessage = nil
         state = .waitingForBrowser
-        Task { await runLogin() }
+        loginGeneration += 1
+        let generation = loginGeneration
+        Task { await runLogin(generation: generation) }
     }
 
-    private func runLogin() async {
+    private func runLogin(generation: Int) async {
         do {
             let tokens = try await login.signIn()
+            guard generation == loginGeneration, !Task.isCancelled else {
+                ChatGPTAccountStore.log.notice("chatgpt: sign-in finished after it was cancelled — discarded")
+                return
+            }
             try account.save(tokens)
             defaults.set(tokens.email, forKey: Self.emailKey)
             email = tokens.email
@@ -59,6 +68,7 @@ final class ChatGPTAuthModel: ObservableObject {
         } catch is CancellationError {
             // cancel() already reset the state.
         } catch {
+            guard generation == loginGeneration else { return }
             ChatGPTAccountStore.log.notice("chatgpt: sign-in failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "ChatGPT sign-in failed. Please try again."
             state = account.exists ? .signedIn : .signedOut
@@ -66,12 +76,14 @@ final class ChatGPTAuthModel: ObservableObject {
     }
 
     func cancel() {
+        loginGeneration += 1
         login.cancel()
         errorMessage = nil
         state = account.exists ? .signedIn : .signedOut
     }
 
     func signOut() {
+        loginGeneration += 1
         account.clear()
         forget(message: nil)
         ChatGPTAccountStore.log.notice("chatgpt: signed out")

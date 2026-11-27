@@ -13,8 +13,6 @@ final class CodexLiveLimits: ObservableObject {
 
     /// A new reading arrived (to rescan at once instead of waiting for the next tick).
     var onReading: (() -> Void)?
-    /// The usage endpoint keeps rejecting freshly refreshed tokens.
-    var onSessionExpired: (() -> Void)?
 
     let pollInterval: TimeInterval
     let minFetchInterval: TimeInterval
@@ -24,8 +22,9 @@ final class CodexLiveLimits: ObservableObject {
     private var lastAttempt: Date?
     private var backoffUntil: Date?
     private var isLoading = false
-    private var consecutiveAuthFailures = 0
-    private static let defaultBackoff: TimeInterval = 120
+    /// After the usage endpoint refuses a freshly refreshed token. The login is kept:
+    /// only a dead refresh grant signs out (`ChatGPTAccountStore`).
+    private static let refusedBackoff: TimeInterval = 10 * 60
 
     init(client: ChatGPTUsageClient, pollInterval: TimeInterval = 60, minFetchInterval: TimeInterval = 30) {
         self.client = client
@@ -55,7 +54,6 @@ final class CodexLiveLimits: ObservableObject {
         statusNote = nil
         lastAttempt = nil
         backoffUntil = nil
-        consecutiveAuthFailures = 0
     }
 
     func refresh() async {
@@ -72,17 +70,19 @@ final class CodexLiveLimits: ObservableObject {
             reading = fresh
             statusNote = nil
             backoffUntil = nil
-            consecutiveAuthFailures = 0
             onReading?()
         } catch let ChatGPTError.rateLimited(retryAfter) {
-            backoffUntil = Date().addingTimeInterval(retryAfter ?? Self.defaultBackoff)
+            backoffUntil = Date().addingTimeInterval(RetryAfter.clamped(retryAfter))
             note(ChatGPTError.rateLimited(retryAfter: retryAfter))
-        } catch ChatGPTError.notSignedIn {
+        } catch ChatGPTError.superseded {
+            // A newer grant took over mid-refresh; the next poll uses it. Not an error.
+        } catch ChatGPTError.notSignedIn, ChatGPTError.sessionExpired {
+            // Signed out (the store already dropped a dead grant and told the auth model).
             clear()
-        } catch ChatGPTError.sessionExpired {
-            consecutiveAuthFailures += 1
-            note(ChatGPTError.sessionExpired)
-            if consecutiveAuthFailures >= 2 { onSessionExpired?() }
+        } catch ChatGPTError.tokenRefused {
+            ChatGPTAccountStore.log.notice("chatgpt: usage endpoint refused token — backing off 10 min")
+            backoffUntil = Date().addingTimeInterval(Self.refusedBackoff)
+            statusNote = ChatGPTError.tokenRefused.errorDescription
         } catch {
             note(error)
         }

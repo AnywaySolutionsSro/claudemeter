@@ -5,7 +5,10 @@ import Foundation
 /// (undocumented) with the stored ChatGPT login, refreshing once on a 401.
 struct ChatGPTUsageClient {
     let account: ChatGPTAccountStore
-    var session: URLSession = .shared
+    /// Ephemeral: the usage body (account data) is never written to the on-disk URL cache.
+    var session: URLSession = Self.ephemeral
+
+    static let ephemeral = URLSession(configuration: .ephemeral)
 
     /// The decoded reading. An unrecognised body is `unreadableUsage`, never a zero reading.
     func fetch(now: Date = Date()) async throws -> CodexLimitReading {
@@ -16,8 +19,19 @@ struct ChatGPTUsageClient {
         return reading
     }
 
-    /// The raw body (for `--codex-usage-dump`, which prints only its structure).
-    func fetchRaw(now: Date = Date()) async throws -> Data {
+    /// The raw body. On a 401 the token is refreshed once and the request retried; a
+    /// second 401 is `tokenRefused` (the login is kept — only a dead refresh grant signs
+    /// out). With `allowRefresh: false` (`--codex-usage-dump`) nothing is ever refreshed,
+    /// so a one-shot diagnostic can't rotate the refresh token under the running app.
+    func fetchRaw(now: Date = Date(), allowRefresh: Bool = true) async throws -> Data {
+        guard allowRefresh else {
+            let tokens = try account.unexpiredTokensWithoutRefresh(now: now)
+            do {
+                return try await request(tokens, now: now)
+            } catch ChatGPTError.http(401) {
+                throw ChatGPTError.tokenRefused
+            }
+        }
         let tokens = try await account.validTokens(now: now)
         do {
             return try await request(tokens, now: now)
@@ -26,7 +40,7 @@ struct ChatGPTUsageClient {
             do {
                 return try await request(fresh, now: now)
             } catch ChatGPTError.http(401) {
-                throw ChatGPTError.sessionExpired
+                throw ChatGPTError.tokenRefused
             }
         }
     }
@@ -39,6 +53,7 @@ struct ChatGPTUsageClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("ClaudeMeter/1.0", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let data: Data
         let response: URLResponse
@@ -50,9 +65,10 @@ struct ChatGPTUsageClient {
         guard let http = response as? HTTPURLResponse else { throw ChatGPTError.network("Malformed response") }
         guard (200 ..< 300).contains(http.statusCode) else {
             if http.statusCode == 429 {
-                let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
+                let parsed = http.value(forHTTPHeaderField: "Retry-After")
                     .flatMap { RetryAfter.seconds($0, now: now) }
-                throw ChatGPTError.rateLimited(retryAfter: retryAfter)
+                // Clamped here so no caller ever sees an absurd or non-finite delay.
+                throw ChatGPTError.rateLimited(retryAfter: RetryAfter.clamped(parsed))
             }
             throw ChatGPTError.http(http.statusCode)
         }

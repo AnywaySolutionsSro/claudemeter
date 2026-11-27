@@ -11,6 +11,11 @@ import Foundation
 /// zeroed; a body with no usable window and no reached flag is no reading at all.
 public enum WhamUsageDecoder {
     static let reachedFallback = "limit_reached"
+    /// Sane ranges; anything outside is a garbled value, never converted to `Int`.
+    static let windowMinutes: ClosedRange<Double> = 1 ... 525_600 // up to a year
+    static let usedPercent: ClosedRange<Double> = 0 ... 1000
+    static let resetEpoch: ClosedRange<Double> = 0 ... 10_000_000_000 // up to year 2286
+    static let resetAfter: ClosedRange<Double> = 0 ... 400 * 86400
 
     public static func decode(_ data: Data, observedAt: Date) -> CodexLimitReading? {
         guard let root = LenientJSON.object(data) else { return nil }
@@ -42,25 +47,32 @@ public enum WhamUsageDecoder {
     }
 
     private static func window(_ raw: [String: Any], observedAt: Date) -> CodexWindowReading? {
-        guard let used = LenientJSON.double(raw["used_percent"]), let minutes = minutes(raw), minutes > 0 else {
-            return nil
-        }
+        guard let used = LenientJSON.double(raw["used_percent"]), usedPercent.contains(used),
+              let minutes = minutes(raw)
+        else { return nil }
         return CodexWindowReading(usedPercent: used, windowMinutes: minutes, resetsAt: resetsAt(raw, observedAt))
     }
 
     private static func minutes(_ raw: [String: Any]) -> Int? {
-        if let minutes = LenientJSON.double(raw["window_minutes"]) { return Int(minutes.rounded()) }
-        if let seconds = LenientJSON.double(raw["limit_window_seconds"]) { return Int((seconds / 60).rounded()) }
-        return nil
+        let value = LenientJSON.double(raw["window_minutes"])
+            ?? LenientJSON.double(raw["limit_window_seconds"]).map { $0 / 60 }
+        guard let rounded = value?.rounded(), windowMinutes.contains(rounded) else { return nil }
+        return Int(exactly: rounded)
     }
 
     /// Absolute moments first (`reset_at`, `resets_at` as epoch seconds or ISO-8601),
     /// then `reset_after_seconds` counted from the fetch.
     private static func resetsAt(_ raw: [String: Any], _ observedAt: Date) -> Date? {
         for key in ["reset_at", "resets_at"] {
-            if let epoch = LenientJSON.double(raw[key]) { return Date(timeIntervalSince1970: epoch) }
+            if let epoch = LenientJSON.double(raw[key]) {
+                if resetEpoch.contains(epoch) { return Date(timeIntervalSince1970: epoch) }
+                continue
+            }
             if let string = LenientJSON.string(raw[key]), let date = ISODate.parse(string) { return date }
         }
-        return LenientJSON.double(raw["reset_after_seconds"]).map { observedAt.addingTimeInterval($0) }
+        guard let after = LenientJSON.double(raw["reset_after_seconds"]), resetAfter.contains(after) else {
+            return nil
+        }
+        return observedAt.addingTimeInterval(after)
     }
 }

@@ -22,4 +22,20 @@ struct RetryAfterTests {
         #expect(RetryAfter.seconds("soon", now: now) == nil)
         #expect(RetryAfter.seconds("-3", now: now) == nil)
     }
+
+    @Test func clampedKeepsServerDelaysWithinBounds() {
+        #expect(RetryAfter.clamped(30) == 30)
+        #expect(RetryAfter.clamped(0.2) == 1)
+        #expect(RetryAfter.clamped(86400) == 3600)
+        #expect(RetryAfter.clamped(nil) == 60)
+        #expect(RetryAfter.clamped(.infinity) == 60)
+        #expect(RetryAfter.clamped(.nan) == 60)
+        #expect(RetryAfter.clamped(-5) == 60)
+    }
+
+    @Test func hugeHeadersClampInsteadOfOverflowing() {
+        #expect(RetryAfter.clamped(RetryAfter.seconds("inf")) == 60)
+        #expect(RetryAfter.clamped(RetryAfter.seconds("1e400")) == 60)
+        #expect(RetryAfter.clamped(RetryAfter.seconds("1e300")) == 3600)
+    }
 }

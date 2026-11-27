@@ -5,7 +5,8 @@ import Foundation
 /// (form-encoded) and the refresh grant (JSON, as the Codex CLI sends it). Never logs
 /// a token or a response body.
 struct ChatGPTTokenClient {
-    var session: URLSession = .shared
+    /// Ephemeral: token responses never touch the on-disk URL cache.
+    var session: URLSession = ChatGPTUsageClient.ephemeral
 
     func exchange(code: String, verifier: String, now: Date = Date()) async throws -> ChatGPTTokens {
         let body = ChatGPTAuth.codeExchangeBody(code: code, verifier: verifier)

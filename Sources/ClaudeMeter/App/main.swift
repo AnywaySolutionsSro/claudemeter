@@ -48,17 +48,20 @@ if CommandLine.arguments.contains("--dump-sessions") {
 // Diagnostic: fetch live Codex usage with the stored ChatGPT login and print the
 // response's STRUCTURE only — key paths and value types, never values or tokens.
 if CommandLine.arguments.contains("--codex-usage-dump") {
+    // Never refreshes: a refresh here would rotate the token the running app holds.
     let semaphore = DispatchSemaphore(value: 0)
+    var status: Int32 = 0
     Task {
         defer { semaphore.signal() }
         let account = ChatGPTAccountStore()
         guard account.exists else {
             print("not signed in to ChatGPT (Settings → Codex → Sign in to ChatGPT)")
+            status = 1
             return
         }
         do {
             let now = Date()
-            let data = try await ChatGPTUsageClient(account: account).fetchRaw(now: now)
+            let data = try await ChatGPTUsageClient(account: account).fetchRaw(now: now, allowRefresh: false)
             print("GET \(ChatGPTAuth.usageURL.absoluteString): \(data.count) bytes")
             JSONShape.describe(data).forEach { print("  \($0)") }
             if let reading = WhamUsageDecoder.decode(data, observedAt: now) {
@@ -69,12 +72,16 @@ if CommandLine.arguments.contains("--codex-usage-dump") {
             } else {
                 print("decoded: NO — unrecognised shape, the app keeps the previous reading")
             }
+        } catch ChatGPTError.tokenExpired {
+            print("token expired; let the app refresh it (open the ClaudeMeter dropdown), then retry")
+            status = 1
         } catch {
             print("FAILED: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
+            status = 1
         }
     }
     semaphore.wait()
-    exit(0)
+    exit(status)
 }
 
 // Diagnostic: report where the widget snapshot resolves and whether writing works.

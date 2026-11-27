@@ -165,13 +165,26 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   another port. Code exchange is form-encoded, refresh is JSON (as Codex sends them). Tokens +
   `chatgpt_account_id` (id-token claim `https://api.openai.com/auth`) live in Keychain item
   `com.jakubzak.claudemeter.chatgpt`; the UI uses only the metadata `exists` check and the
-  email cached in UserDefaults. A dead refresh grant (401, or 400/403 with `invalid_grant` /
-  `refresh_token_*`) signs out with "sign in again". `CodexLiveLimits` polls
-  `GET chatgpt.com/backend-api/wham/usage` (`Authorization: Bearer` + `chatgpt-account-id`)
-  every 60 s (≥ 30 s throttle, `Retry-After` on 429, refresh-and-retry once on 401);
+  email cached in UserDefaults. Like the Claude token, the item is in the **legacy login
+  keychain** — the same accepted trade-off as the admin key (see API spend), don't reopen it.
+  **Refresh-token rotation rule:** OpenAI rotates the refresh token on every refresh and the
+  item is shared by every ClaudeMeter process, so `ChatGPTAccountStore` re-reads the Keychain
+  before each refresh (another process may already have refreshed), keeps refreshed tokens in
+  memory *before* writing them (a failed write is logged, never loses them), and on a dead
+  grant re-reads again: if the stored refresh token differs from the one that failed, it
+  retries once with it instead of deleting good tokens (`ChatGPTRotation`). Only a dead refresh
+  grant that is still the stored one (401, or 400/403 with `invalid_grant` /
+  `refresh_token_*`) signs out with "sign in again"; a 401 from the usage endpoint after a
+  successful refresh keeps the login and backs off 10 min. `--codex-usage-dump` **never
+  refreshes** (expired token → message, exit 1). `CodexLiveLimits` polls
+  `GET chatgpt.com/backend-api/wham/usage` (`Authorization: Bearer` + `chatgpt-account-id`,
+  ephemeral `URLSession`, nothing cached to disk) every 60 s (≥ 30 s throttle, `Retry-After`
+  on 429 clamped to 1 s…1 h, refresh-and-retry once on 401);
   `WhamUsageDecoder` is lenient (`rate_limit.primary_window`/`secondary_window` with
   `used_percent`, `limit_window_seconds`, `reset_at`/`reset_after_seconds`, or the transcript
-  shape) and an unknown body is **no reading**, never zeros. Unchanged figures are recorded in
+  shape) and an unknown body is **no reading**, never zeros; out-of-range numbers (window
+  outside 1…525600 min, absurd resets) drop the window or its reset before any `Int`
+  conversion. Unchanged figures are recorded in
   `codex-history.json` at most every 5 min. The response shape is unverified until a real
   sign-in: `ClaudeMeter --codex-usage-dump` prints its key paths and types (no values). Logs:
   category `chatgpt` at `.notice`, never tokens.

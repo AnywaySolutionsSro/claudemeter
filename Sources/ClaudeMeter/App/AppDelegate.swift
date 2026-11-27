@@ -445,7 +445,6 @@ private extension AppDelegate {
     func installCodexLive() {
         sessionMonitor.liveCodexProvider = { [weak self] in self?.codexLive.reading }
         codexLive.onReading = { [weak self] in Task { await self?.sessionMonitor.refresh() } }
-        codexLive.onSessionExpired = { [weak self] in self?.chatGPTAuth.sessionExpired() }
         chatGPTAuth.onSignedIn = { [weak self] in self?.codexLive.start() }
         chatGPTAuth.onSignedOut = { [weak self] in
             self?.codexLive.clear()

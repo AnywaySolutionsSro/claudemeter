@@ -38,20 +38,31 @@ final class ChatGPTAccountStore: @unchecked Sendable {
     /// Whether a login is stored — metadata only, safe to ask from UI code.
     var exists: Bool { keychain.exists(account: Self.account) }
 
-    /// The stored tokens; `ChatGPTError.notSignedIn` without an item.
+    /// The tokens to use: the in-memory copy, else the Keychain item.
+    /// `ChatGPTError.notSignedIn` without an item.
     func load() throws -> ChatGPTTokens {
         if let cached = lock.withLock({ cached }) { return cached }
+        guard let stored = try loadStored() else { throw ChatGPTError.notSignedIn }
+        return stored
+    }
+
+    /// The Keychain item itself, bypassing (and refreshing) the in-memory copy; `nil`
+    /// when there is none. Another ClaudeMeter process may have rotated the refresh
+    /// token since we last looked, so every refresh starts here.
+    private func loadStored() throws -> ChatGPTTokens? {
         let item: Keychain.Item
         do {
             item = try keychain.read(account: Self.account)
         } catch KeychainError.notFound {
-            throw ChatGPTError.notSignedIn
+            lock.withLock { cached = nil }
+            return nil
         }
         let tokens = try Self.decoder.decode(ChatGPTTokens.self, from: item.data)
         lock.withLock { cached = tokens }
         return tokens
     }
 
+    /// Persist a new sign-in. Throws when the Keychain write fails (the sign-in fails).
     func save(_ tokens: ChatGPTTokens) throws {
         try keychain.write(Self.encoder.encode(tokens), account: Self.account)
         lock.withLock { cached = tokens }
@@ -70,33 +81,82 @@ final class ChatGPTAccountStore: @unchecked Sendable {
     /// when it is.
     func validTokens(now: Date = Date()) async throws -> ChatGPTTokens {
         let tokens = try load()
-        return tokens.isExpired(now: now) ? try await refreshAndSave(tokens, now: now) : tokens
+        return tokens.isExpired(now: now) ? try await refreshAndSave(now: now, force: false) : tokens
     }
 
     /// Refresh regardless of expiry (the server rejected a token we thought valid).
     func forceRefresh(now: Date = Date()) async throws -> ChatGPTTokens {
-        try await refreshAndSave(load(), now: now)
+        try await refreshAndSave(now: now, force: true)
     }
 
-    private func refreshAndSave(_ tokens: ChatGPTTokens, now: Date) async throws -> ChatGPTTokens {
+    /// Never refreshes: the stored access token, or `tokenExpired`. For one-shot
+    /// diagnostics, which must not rotate the refresh token under the running app.
+    func unexpiredTokensWithoutRefresh(now: Date = Date()) throws -> ChatGPTTokens {
+        guard let stored = try loadStored() else { throw ChatGPTError.notSignedIn }
+        guard !stored.isExpired(now: now) else { throw ChatGPTError.tokenExpired }
+        return stored
+    }
+
+    private func refreshAndSave(now: Date, force: Bool) async throws -> ChatGPTTokens {
+        guard let stored = try loadStored() else { throw ChatGPTError.notSignedIn }
+        // Another process may already have refreshed: use its tokens instead of spending ours.
+        if !force, !stored.isExpired(now: now) { return stored }
+        return try await refresh(stored, now: now, retryOnRotation: true)
+    }
+
+    private func refresh(_ used: ChatGPTTokens, now: Date, retryOnRotation: Bool) async throws -> ChatGPTTokens {
         let refreshed: ChatGPTTokens
         do {
-            refreshed = try await client.refresh(tokens, now: now)
+            refreshed = try await client.refresh(used, now: now)
         } catch ChatGPTError.sessionExpired {
-            Self.log.notice("chatgpt: refresh grant rejected — signing out")
-            clear()
-            onSignedOut?()
-            throw ChatGPTError.sessionExpired
+            return try await handleDeadGrant(used, now: now, retryOnRotation: retryOnRotation)
         } catch {
             Self.log.notice("chatgpt: refresh failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
-        // Signed out (or in again) while the request was in flight: writing now would
-        // resurrect a deleted login or clobber a newer grant.
-        guard let current = try? load(), current.refreshToken == tokens.refreshToken else {
+        let stored = try? loadStored()
+        switch ChatGPTRotation.afterRefresh(used: used.refreshToken, stored: stored?.refreshToken) {
+        case .save:
+            persist(refreshed)
+            return refreshed
+        case .superseded:
+            throw ChatGPTError.superseded
+        case .signedOut:
             throw ChatGPTError.notSignedIn
         }
-        try save(refreshed)
-        return refreshed
+    }
+
+    /// A rejected refresh token. If the stored one has changed since (rotated by another
+    /// process, or a new sign-in), retry once with it instead of deleting good tokens.
+    private func handleDeadGrant(_ used: ChatGPTTokens, now: Date, retryOnRotation: Bool) async throws
+        -> ChatGPTTokens {
+        let stored = try? loadStored()
+        switch ChatGPTRotation.afterDeadGrant(used: used.refreshToken, stored: stored?.refreshToken) {
+        case .retry where retryOnRotation:
+            Self.log.notice("chatgpt: refresh token was rotated elsewhere — retrying with the stored one")
+            guard let stored else { throw ChatGPTError.notSignedIn }
+            return try await refresh(stored, now: now, retryOnRotation: false)
+        case .retry, .signOut:
+            Self.log.notice("chatgpt: refresh grant rejected — signing out")
+            clear()
+            onSignedOut?()
+            throw ChatGPTError.sessionExpired
+        case .signedOut:
+            throw ChatGPTError.notSignedIn
+        }
+    }
+
+    /// The refreshed tokens are live the moment the server issued them (the old refresh
+    /// token is spent), so they go into memory first; a failed Keychain write is logged
+    /// and never discards them.
+    private func persist(_ tokens: ChatGPTTokens) {
+        lock.withLock { cached = tokens }
+        do {
+            try keychain.write(Self.encoder.encode(tokens), account: Self.account)
+        } catch {
+            Self.log.notice(
+                "chatgpt: saving refreshed tokens failed (kept in memory): \(error.localizedDescription, privacy: .public)",
+            )
+        }
     }
 }

@@ -1,3 +1,4 @@
+import ClaudeMeterCore
 import Foundation
 import Network
 
@@ -16,6 +17,13 @@ enum ChatGPTError: Error, LocalizedError, Equatable {
     case sessionExpired
     /// A refresh failed for a reason that may pass (5xx, network, odd body).
     case refreshFailed
+    /// A newer grant replaced the one being refreshed (a new sign-in, another process).
+    /// Not a failure: the next poll uses the newer tokens.
+    case superseded
+    /// The usage endpoint refused even a freshly refreshed token. The login is kept.
+    case tokenRefused
+    /// The access token has expired and this caller may not refresh (diagnostics).
+    case tokenExpired
     case network(String)
     case http(Int)
     case rateLimited(retryAfter: TimeInterval?)
@@ -40,13 +48,18 @@ enum ChatGPTError: Error, LocalizedError, Equatable {
             "Your ChatGPT login expired. Sign in again for live Codex limits."
         case .refreshFailed:
             "Couldn't renew the ChatGPT login — will retry."
+        case .superseded:
+            "The ChatGPT login changed while renewing — using the newer one."
+        case .tokenRefused:
+            "ChatGPT refused the Codex usage request — retrying in 10 minutes."
+        case .tokenExpired:
+            "The stored ChatGPT access token has expired; let the app refresh it."
         case let .network(message):
             "Couldn't reach ChatGPT: \(message)"
         case let .http(code):
             "ChatGPT usage request failed (HTTP \(code))."
         case let .rateLimited(retryAfter):
-            retryAfter.map { "ChatGPT is rate limiting — retrying in \(Int($0.rounded())) s." }
-                ?? "ChatGPT is rate limiting — retrying shortly."
+            "ChatGPT is rate limiting — retrying in \(Int(RetryAfter.clamped(retryAfter).rounded())) s."
         case .unreadableUsage:
             "ChatGPT returned usage in an unexpected shape — showing the last reading."
         }
