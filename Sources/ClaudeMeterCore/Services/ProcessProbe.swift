@@ -79,13 +79,24 @@ public struct LibprocProcessProbe: ProcessProbing {
         return path.contains("/claude/versions/") || path.contains("/claude-code/")
     }
 
-    /// Whether an executable path is the standalone terminal Codex CLI
-    /// (`~/.codex/packages/standalone/<version>/bin/codex`). The `app-server-daemon`
-    /// release and the ChatGPT desktop app's bundled `CodexCLI.app` are different
-    /// processes with no terminal to drive, so they never match.
+    /// Install layouts of the terminal Codex CLI binary: the standalone installer
+    /// (`~/.codex/packages/standalone/<version>/bin/codex`), the npm package's
+    /// vendored native binary (`…/node_modules/@openai/codex/vendor/…`), and
+    /// Homebrew (formula `Cellar/codex/`, cask `Caskroom/codex/`).
+    private static let codexInstallMarkers = [
+        "/.codex/packages/standalone/",
+        "/node_modules/@openai/codex/",
+        "/Cellar/codex/",
+        "/Caskroom/codex/",
+    ]
+
+    /// Whether an executable path is the terminal Codex CLI (see
+    /// `codexInstallMarkers`). The `app-server-daemon` release and anything inside
+    /// the ChatGPT desktop app are different processes with no terminal to drive,
+    /// so they never match.
     public static func isCodexTerminalExecutable(_ path: String) -> Bool {
         guard !path.contains("/app-server-daemon/"), !path.contains("ChatGPT.app") else { return false }
-        return path.contains("/.codex/packages/standalone/")
+        return codexInstallMarkers.contains { path.contains($0) }
     }
 
     // MARK: - Public static wrappers for later tasks
