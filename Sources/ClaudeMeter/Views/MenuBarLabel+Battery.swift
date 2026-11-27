@@ -10,9 +10,6 @@ extension MenuBarLabel {
     private static let batteryCellPadding: CGFloat = 4
     private static let batteryCornerRadius: CGFloat = 4.5
     private static let batteryDividerWidth: CGFloat = 1
-    private static let batteryNubGap: CGFloat = 1
-    private static let batteryNubWidth: CGFloat = 2
-    private static let batteryNubHeightRatio: CGFloat = 0.4
     /// Clear space between the image and the status item's edge.
     private static let batterySlotMargin: CGFloat = 1
 
@@ -66,8 +63,7 @@ extension MenuBarLabel {
             height: Double(textHeight + verticalPadding * 2), cellTextWidth: Double(textWidth),
             cellPadding: Double(batteryCellPadding), lineWidth: Double(batteryLineWidth),
             inset: Double(batteryInset), cornerRadius: Double(batteryCornerRadius),
-            dividerWidth: Double(batteryDividerWidth), nubGap: Double(batteryNubGap),
-            nubWidth: Double(batteryNubWidth), nubHeightRatio: Double(batteryNubHeightRatio),
+            dividerWidth: Double(batteryDividerWidth),
         )
     }
 
@@ -117,9 +113,6 @@ extension MenuBarLabel {
         outline.stroke()
 
         outlineColor.setFill()
-        let nub = nsRect(layout.nub)
-        let nubRadius = min(nub.width, nub.height / 2)
-        NSBezierPath(roundedRect: nub, xRadius: nubRadius, yRadius: nubRadius).fill()
         if let divider = layout.divider {
             nsRect(divider).fill()
         }

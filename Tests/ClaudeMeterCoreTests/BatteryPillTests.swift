@@ -7,7 +7,7 @@ struct BatteryPillTests {
     /// its inset is 2 pt per side, one cell is 30 + 2 × 4 = 38 pt wide.
     private let metrics = BatteryMetrics(
         height: 18, cellTextWidth: 30, cellPadding: 4, lineWidth: 1, inset: 1,
-        cornerRadius: 4, dividerWidth: 1, nubGap: 1, nubWidth: 2, nubHeightRatio: 0.5,
+        cornerRadius: 4, dividerWidth: 1,
     )
 
     // MARK: - Figures
@@ -41,12 +41,12 @@ struct BatteryPillTests {
         #expect(full.width == short.width + 10)
     }
 
-    @Test func dualWidthIsTheSumOfItsCellsDividerAndNub() {
+    @Test func dualWidthIsTheSumOfItsCellsAndDivider() {
         let layout = BatteryPill.dual(claudeLeft: 5, codexLeft: 100, metrics: metrics, measure: measure)
         #expect(layout.cells[0].area.width == 38)
         #expect(layout.cells[1].area.width == 48)
-        // 2 + 38 + 1 + 48 + 2 (body) + 1 (gap) + 2 (nub)
-        #expect(layout.width == 94)
+        // 2 + 38 + 1 + 48 + 2
+        #expect(layout.width == 91)
         #expect(layout.divider?.x == 40)
         let narrow = BatteryPill.dual(claudeLeft: 5, codexLeft: 89, metrics: metrics, measure: measure)
         #expect(narrow.width < layout.width)
@@ -60,15 +60,13 @@ struct BatteryPillTests {
 
     // MARK: - Claude only
 
-    @Test func singleBodyIsOneCellWideWithTheNubOnTheRight() {
+    @Test func singleBodyIsOneCellWide() {
         let layout = BatteryPill.single(claudeLeft: 68, metrics: metrics)
         #expect(layout.body == PillRect(x: 0, y: 0, width: 42, height: 18))
         #expect(layout.inner == PillRect(x: 2, y: 2, width: 38, height: 14))
         #expect(layout.innerRadius == 2)
         #expect(layout.divider == nil)
-        // Nub: a point clear of the body, half its height, centred vertically.
-        #expect(layout.nub == PillRect(x: 43, y: 4.5, width: 2, height: 9))
-        #expect(layout.width == 45)
+        #expect(layout.width == 42)
         #expect(layout.height == 18)
     }
 
@@ -100,8 +98,7 @@ struct BatteryPillTests {
         let divider = try #require(layout.divider)
         #expect(divider == PillRect(x: 40, y: 1, width: 1, height: 16))
         #expect(layout.body.midX == divider.midX)
-        #expect(layout.nub == PillRect(x: 82, y: 4.5, width: 2, height: 9))
-        #expect(layout.width == 84)
+        #expect(layout.width == 81)
         #expect(layout.cells.map(\.tool) == [.claude, .codex])
         #expect(layout.cells.map(\.area) == [
             PillRect(x: 2, y: 2, width: 38, height: 14),
@@ -154,7 +151,7 @@ struct BatteryPillTests {
     @Test func degenerateMetricsNeverProduceNegativeSizes() {
         let tiny = BatteryMetrics(
             height: 2, cellTextWidth: 0, cellPadding: 0, lineWidth: 1, inset: 1,
-            cornerRadius: 0, dividerWidth: 1, nubGap: 0, nubWidth: 1, nubHeightRatio: 0.5,
+            cornerRadius: 0, dividerWidth: 1,
         )
         let layout = BatteryPill.dual(claudeLeft: 50, codexLeft: 50, metrics: tiny)
         #expect(layout.inner.height == 0)

@@ -33,15 +33,10 @@ public struct BatteryMetrics: Equatable, Sendable {
     public let inset: Double
     public let cornerRadius: Double
     public let dividerWidth: Double
-    /// Gap between the body and the terminal nub.
-    public let nubGap: Double
-    public let nubWidth: Double
-    /// The nub's height as a share of the body's.
-    public let nubHeightRatio: Double
 
     public init(
         height: Double, cellTextWidth: Double, cellPadding: Double, lineWidth: Double, inset: Double,
-        cornerRadius: Double, dividerWidth: Double, nubGap: Double, nubWidth: Double, nubHeightRatio: Double,
+        cornerRadius: Double, dividerWidth: Double,
     ) {
         self.height = height
         self.cellTextWidth = cellTextWidth
@@ -50,9 +45,6 @@ public struct BatteryMetrics: Equatable, Sendable {
         self.inset = inset
         self.cornerRadius = cornerRadius
         self.dividerWidth = dividerWidth
-        self.nubGap = nubGap
-        self.nubWidth = nubWidth
-        self.nubHeightRatio = nubHeightRatio
     }
 
     /// How far in from the body's edge the fill area starts.
@@ -80,17 +72,16 @@ public struct BatteryLayout: Equatable, Sendable {
     /// The area inside the outline and its inset, which the cells share.
     public let inner: PillRect
     public let innerRadius: Double
-    public let nub: PillRect
     /// The line between Claude's and Codex's halves; `nil` with Claude alone.
     public let divider: PillRect?
     public let cells: [BatteryCell]
 
-    /// Width of the whole image: body, gap and nub.
-    public var width: Double { nub.maxX }
+    /// Width of the whole image: the body.
+    public var width: Double { body.maxX }
     public var height: Double { body.height }
 }
 
-/// The menu-bar battery: a rounded body with a terminal nub on the right, filled with
+/// The menu-bar battery: a rounded body, filled with
 /// each tool's % left. Claude alone fills the whole body from the left and drains from
 /// the right; with Codex the body splits in the middle, and each half's fill is anchored
 /// at the divider and drains from its outer edge. The pure geometry.
@@ -119,7 +110,7 @@ public enum BatteryPill {
         let fill = PillRect(x: frame.inner.x, y: frame.inner.y, width: fillWidth, height: frame.inner.height)
         let cell = BatteryCell(tool: .claude, area: frame.inner, fill: fill, text: figure(percentLeft: claudeLeft))
         return BatteryLayout(body: frame.body, inner: frame.inner, innerRadius: frame.innerRadius,
-                             nub: frame.nub, divider: nil, cells: [cell])
+                             divider: nil, cells: [cell])
     }
 
     /// Claude on the left, Codex on the right; both fills meet at the divider.
@@ -149,7 +140,7 @@ public enum BatteryPill {
             text: codexText,
         )
         return BatteryLayout(body: frame.body, inner: inner, innerRadius: frame.innerRadius,
-                             nub: frame.nub, divider: divider, cells: [claude, codex])
+                             divider: divider, cells: [claude, codex])
     }
 
     /// Origin that centres a `textWidth`×`textHeight` figure in `cell`.
@@ -162,7 +153,6 @@ public enum BatteryPill {
         let body: PillRect
         let inner: PillRect
         let innerRadius: Double
-        let nub: PillRect
     }
 
     private static func frame(innerWidth: Double, metrics: BatteryMetrics) -> Frame {
@@ -170,10 +160,7 @@ public enum BatteryPill {
         let height = metrics.height
         let body = PillRect(x: 0, y: 0, width: innerWidth + 2 * edge, height: height)
         let inner = PillRect(x: edge, y: edge, width: innerWidth, height: max(0, height - 2 * edge))
-        let nubHeight = height * metrics.nubHeightRatio
-        let nub = PillRect(x: body.maxX + metrics.nubGap, y: (height - nubHeight) / 2,
-                           width: metrics.nubWidth, height: nubHeight)
         let radius = max(0, min(metrics.cornerRadius - edge, inner.width / 2, inner.height / 2))
-        return Frame(body: body, inner: inner, innerRadius: radius, nub: nub)
+        return Frame(body: body, inner: inner, innerRadius: radius)
     }
 }
