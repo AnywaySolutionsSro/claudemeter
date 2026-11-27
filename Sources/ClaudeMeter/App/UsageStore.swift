@@ -174,25 +174,11 @@ final class UsageStore: ObservableObject {
     /// Emit threshold/reset events — only once a real prior reading exists (so a cold launch
     /// at already-high usage doesn't fire spurious nudges).
     private func detectEvents(previous: UsageSnapshot?, current: UsageSnapshot, now: Date) {
-        guard let previous else { return }
-        let before = previous.limitWindows
-        let after = current.limitWindows
-        var events: [UsageEvent] = []
-
-        // Weekly and model windows reset together; one "refilled" is the whole story,
-        // and the weekly one describes it best.
-        let refilled = UsageStats.refilledWindows(previous: before, current: after)
-        if let window = refilled.first(where: { $0.kind == .weekly }) ?? refilled.first {
-            events.append(.reset(window))
-        }
-
-        let crossings = UsageStats.crossedWindows(previous: before, current: after, thresholds: [80, 90, 100])
-        for crossing in crossings {
-            events.append(.crossedThreshold(
-                crossing.threshold,
-                window: crossing.window,
-                etaToReset: crossing.window.bucket.timeUntilReset(now: now),
-            ))
+        let events: [UsageEvent] = LimitEvents.detect(previous: previous, current: current, now: now).map { event in
+            switch event {
+            case let .reset(window): .reset(window)
+            case let .crossed(threshold, window, eta): .crossedThreshold(threshold, window: window, etaToReset: eta)
+            }
         }
         if !events.isEmpty { onEvents?(events) }
     }

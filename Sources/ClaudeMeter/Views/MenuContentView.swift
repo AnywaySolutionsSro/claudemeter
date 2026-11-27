@@ -129,7 +129,7 @@ struct MenuContentView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 Button("Remind me when it resets") {
                     if let resetAt = window.bucket.resetsAt {
-                        NotificationManager().scheduleResetReminder(at: resetAt, for: window)
+                        NotificationManager().scheduleResetReminder(at: resetAt, for: window, tool: .claude)
                     }
                 }
                 .font(scale.font(11))

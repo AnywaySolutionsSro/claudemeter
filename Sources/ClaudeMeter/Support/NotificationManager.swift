@@ -41,7 +41,7 @@ final class NotificationManager {
 
     /// 80/90/100%-used nudge for one window. One identifier per window and threshold,
     /// so the session and weekly alerts don't replace each other.
-    func notifyThreshold(_ threshold: Double, window: LimitWindow, etaToReset: TimeInterval?) {
+    func notifyThreshold(_ threshold: Double, window: LimitWindow, etaToReset: TimeInterval?, tool: AgentTool) {
         let left = Formatting.percent(window.bucket.percentRemaining)
         let resetPart = etaToReset.map { " · resets in \(Formatting.countdown($0))" } ?? ""
         let (title, body): (String, String)
@@ -53,15 +53,18 @@ final class NotificationManager {
         default:
             (title, body) = ("Heads up", "\(left) of your \(window.phrase) left\(resetPart).")
         }
-        deliver(title: title, body: body, id: "threshold-\(window.id)-\(Int(threshold))")
+        deliver(
+            title: NotificationIDs.title(title, tool: tool), body: body,
+            id: NotificationIDs.threshold(tool: tool, window: window, threshold: threshold),
+        )
     }
 
     /// Window refilled to full.
-    func notifyRefill(_ window: LimitWindow) {
+    func notifyRefill(_ window: LimitWindow, tool: AgentTool) {
         deliver(
-            title: "Tank refilled 🎉",
+            title: NotificationIDs.title("Tank refilled 🎉", tool: tool),
             body: "Your \(window.phrase) reset — back to full.",
-            id: "refill-\(UUID().uuidString)",
+            id: NotificationIDs.refill(tool: tool, unique: UUID().uuidString),
         )
     }
 
@@ -135,15 +138,19 @@ final class NotificationManager {
     }
 
     /// Schedule a one-shot "it reset" notification for a future date.
-    func scheduleResetReminder(at date: Date, for window: LimitWindow) {
+    func scheduleResetReminder(at date: Date, for window: LimitWindow, tool: AgentTool) {
         let interval = date.timeIntervalSinceNow
         guard interval > 1 else { return }
         let content = UNMutableNotificationContent()
-        content.title = "\(window.budgetName.capitalized) refilled 🎉"
-        content.body = "Your Claude \(window.phrase) just reset — back to full."
+        content.title = NotificationIDs.title("\(window.budgetName.capitalized) refilled 🎉", tool: tool)
+        content.body = "Your \(window.phrase) just reset — back to full."
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
-        add(UNNotificationRequest(identifier: "reset-reminder", content: content, trigger: trigger))
+        add(UNNotificationRequest(
+            identifier: NotificationIDs.resetReminder(tool: tool),
+            content: content,
+            trigger: trigger,
+        ))
     }
 }
 
