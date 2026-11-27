@@ -17,7 +17,7 @@ if CommandLine.arguments.contains("--dump-sessions") {
         )
         for s in result.sessions.prefix(20) {
             let dot = s.running == .running ? "●" : "○"
-            let origin = s.origin == .cli ? "CLI" : "APP"
+            let origin = s.origin.isTerminal ? "CLI" : "APP"
             let burn = String(format: "%.0f", s.burnRate)
             print(
                 "\(dot) \(origin)  \(Formatting.tokenCount(s.totalTokens).padding(toLength: 6, withPad: " ", startingAt: 0))  +\(Formatting.tokenCount(s.cacheReadTokens)) cached  \(burn) t/m  \(s.projectName)",

@@ -70,7 +70,7 @@ struct SessionRow: View {
     }
 
     private var originBadge: some View {
-        Text(session.origin == .cli ? "CLI" : "APP")
+        Text(session.origin.isTerminal ? "CLI" : "APP")
             .font(scale.font(8, weight: .bold))
             .foregroundColor(.secondary)
             .padding(.horizontal, scale.pt(4))

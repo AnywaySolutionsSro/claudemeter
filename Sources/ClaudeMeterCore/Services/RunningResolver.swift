@@ -42,6 +42,9 @@ public struct RunningResolver: Sendable {
             case .desktop:
                 let live = desktopAppRunning && activity(session) >= staleCutoff
                 return session.withRunning(live ? .running : .idle)
+            case .codexCLI, .codexDesktop:
+                // Codex liveness comes from Codex processes, resolved by its own scanner.
+                return session
             }
         }
     }

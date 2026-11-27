@@ -1,6 +1,6 @@
 import Foundation
 
-/// Aggregated token usage for one Claude Code session (one transcript file).
+/// Aggregated token usage for one agent session (one transcript file).
 public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
     public let id: String
     public let origin: SessionOrigin
@@ -16,6 +16,9 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
     public let lastActivity: Date
     public let burnRate: Double
     public var running: RunningState
+    /// Which agent wrote the transcript. Optional so snapshots written before Codex
+    /// support still decode; `nil` means Claude (see `effectiveTool`).
+    public let tool: AgentTool?
 
     public init(
         id: String,
@@ -30,6 +33,7 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         lastActivity: Date,
         burnRate: Double,
         running: RunningState = .idle,
+        tool: AgentTool? = nil,
     ) {
         self.id = id
         self.origin = origin
@@ -43,7 +47,11 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         self.lastActivity = lastActivity
         self.burnRate = burnRate
         self.running = running
+        self.tool = tool
     }
+
+    /// The session's tool, treating a legacy untagged session as Claude.
+    public var effectiveTool: AgentTool { tool ?? .claude }
 
     public var projectName: String {
         let name = (projectPath as NSString).lastPathComponent
@@ -63,6 +71,6 @@ public struct SessionUsage: Equatable, Sendable, Codable, Identifiable {
         SessionUsage(id: id, origin: origin, projectPath: path, title: title, models: models,
                      lastModel: lastModel, tokens: tokens, messageCount: messageCount,
                      firstActivity: firstActivity, lastActivity: lastActivity,
-                     burnRate: burnRate, running: running)
+                     burnRate: burnRate, running: running, tool: tool)
     }
 }
