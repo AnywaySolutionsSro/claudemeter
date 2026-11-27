@@ -155,11 +155,28 @@ struct MenuContentView: View {
         }
     }
 
+    @ViewBuilder private var claudeLinks: some View {
+        Link("Buy more usage", destination: URL(string: "https://claude.ai/settings/usage")!)
+        Link("Upgrade plan", destination: URL(string: "https://claude.ai/settings/billing")!)
+        Link("Usage help", destination: URL(string: "https://support.claude.com")!)
+    }
+
+    /// The pages the Codex CLI itself points at for credits and upgrades.
+    @ViewBuilder private var codexLinks: some View {
+        Link("Buy more usage", destination: URL(string: "https://chatgpt.com/settings/usage")!)
+        Link("Upgrade plan", destination: URL(string: "https://chatgpt.com/explore/plus")!)
+        Link("Usage help", destination: URL(string: "https://help.openai.com")!)
+    }
+
     private var quickLinksMenu: some View {
         Menu("⋯") {
-            Link("Buy more usage", destination: URL(string: "https://claude.ai/settings/usage")!)
-            Link("Upgrade plan", destination: URL(string: "https://claude.ai/settings/billing")!)
-            Link("Usage help", destination: URL(string: "https://support.claude.com")!)
+            if monitor.codexPresent {
+                // Both tools: one titled group each, so it is clear whose page opens.
+                Section("Claude") { claudeLinks }
+                Section("Codex") { codexLinks }
+            } else {
+                claudeLinks
+            }
         }
         .menuStyle(.borderlessButton)
         .frame(width: scale.pt(28))
