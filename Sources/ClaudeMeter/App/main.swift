@@ -45,6 +45,38 @@ if CommandLine.arguments.contains("--dump-sessions") {
     exit(0)
 }
 
+// Diagnostic: fetch live Codex usage with the stored ChatGPT login and print the
+// response's STRUCTURE only — key paths and value types, never values or tokens.
+if CommandLine.arguments.contains("--codex-usage-dump") {
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        defer { semaphore.signal() }
+        let account = ChatGPTAccountStore()
+        guard account.exists else {
+            print("not signed in to ChatGPT (Settings → Codex → Sign in to ChatGPT)")
+            return
+        }
+        do {
+            let now = Date()
+            let data = try await ChatGPTUsageClient(account: account).fetchRaw(now: now)
+            print("GET \(ChatGPTAuth.usageURL.absoluteString): \(data.count) bytes")
+            JSONShape.describe(data).forEach { print("  \($0)") }
+            if let reading = WhamUsageDecoder.decode(data, observedAt: now) {
+                let minutes = reading.windows.map { "\($0.windowMinutes) min" }.joined(separator: ", ")
+                print(
+                    "decoded: \(reading.windows.count) window(s) [\(minutes)]  reached: \(reading.reachedType != nil)",
+                )
+            } else {
+                print("decoded: NO — unrecognised shape, the app keeps the previous reading")
+            }
+        } catch {
+            print("FAILED: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
+        }
+    }
+    semaphore.wait()
+    exit(0)
+}
+
 // Diagnostic: report where the widget snapshot resolves and whether writing works.
 if CommandLine.arguments.contains("--snapshot-test") {
     let inbox = SessionMonitor.widgetInboxURL()

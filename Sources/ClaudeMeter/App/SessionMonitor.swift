@@ -37,10 +37,15 @@ final class SessionMonitor: ObservableObject {
     /// Codex's limit windows as of the last scan (a window whose reset passed reads as
     /// full), or nil with no reading. Never merged with Claude's: both have a "Weekly".
     @Published private(set) var codexLimits: UsageSnapshot?
-    /// When the Codex limit reading was observed (the last Codex turn that carried one).
+    /// When the Codex limit reading was observed (the last Codex turn that carried one,
+    /// or the last live ChatGPT fetch).
     @Published private(set) var codexAsOf: Date?
+    /// The Codex reading shown — the newer of live and transcript (`CodexLimitSource`).
+    @Published private(set) var codexReading: CodexLimitReading?
+    /// The live ChatGPT reading as of the last scan (nil when signed out).
+    @Published private(set) var codexLiveReading: CodexLimitReading?
     /// Codex is in use on this Mac (≥ 1 non-import session with tokens or a limit
-    /// reading). Every Codex surface is gated on it.
+    /// reading), or a live ChatGPT reading exists. Every Codex surface is gated on it.
     @Published private(set) var codexPresent = false
     /// Codex's burn rate, pace and sparkline, from `codex-history.json` (one sample per
     /// Codex reading, never per scan — see `CodexHistory`).
@@ -57,6 +62,9 @@ final class SessionMonitor: ObservableObject {
     /// Called after every scan that has a Codex limit reading, with that snapshot and
     /// the scan time — the hook for Codex limit alerts.
     var onCodexLimits: ((UsageSnapshot, Date) -> Void)?
+    /// The live ChatGPT Codex reading, when signed in. Merged with the transcript reading
+    /// by `CodexLimitSource.pick`, so everything downstream sees one reading.
+    var liveCodexProvider: (() -> CodexLimitReading?)?
 
     private let scanner: SessionScanner
     private let codexScanner: CodexScanner
@@ -218,13 +226,20 @@ final class SessionMonitor: ObservableObject {
         sessions = allSessions
         latestProcesses = processes
         latestCodexProcesses = codex.processes
+        // The newer of the live ChatGPT reading and the transcript one, so the gauges,
+        // pill, history, alerts and the auto-resume gate all see the freshest figure.
+        let live = liveCodexProvider?()
+        let reading = CodexLimitSource.pick(live: live, transcript: codex.limits)
+        let present = codex.isPresent || live != nil
         // Rebuilt from the reading every scan: a window whose reset passed since must
         // read as full now, not when the next Codex turn happens to arrive.
-        let codexUsage = codex.limits.map { CodexLimits.snapshot(from: $0, now: now) }
+        let codexUsage = reading.map { CodexLimits.snapshot(from: $0, now: now) }
         codexLimits = codexUsage
-        codexAsOf = codex.limits?.observedAt
-        codexPresent = codex.isPresent
-        recordCodexHistory(codex.limits, now: now)
+        codexAsOf = reading?.observedAt
+        codexReading = reading
+        codexLiveReading = live
+        codexPresent = present
+        recordCodexHistory(reading, now: now)
         let armedSet = Set(armedIDs)
         let armable = result.armableSessionIDs + (codex.isPresent ? codex.armableSessionIDs : [])
         let widgetSessions = allSessions.filter { $0.running == .running || armedSet.contains($0.id) }
@@ -235,14 +250,14 @@ final class SessionMonitor: ObservableObject {
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = allSessions.filter { $0.running == .running }.count
         let usage = usageProvider?()
-        let showCodex = codex.isPresent ? codexUsage : nil
+        let showCodex = present ? codexUsage : nil
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: allSessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
             usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
             clockStyle: clockStyleProvider?(),
-            codexGauges: showCodex?.gauges, codexAsOf: showCodex == nil ? nil : codex.limits?.observedAt,
+            codexGauges: showCodex?.gauges, codexAsOf: showCodex == nil ? nil : reading?.observedAt,
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)
@@ -251,7 +266,7 @@ final class SessionMonitor: ObservableObject {
         onScan?(UsageContextInputs(sessions: allSessions, processes: processes,
                                    codexProcesses: codex.processes, armableIDs: armable,
                                    codexLimits: codexUsage,
-                                   codexReached: CodexLimits.reachedWindow(codex.limits, now: now),
+                                   codexReached: CodexLimits.reachedWindow(reading, now: now),
                                    scannedAt: now))
     }
 

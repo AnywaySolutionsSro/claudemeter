@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
+    /// ChatGPT sign-in for live Codex limits (its own login and Keychain item).
+    private let chatGPTAccount = ChatGPTAccountStore()
+    private lazy var chatGPTAuth = ChatGPTAuthModel(account: chatGPTAccount)
+    private lazy var codexLive = CodexLiveLimits(client: ChatGPTUsageClient(account: chatGPTAccount))
     private let sessionMonitor = SessionMonitor()
     private lazy var sessionsWindow = SessionsWindowController(
         monitor: sessionMonitor, armed: armedSessions, settings: settings,
@@ -33,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     )
     private lazy var settingsWindow = SettingsWindowController(
         settings: settings, auth: auth, updates: updates, apiSpend: apiSpend, monitor: sessionMonitor,
+        chatGPT: chatGPTAuth,
     )
     private lazy var updates = UpdateService(settings: settings)
     private let apiSpend = ApiSpendStore()
@@ -247,19 +252,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if runningLow { ShortcutRunner.run(settings.lowUsageShortcut) }
     }
 
-    private func installEditMenu() {
-        let mainMenu = NSMenu()
-        let editMenuItem = NSMenuItem()
-        mainMenu.addItem(editMenuItem)
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        editMenuItem.submenu = editMenu
-        NSApp.mainMenu = mainMenu
-    }
-
     /// "Install on next restart": the swap happens here, on the way out (Quit, logout,
     /// shutdown). It is a rename plus a LaunchServices refresh — well under a second.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
@@ -275,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         autoResume.noteWake()
         updates.checkIfDue()
         updates.retryCurrentReleaseNotes()
+        if chatGPTAuth.isSignedIn { Task { await codexLive.refresh() } }
         guard auth.isSignedIn else { return }
         Task { await store.refresh(); updateLabel() }
     }
@@ -344,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         .environmentObject(sessionMonitor)
         .environmentObject(store)
         .environmentObject(auth)
+        .environmentObject(chatGPTAuth)
         .environmentObject(settings)
         .environmentObject(updates)
         .environmentObject(apiSpend)
@@ -365,6 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             Task { @MainActor in self?.closePopover() }
         }
 
+        if chatGPTAuth.isSignedIn { Task { await codexLive.refresh() } }
         if auth.isSignedIn { Task { await store.refresh(); updateLabel() } }
     }
 
@@ -398,6 +393,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 }
 
+// MARK: - Edit menu
+
+private extension AppDelegate {
+    /// Agent apps have no menu bar, so Cmd+V/C/X/A never reach text fields without this.
+    func installEditMenu() {
+        let mainMenu = NSMenu()
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        NSApp.mainMenu = mainMenu
+    }
+}
+
 // MARK: - Codex
 
 private extension AppDelegate {
@@ -425,6 +438,21 @@ private extension AppDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLabel() }
             .store(in: &cancellables)
+        installCodexLive()
+    }
+
+    /// Live Codex limits from ChatGPT while signed in; each new reading rescans at once
+    /// so the merged reading (`CodexLimitSource.pick`) reaches every surface.
+    func installCodexLive() {
+        sessionMonitor.liveCodexProvider = { [weak self] in self?.codexLive.reading }
+        codexLive.onReading = { [weak self] in Task { await self?.sessionMonitor.refresh() } }
+        codexLive.onSessionExpired = { [weak self] in self?.chatGPTAuth.sessionExpired() }
+        chatGPTAuth.onSignedIn = { [weak self] in self?.codexLive.start() }
+        chatGPTAuth.onSignedOut = { [weak self] in
+            self?.codexLive.clear()
+            Task { await self?.sessionMonitor.refresh() }
+        }
+        if chatGPTAuth.isSignedIn { codexLive.start() }
     }
 
     /// Whether the menu-bar pill carries Codex's ring next to Claude's.

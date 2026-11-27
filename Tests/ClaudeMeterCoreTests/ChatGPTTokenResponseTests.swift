@@ -18,12 +18,14 @@ struct ChatGPTTokenResponseTests {
     }
 
     @Test func freshLoginBuildsTokens() throws {
+        // Built once: JSON key order isn't stable, so two calls can differ byte-wise.
+        let id = idToken()
         let data = body([
-            "access_token": "at", "refresh_token": "rt", "id_token": idToken(), "expires_in": 3600,
+            "access_token": "at", "refresh_token": "rt", "id_token": id, "expires_in": 3600,
         ])
         let tokens = try #require(ChatGPTTokenResponseDecoder.tokens(from: data, previous: nil, now: now))
         #expect(tokens == ChatGPTTokens(
-            accessToken: "at", refreshToken: "rt", idToken: idToken(),
+            accessToken: "at", refreshToken: "rt", idToken: id,
             expiresAt: now.addingTimeInterval(3600), accountID: "acct-1", email: "j@example.com",
         ))
     }

@@ -26,9 +26,10 @@ extension ToolHeader where Trailing == EmptyView {
     }
 }
 
-/// Codex's limit windows and sessions in the dropdown. Codex limits are only as fresh
-/// as the last Codex turn, so the reading's age is always shown, and a window whose
-/// reset passed since says so instead of counting down.
+/// Codex's limit windows and sessions in the dropdown. Without a ChatGPT sign-in, Codex
+/// limits are only as fresh as the last Codex turn, so the reading's age is shown (it
+/// hides while a live reading is under 2 minutes old), and a window whose reset passed
+/// since says so instead of counting down.
 struct CodexSection: View {
     let now: Date
     /// "Remind me when it resets" for Codex's blocking window.
@@ -36,6 +37,7 @@ struct CodexSection: View {
 
     @EnvironmentObject private var monitor: SessionMonitor
     @EnvironmentObject private var settings: Settings
+    @EnvironmentObject private var chatGPT: ChatGPTAuthModel
     @Environment(\.textScale) private var scale
     /// The window (id + reset moment) a reminder was scheduled for, so a second click
     /// neither schedules twice nor leaves the user guessing.
@@ -44,10 +46,12 @@ struct CodexSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: scale.pt(10)) {
             ToolHeader(tool: .codex) {
-                if let asOf = monitor.codexAsOf {
+                if let asOf = monitor.codexAsOf, !isFreshLive {
                     Text("as of \(Formatting.clockTime(asOf, style: settings.clockStyle))")
                         .font(scale.font(10)).foregroundColor(.secondary)
-                        .help("Codex limits refresh only when a Codex turn runs")
+                        .help(chatGPT.isSignedIn
+                            ? "When this Codex limit reading was taken"
+                            : "Codex limits refresh only when a Codex turn runs")
                 }
             }
             if let limits = monitor.codexLimits {
@@ -65,7 +69,9 @@ struct CodexSection: View {
                 )
                 cooldownBox(limits)
             } else {
-                Text("No Codex limit reading yet — it arrives with the next Codex turn.")
+                Text(chatGPT.isSignedIn
+                    ? "Fetching live Codex limits…"
+                    : "No Codex limit reading yet — it arrives with the next Codex turn.")
                     .font(scale.font(11)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -73,6 +79,34 @@ struct CodexSection: View {
                 sessions: monitor.sessions, armedIDs: Set(monitor.snapshot?.armedSessionIDs ?? []),
             ))
             .font(scale.font(11)).foregroundColor(.secondary)
+            liveSignIn
+        }
+    }
+
+    private var isFreshLive: Bool {
+        CodexLimitSource.isFreshLive(monitor.codexLiveReading, shown: monitor.codexReading, now: now)
+    }
+
+    /// A small "Sign in for live limits" link while signed out of ChatGPT.
+    @ViewBuilder private var liveSignIn: some View {
+        switch chatGPT.state {
+        case .signedIn:
+            EmptyView()
+        case .waitingForBrowser:
+            HStack(spacing: scale.pt(6)) {
+                Text("Waiting for the browser…").font(scale.font(11)).foregroundColor(.secondary)
+                Button("Cancel") { chatGPT.cancel() }.font(scale.font(11))
+            }
+        case .signedOut:
+            VStack(alignment: .leading, spacing: scale.pt(4)) {
+                Button("Sign in for live limits") { chatGPT.beginLogin() }
+                    .buttonStyle(.link).font(scale.font(11))
+                    .help("Sign in to ChatGPT so Codex limits stay current between Codex turns")
+                if let error = chatGPT.errorMessage {
+                    Text(error).font(scale.font(10)).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

@@ -11,25 +11,27 @@ final class SettingsWindowController: NSObject {
     private let updates: UpdateService
     private let apiSpend: ApiSpendStore
     private let monitor: SessionMonitor
+    private let chatGPT: ChatGPTAuthModel
     private var window: NSWindow?
     private var hosting: NSHostingController<SettingsView>?
     private var presenceWatch: AnyCancellable?
 
     init(
         settings: Settings, auth: AuthModel, updates: UpdateService, apiSpend: ApiSpendStore,
-        monitor: SessionMonitor,
+        monitor: SessionMonitor, chatGPT: ChatGPTAuthModel,
     ) {
         self.settings = settings
         self.auth = auth
         self.updates = updates
         self.apiSpend = apiSpend
         self.monitor = monitor
+        self.chatGPT = chatGPT
         super.init()
     }
 
     private func makeView(codexPresent: Bool) -> SettingsView {
         SettingsView(
-            settings: settings, auth: auth, updates: updates, apiSpend: apiSpend,
+            settings: settings, auth: auth, updates: updates, apiSpend: apiSpend, chatGPT: chatGPT,
             codexPresent: codexPresent,
         )
     }

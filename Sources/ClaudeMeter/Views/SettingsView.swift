@@ -8,6 +8,7 @@ struct SettingsView: View {
     @ObservedObject var auth: AuthModel
     @ObservedObject var updates: UpdateService
     @ObservedObject var apiSpend: ApiSpendStore
+    @ObservedObject var chatGPT: ChatGPTAuthModel
     /// Whether Codex has been seen on this machine; its alert toggle stays hidden until then.
     var codexPresent = false
 
@@ -68,6 +69,12 @@ struct SettingsView: View {
                         Label("Connect Claude account", systemImage: "link")
                     }
                     .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if codexPresent || chatGPT.isSignedIn {
+                Section(header: sectionHeader("Codex", "circle.hexagongrid.fill", Color(tool: .codex))) {
+                    ChatGPTSettingsSection(chatGPT: chatGPT)
                 }
             }
 

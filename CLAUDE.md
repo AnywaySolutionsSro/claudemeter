@@ -147,13 +147,34 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   (`CodexSourceCache`) — discovery runs every 10 s. `RunningResolver.resolve` takes a `tool` and
   only touches that tool's sessions, so one tool's process counts can't mark the other's live. Sessions listed in
   `external_agent_session_imports.json` are imports of *Claude* transcripts and are skipped.
-  **Never read `auth.json`** — no Codex credential is needed.
+  **Never read or write `~/.codex/auth.json`** — the live-limits sign-in below is ClaudeMeter's own.
 - **Tokens:** Codex logs *cumulative* `total_token_usage`, so a session's figure is the last
   reading, never a sum (summing inflates it quadratically).
-- **Limits come from transcripts, not an API.** `CodexLimits` turns `rate_limits` readings into a
-  `UsageSnapshot`: one entry per `limit_id`, window id from `window_minutes` (never a plan
-  name), a window whose `resets_at` already passed reads as *full*, and the reading carries its
-  age ("as of …"). They only refresh when a Codex turn runs.
+- **Limits: live from ChatGPT when signed in, transcripts otherwise.** `CodexLimits` turns a
+  `CodexLimitReading` into a `UsageSnapshot`: one entry per `limit_id`, window id from
+  `window_minutes` (never a plan name), a window whose `resets_at` already passed reads as
+  *full*, and the reading carries its age ("as of …", hidden while a live reading is < 2 min
+  old). Transcript readings only refresh when a Codex turn runs. `SessionMonitor` takes
+  `CodexLimitSource.pick(live:transcript:)` — the newer `observedAt` wins — so gauges, pill,
+  history, alerts and the auto-resume gate all see one reading; signed out = transcripts only.
+- **Live limits = ClaudeMeter's own ChatGPT OAuth** (Settings → General → Codex). PKCE S256
+  against `auth.openai.com` with the Codex CLI's public client id `app_EMoamEEZ73f0CkXaXp7hrann`
+  (`ChatGPTAuth`); the redirect must be `http://localhost:1455/auth/callback` (the only one
+  registered), so `LoopbackCallbackServer.start(port: 1455)` binds 127.0.0.1:1455 without
+  address reuse and a busy port (a `codex login` running) is `ChatGPTError.portBusy`, never
+  another port. Code exchange is form-encoded, refresh is JSON (as Codex sends them). Tokens +
+  `chatgpt_account_id` (id-token claim `https://api.openai.com/auth`) live in Keychain item
+  `com.jakubzak.claudemeter.chatgpt`; the UI uses only the metadata `exists` check and the
+  email cached in UserDefaults. A dead refresh grant (401, or 400/403 with `invalid_grant` /
+  `refresh_token_*`) signs out with "sign in again". `CodexLiveLimits` polls
+  `GET chatgpt.com/backend-api/wham/usage` (`Authorization: Bearer` + `chatgpt-account-id`)
+  every 60 s (≥ 30 s throttle, `Retry-After` on 429, refresh-and-retry once on 401);
+  `WhamUsageDecoder` is lenient (`rate_limit.primary_window`/`secondary_window` with
+  `used_percent`, `limit_window_seconds`, `reset_at`/`reset_after_seconds`, or the transcript
+  shape) and an unknown body is **no reading**, never zeros. Unchanged figures are recorded in
+  `codex-history.json` at most every 5 min. The response shape is unverified until a real
+  sign-in: `ClaudeMeter --codex-usage-dump` prints its key paths and types (no values). Logs:
+  category `chatgpt` at `.notice`, never tokens.
 - **Refill rule:** past-reset **or** a ≥25-point drop (`CodexLimits.gate`). Unlike Claude's 5-h
   on-disk carry-over, a Codex baseline is **not** carried across an app restart, by design: a
   restart reseeds from the live transcript, so a stale reading can't fire `continue`.
