@@ -195,9 +195,12 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   weekly (`snapshot.primary`; Codex's past-reset window reads as full); no reading = empty
   track and "—", never a fake 0%. The drained track is the tool colour darkened at half alpha
   so white stays legible in light and dark bars. Geometry is pure in `BatteryPill` (tested);
-  drawing in `MenuBarLabel+Battery`. The width is sized from `BatteryPill.references` at the
-  text scale and depends only on mode + presence + toggle + scale, never on a reading (a
-  signed-out Claude-only slot also fits the "Sign in" pill). The other modes render as before,
+  drawing in `MenuBarLabel+Battery`. **Width follows the figures:** each
+  cell is as wide as its own figure (`5%`, `89%`, `100%`, `—`) with a minimum of `00%`'s width,
+  and the status item is the image plus 1 pt either side (no extra padding, so gaps to
+  neighbours are macOS's own). `AppDelegate.applySlotLength` applies a new `statusItem.length`
+  **only while the popover is closed** (otherwise it waits for `popoverDidClose`) and skips
+  no-ops, since resizing under an open popover misaligns it. The other modes keep a fixed slot and render as before,
   Claude only.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool

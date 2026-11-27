@@ -95,13 +95,17 @@ enum MenuBarLabel {
         }
     }
 
-    /// Width of the fixed menu-bar slot for `mode`, so the item never resizes between scans
-    /// (which would shift the button and misalign the popover). With Codex shown the
-    /// two-tool battery is used whatever the mode.
+    /// Whether the item is a battery, whose width follows its figures.
+    static func followsFigures(mode: DisplayMode, codexShown: Bool) -> Bool {
+        codexShown || mode == .battery
+    }
+
+    /// Width of the menu-bar slot for `mode`: fixed for the other modes, and the launch
+    /// width for the battery (`AppDelegate` then sizes it to the image, popover closed).
     static func slotWidth(mode: DisplayMode, codexShown: Bool, for scale: TextScale) -> CGFloat {
         if codexShown { return batterySlotWidth(dual: true, for: scale) }
         guard mode == .battery else { return recommendedSlotWidth(for: scale) }
-        // Signed out, the battery slot still has to hold the "Sign in" pill.
+        // Launch-time width; signed out, the slot also has to hold the "Sign in" pill.
         return max(batterySlotWidth(dual: false, for: scale), signInSlotWidth(for: scale))
     }
 
