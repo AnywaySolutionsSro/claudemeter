@@ -17,11 +17,18 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
     /// The app's time-format setting, for the sandboxed widget that can't read it directly.
     /// `nil` (an older snapshot) means follow the system.
     public let clockStyle: ClockStyle?
+    /// Codex limit windows, in their own collection: Claude and Codex both have a
+    /// "Weekly" window and a gauge's id is only its label. `nil` when Codex isn't present.
+    public let codexGauges: [UsageGauge]?
+    /// When the Codex limit reading was observed (Codex limits are only as fresh as the
+    /// last Codex turn).
+    public let codexAsOf: Date?
 
     public init(generatedAt: Date, sessions: [SessionUsage], totalTokens: Int,
                 runningCount: Int, armedSessionIDs: [String] = [], armableSessionIDs: [String] = [],
                 usageGauges: [UsageGauge] = [], extraUsage: ExtraUsage? = nil,
-                clockStyle: ClockStyle? = nil) {
+                clockStyle: ClockStyle? = nil, codexGauges: [UsageGauge]? = nil,
+                codexAsOf: Date? = nil) {
         self.generatedAt = generatedAt
         self.sessions = sessions
         self.totalTokens = totalTokens
@@ -31,6 +38,8 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         self.usageGauges = usageGauges
         self.extraUsage = extraUsage
         self.clockStyle = clockStyle
+        self.codexGauges = codexGauges
+        self.codexAsOf = codexAsOf
     }
 
     // Custom decode so snapshots written before these fields existed still load.
@@ -45,11 +54,13 @@ public struct SessionSnapshot: Equatable, Sendable, Codable {
         usageGauges = try c.decodeIfPresent([UsageGauge].self, forKey: .usageGauges) ?? []
         extraUsage = try c.decodeIfPresent(ExtraUsage.self, forKey: .extraUsage)
         clockStyle = try c.decodeIfPresent(ClockStyle.self, forKey: .clockStyle)
+        codexGauges = try c.decodeIfPresent([UsageGauge].self, forKey: .codexGauges)
+        codexAsOf = try c.decodeIfPresent(Date.self, forKey: .codexAsOf)
     }
 
     private enum CodingKeys: String, CodingKey {
         case generatedAt, sessions, totalTokens, runningCount, armedSessionIDs, armableSessionIDs, usageGauges
-        case extraUsage, clockStyle
+        case extraUsage, clockStyle, codexGauges, codexAsOf
     }
 
     /// Build a snapshot of the top sessions by total tokens.
