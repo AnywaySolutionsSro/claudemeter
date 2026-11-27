@@ -50,7 +50,7 @@ struct AgentToolTests {
     @Test func runningResolverIdlesCodexSessionWithoutLiveProcess() {
         let codex = make(tool: .codex).withRunning(.running)
         let resolved = RunningResolver().resolve(
-            sessions: [codex], liveCwdCounts: [:], desktopAppRunning: false, now: Date(),
+            sessions: [codex], tool: .codex, liveCwdCounts: [:], desktopAppRunning: false, now: Date(),
         )
         #expect(resolved.first?.running == .idle)
     }

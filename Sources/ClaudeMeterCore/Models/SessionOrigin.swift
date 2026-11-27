@@ -16,4 +16,12 @@ public enum SessionOrigin: String, Sendable, Codable, CaseIterable {
         case .desktop, .codexDesktop: false
         }
     }
+
+    /// The agent this origin belongs to.
+    public var tool: AgentTool {
+        switch self {
+        case .cli, .desktop: .claude
+        case .codexCLI, .codexDesktop: .codex
+        }
+    }
 }

@@ -92,7 +92,7 @@ public actor CodexScanner {
         let usages = included.map { usage(ref: $0.ref, state: $0.state) }
         let processes = processProbe.liveCodexProcesses()
         let resolved = resolver.resolve(
-            sessions: usages,
+            sessions: usages, tool: .codex,
             liveCwdCounts: LibprocProcessProbe.tally(processes: processes),
             desktopAppRunning: false,
             activityAt: Dictionary(included.map { ($0.ref.id, $0.ref.modifiedAt) }, uniquingKeysWith: max),
