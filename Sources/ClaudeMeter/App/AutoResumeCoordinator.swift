@@ -176,7 +176,7 @@ final class AutoResumeCoordinator {
         handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
                        processes: inputs.codexProcesses,
                        transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },
-                       paths: paths, parents: parents)
+                       scannedAt: inputs.scannedAt, paths: paths, parents: parents)
     }
 
     /// Run one tool's plan for this scan. `sessions` may hold every tool's sessions:
@@ -189,6 +189,7 @@ final class AutoResumeCoordinator {
         processes: [LiveProcess],
         transcriptTail: (String) -> [String],
         classify: (([String]) -> SessionEligibility)? = nil,
+        scannedAt: Date? = nil,
         paths: @escaping (Int32) -> String?,
         parents: @escaping (Int32) -> Int32,
     ) {
@@ -201,10 +202,12 @@ final class AutoResumeCoordinator {
             log.debug("\(tag, privacy: .public)skip: no usage reading (not signed in / no data yet)")
             return
         }
-        let toolSessions = sessions.filter { $0.effectiveTool == tool }
-        let otherIDs = Set(sessions.filter { $0.effectiveTool != tool }.map(\.id))
-        let armedIDs = armed.armed.subtracting(otherIDs)
-        let scanAt = now()
+        let partition = ToolResumeGuard.partition(tool: tool, sessions: sessions, armedIDs: armed.armed)
+        let toolSessions = partition.sessions
+        let armedIDs = partition.armedIDs
+        // Codex passes the scan's own time, so a window is judged past-reset at the same
+        // instant its snapshot was built; Claude keeps the coordinator's clock.
+        let scanAt = scannedAt ?? now()
         var state = states[tool] ?? ToolState()
         defer { states[tool] = state }
 
@@ -338,14 +341,20 @@ final class AutoResumeCoordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
             // tty-reuse defense (spec): re-verify the tty still maps to the same unique
-            // live process of this tool.
+            // live process of this tool, and that no process of the other tool shares it.
             let probe = LibprocProcessProbe()
-            let live = tool == .codex ? probe.liveCodexProcesses() : probe.liveClaudeProcesses()
-            let onTTY = live.filter { $0.tty == target.tty }
-            guard onTTY.count == 1, onTTY[0].pid == target.expectedPID, onTTY[0].cwd == target.expectedCwd else {
+            let claude = probe.liveClaudeProcesses()
+            let codex = probe.liveCodexProcesses()
+            let check = ToolResumeGuard.verifyTTY(
+                target.tty, expectedPID: target.expectedPID, expectedCwd: target.expectedCwd,
+                own: tool == .codex ? codex : claude, other: tool == .codex ? claude : codex,
+            )
+            guard check == .clear else {
+                let reason = check == .sharedWithOtherTool
+                    ? "another tool shares tty" : "terminal changed before resume (tty reuse defense)"
                 self.log
                     .notice(
-                        "\(tag, privacy: .public)\(projectName, privacy: .public): skip — terminal changed before resume (tty reuse defense); will retry within window",
+                        "\(tag, privacy: .public)\(projectName, privacy: .public): skip — \(reason, privacy: .public); will retry within window",
                     )
                 self.states[tool]?.window?.fired.remove(target.sessionID) // allow a later scan to retry
                 return

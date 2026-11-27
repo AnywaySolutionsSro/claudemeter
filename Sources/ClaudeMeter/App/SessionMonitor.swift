@@ -15,6 +15,8 @@ struct UsageContextInputs {
     let armableIDs: [String]
     /// The Codex limit reading as of this scan (past-reset windows read as full), or nil.
     let codexLimits: UsageSnapshot?
+    /// When this scan ran — the instant `codexLimits` was evaluated at.
+    let scannedAt: Date
 }
 
 /// Observable view-model that periodically scans local Claude Code transcripts
@@ -237,7 +239,7 @@ final class SessionMonitor: ObservableObject {
         if let codexUsage { onCodexLimits?(codexUsage, now) }
         onScan?(UsageContextInputs(sessions: allSessions, processes: processes,
                                    codexProcesses: codex.processes, armableIDs: armable,
-                                   codexLimits: codexUsage))
+                                   codexLimits: codexUsage, scannedAt: now))
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.

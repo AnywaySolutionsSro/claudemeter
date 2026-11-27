@@ -109,7 +109,9 @@ struct SessionsView: View {
                 Text(activeOnly ? "No active sessions" : "No sessions found")
                     .font(scale.font(12)).foregroundColor(.secondary)
                 Text(activeOnly
-                    ? "Running Claude Code sessions show up here live."
+                    ? (monitor.codexPresent
+                        ? "Running Claude Code and Codex sessions show up here live."
+                        : "Running Claude Code sessions show up here live.")
                     : "Start a Claude Code session and it will appear here.")
                     .font(scale.font(10)).foregroundColor(.secondary)
                 Spacer()
