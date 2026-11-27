@@ -157,6 +157,11 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 - **Refill rule:** past-reset **or** a ≥25-point drop (`CodexLimits.gate`). Unlike Claude's 5-h
   on-disk carry-over, a Codex baseline is **not** carried across an app restart, by design: a
   restart reseeds from the live transcript, so a stale reading can't fire `continue`.
+- **History:** `codex-history.json` (beside `history.json`, never mixed with it, survives a Claude
+  sign-out) feeds the Codex section's burn/pace lines and green sparkline (`UsageInsights`,
+  `UsageInsightsView`, shared with Claude). `CodexHistory.samplesToRecord` adds one sample per
+  reading (`observedAt`), never per scan, plus **one** 0% reset point (in a new window) once the
+  tracked window's reset passes unseen.
 - **Processes:** only Codex CLI binaries that own a tty count — the standalone installer
   (`~/.codex/packages/standalone`), npm's vendored binary (`node_modules/@openai/codex/`) and
   Homebrew (`Cellar/codex/`, `Caskroom/codex/`); the Codex `app-server-daemon` and anything in

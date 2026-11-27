@@ -58,6 +58,11 @@ struct CodexSection: View {
                         footnote: CodexDisplay.staleResetNote(window.bucket, now: now, style: settings.clockStyle),
                     )
                 }
+                let insights = monitor.codexInsights
+                UsageInsightsView(
+                    snapshot: limits, history: insights.history, burn: insights.burn,
+                    paceRatio: insights.paceRatio, now: now, tint: Color(tool: .codex),
+                )
                 cooldownBox(limits)
             } else {
                 Text("No Codex limit reading yet — it arrives with the next Codex turn.")

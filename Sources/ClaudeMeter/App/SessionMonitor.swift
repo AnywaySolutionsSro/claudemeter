@@ -42,6 +42,9 @@ final class SessionMonitor: ObservableObject {
     /// Codex is in use on this Mac (≥ 1 non-import session with tokens or a limit
     /// reading). Every Codex surface is gated on it.
     @Published private(set) var codexPresent = false
+    /// Codex's burn rate, pace and sparkline, from `codex-history.json` (one sample per
+    /// Codex reading, never per scan — see `CodexHistory`).
+    @Published private(set) var codexInsights: UsageInsights = .empty
 
     /// Set by AppDelegate so the published snapshot can mark armed sessions and
     /// the post-scan hook can drive auto-resume.
@@ -61,6 +64,7 @@ final class SessionMonitor: ObservableObject {
     private let snapshotStore = SnapshotStore()
     private var timer: Timer?
     private var isScanning = false
+    private var codexHistory: [UsageSample] = CodexUsageHistory.load()
 
     /// Bundle id of the widget extension.
     nonisolated static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
@@ -216,6 +220,7 @@ final class SessionMonitor: ObservableObject {
         codexLimits = codexUsage
         codexAsOf = codex.limits?.observedAt
         codexPresent = codex.isPresent
+        recordCodexHistory(codex.limits, now: now)
         let armedSet = Set(armedIDs)
         let armable = result.armableSessionIDs + (codex.isPresent ? codex.armableSessionIDs : [])
         let widgetSessions = allSessions.filter { $0.running == .running || armedSet.contains($0.id) }
@@ -244,6 +249,15 @@ final class SessionMonitor: ObservableObject {
                                    codexLimits: codexUsage,
                                    codexReached: CodexLimits.reachedWindow(codex.limits, now: now),
                                    scannedAt: now))
+    }
+
+    /// Append the reading to Codex's history (once per reading, plus one reset point)
+    /// and refresh the insights — every scan, since an idle hour must read as idle.
+    private func recordCodexHistory(_ reading: CodexLimitReading?, now: Date) {
+        let samples = CodexHistory.samplesToRecord(reading: reading, now: now, history: codexHistory)
+        codexHistory = CodexUsageHistory.append(samples, to: codexHistory)
+        let insights = UsageInsights.compute(history: codexHistory, now: now)
+        if insights != codexInsights { codexInsights = insights }
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.
