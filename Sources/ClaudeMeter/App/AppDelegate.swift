@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let account = AccountStore()
     private let settings = Settings()
     private let notifications = NotificationManager()
+    /// Codex's limit alerts (Claude's flow through `UsageStore.onEvents`).
+    private lazy var limitAlerts = LimitAlertTracker(settings: settings, notifications: notifications)
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
@@ -27,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         },
     )
     private lazy var settingsWindow = SettingsWindowController(
-        settings: settings, auth: auth, updates: updates, apiSpend: apiSpend,
+        settings: settings, auth: auth, updates: updates, apiSpend: apiSpend, monitor: sessionMonitor,
     )
     private lazy var updates = UpdateService(settings: settings)
     private let apiSpend = ApiSpendStore()
@@ -101,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sessionMonitor.usageProvider = { [weak self] in self?.store.snapshot }
         bindClockStyle(settings: settings, monitor: sessionMonitor, apiSpend: apiSpend)
             .store(in: &cancellables)
+        installCodexAlerts()
         sessionMonitor.onScan = { [weak self] inputs in
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
@@ -387,5 +390,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
+    }
+}
+
+// MARK: - Codex
+
+private extension AppDelegate {
+    /// Codex limit readings arrive with each session scan; alerts start only once Codex
+    /// is present, and that is also when its alerts first need the notification permission.
+    func installCodexAlerts() {
+        sessionMonitor.onCodexLimits = { [weak self] snapshot, now in
+            guard let self, self.sessionMonitor.codexPresent else { return }
+            self.limitAlerts.ingest(tool: .codex, snapshot: snapshot, now: now)
+        }
+        sessionMonitor.$codexPresent
+            .removeDuplicates()
+            .filter(\.self)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.settings.codexNotificationsEnabled { self.notifications.requestAuthorization() }
+                self.updateLabel()
+            }
+            .store(in: &cancellables)
     }
 }
