@@ -28,13 +28,18 @@ struct MenuContentView: View {
             header
             Divider()
             UpdateBanner()
-            ForEach(Array(plan.sections.enumerated()), id: \.offset) { index, section in
+            ForEach(Array(plan.dataSections.enumerated()), id: \.offset) { index, section in
                 if index > 0 { Divider() }
                 view(for: section, plan: plan)
             }
-            // Outside the sign-in sections on purpose: API spend uses the admin key, which
-            // has nothing to do with the OAuth subscription login.
+            // Part of the data, outside the sign-in sections on purpose: API spend uses the
+            // admin key, which has nothing to do with the OAuth subscription login.
             ApiSpendSection(now: now)
+            // Connect buttons sit directly above the footer.
+            ForEach(Array(plan.connectSections.enumerated()), id: \.offset) { index, section in
+                if index > 0 || !plan.dataSections.isEmpty { Divider() }
+                view(for: section, plan: plan)
+            }
             Divider()
             footer(plan)
         }

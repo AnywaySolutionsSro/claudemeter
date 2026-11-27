@@ -249,22 +249,25 @@ final class SessionMonitor: ObservableObject {
         recordCodexHistory(reading, now: now)
         let armedSet = Set(armedIDs)
         let armable = result.armableSessionIDs + (codex.isPresent ? codex.armableSessionIDs : [])
-        let widgetSessions = allSessions.filter { $0.running == .running || armedSet.contains($0.id) }
+        let widgetTools = widgetToolsProvider?() ?? (limitTools: [.claude], hidden: [])
+        // Only the tools the widget shows, so a hidden tool takes no row slot and its
+        // header chip counts what its rows list.
+        let shownSessions = allSessions.filter { !widgetTools.hidden.contains($0.effectiveTool) }
+        let widgetSessions = shownSessions.filter { $0.running == .running || armedSet.contains($0.id) }
         let snap = SessionSnapshot.make(
             from: widgetSessions, now: result.snapshot.generatedAt,
             limit: 20, runningOnly: false, armedSessionIDs: armedIDs, armableSessionIDs: armable,
         )
-        // Preserve the true running count across ALL sessions, not just the filtered set.
-        let trueRunning = allSessions.filter { $0.running == .running }.count
         let usage = usageProvider?()
-        let widgetTools = widgetToolsProvider?() ?? (limitTools: [.claude], hidden: [])
+        // The true running count across ALL shown sessions, not just the filtered set.
+        let trueRunning = shownSessions.filter { $0.running == .running }.count
         // Gauges only for connected, shown tools: transcript-only Codex limits stay off
         // the widget's rings (its sessions still show).
         let showCodex = present && widgetTools.limitTools.contains(.codex) ? codexUsage : nil
         let claudeGauges = widgetTools.limitTools.contains(.claude) ? usage?.gauges ?? [] : []
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
-            totalTokens: allSessions.reduce(0) { $0 + $1.totalTokens },
+            totalTokens: shownSessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
             usageGauges: claudeGauges, extraUsage: widgetTools.hidden.contains(.claude) ? nil : usage?.extraUsage,
             clockStyle: clockStyleProvider?(),

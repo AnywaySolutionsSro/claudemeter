@@ -26,7 +26,13 @@ extension AppDelegate {
         .sink { [weak self] in Task { await self?.sessionMonitor.refresh() } }
         .store(in: &cancellables)
         sessionMonitor.onCodexLimits = { [weak self] snapshot, now in
-            guard let self, self.sessionMonitor.codexPresent, self.toolVisibility.showsCodex else { return }
+            guard let self, self.sessionMonitor.codexPresent else { return }
+            // Hidden: no alerts, and no stale baseline — the first reading after showing
+            // Codex again seeds silently instead of reading the gap as a refill.
+            guard self.toolVisibility.showsCodex else {
+                self.limitAlerts.resetBaseline(tool: .codex)
+                return
+            }
             self.limitAlerts.ingest(tool: .codex, snapshot: snapshot, now: now)
         }
         sessionMonitor.$codexPresent

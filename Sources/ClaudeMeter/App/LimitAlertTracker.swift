@@ -37,6 +37,11 @@ final class LimitAlertTracker {
         }
     }
 
+    /// Forget `tool`'s baseline, so its next reading seeds silently (a hidden tool).
+    func resetBaseline(tool: AgentTool) {
+        previous[tool] = nil
+    }
+
     /// "Remind me when it resets" for a tool's window, namespaced so Claude's and
     /// Codex's reminders never replace each other.
     func scheduleResetReminder(tool: AgentTool, window: LimitWindow) {

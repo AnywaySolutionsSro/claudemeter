@@ -68,6 +68,8 @@ struct ToolVisibilityTests {
     @Test func connectedDataFirstConnectButtonsLast() {
         let plan = DropdownPlan.make(visibility: vis(true, true), claudeSignedIn: false, codexConnected: true)
         #expect(plan.sections == [.codexUsage, .connectClaude])
+        #expect(plan.dataSections == [.codexUsage])
+        #expect(plan.connectSections == [.connectClaude])
         #expect(!plan.showsRefresh)
         #expect(plan.showsToolHeaders)
     }
@@ -75,6 +77,7 @@ struct ToolVisibilityTests {
     @Test func bothSignedOutAreTwoConnectButtons() {
         let plan = DropdownPlan.make(visibility: vis(true, true), claudeSignedIn: false, codexConnected: false)
         #expect(plan.sections == [.connectClaude, .connectCodex])
+        #expect(plan.dataSections.isEmpty)
     }
 
     @Test func bothConnectedShowBothUsages() {

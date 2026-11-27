@@ -34,6 +34,9 @@ final class AutoResumeCoordinator {
     private let log = Logger(subsystem: "com.jakubzak.claudemeter", category: "autoresume")
 
     /// Per-tool auto-resume state.
+    /// Bumped when a tool is hidden; a scheduled resume from an earlier epoch is dropped.
+    private var epochs: [AgentTool: Int] = [:]
+
     private struct ToolState {
         /// The windows of the last reading, to detect a refill of any of them.
         var lastWindows: [LimitWindow] = []
@@ -163,29 +166,6 @@ final class AutoResumeCoordinator {
         case .claude: { CutoffDetector().classify(tailLines: $0, isRunning: false) }
         case .codex: { CodexCutoffDetector().classify(tailLines: $0, isRunning: false) }
         }
-    }
-
-    /// Run the Claude and the Codex plan for one scan, against the live process table.
-    /// A tool left out of `tools` (hidden in Settings) is not planned, and its baseline
-    /// is dropped so showing it again can't read the gap as a refill.
-    func handleScan(claudeUsage: UsageSnapshot?, inputs: UsageContextInputs, tools: [AgentTool] = AgentTool.allCases) {
-        let paths: (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) }
-        let parents: (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
-        for tool in AgentTool.allCases where !tools.contains(tool) {
-            states[tool] = nil
-        }
-        if tools.contains(.claude) {
-            handleSnapshot(tool: .claude, usage: claudeUsage, sessions: inputs.sessions,
-                           processes: inputs.processes,
-                           transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
-                           paths: paths, parents: parents)
-        }
-        guard tools.contains(.codex) else { return }
-        handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
-                       processes: inputs.codexProcesses,
-                       transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },
-                       scannedAt: inputs.scannedAt, codexReached: inputs.codexReached,
-                       paths: paths, parents: parents)
     }
 
     /// Run one tool's plan for this scan. `sessions` may hold every tool's sessions:
@@ -348,8 +328,13 @@ final class AutoResumeCoordinator {
     private func scheduleResume(_ target: ResumeTarget, after delay: Double, projectName: String,
                                 tool: AgentTool) {
         let tag = Self.tag(tool)
+        let epoch = epochs[tool, default: 0]
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self else { return }
+            guard self.epochs[tool, default: 0] == epoch else {
+                self.log.notice("\(tag, privacy: .public)\(projectName, privacy: .public): skip — tool hidden")
+                return
+            }
             // tty-reuse defense (spec): re-verify the tty still maps to the same unique
             // live process of this tool, and that no process of the other tool shares it.
             let probe = LibprocProcessProbe()
@@ -390,5 +375,38 @@ final class AutoResumeCoordinator {
                 }
             }
         }
+    }
+}
+
+// MARK: - Per-scan entry point
+
+extension AutoResumeCoordinator {
+    /// Run the Claude and the Codex plan for one scan, against the live process table.
+    /// A tool left out of `tools` (hidden in Settings) is not planned, and its baseline
+    /// is dropped so showing it again can't read the gap as a refill.
+    func handleScan(claudeUsage: UsageSnapshot?, inputs: UsageContextInputs, tools: [AgentTool] = AgentTool.allCases) {
+        let paths: (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) }
+        let parents: (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
+        for tool in AgentTool.allCases where !tools.contains(tool) {
+            cancelPending(tool)
+        }
+        if tools.contains(.claude) {
+            handleSnapshot(tool: .claude, usage: claudeUsage, sessions: inputs.sessions,
+                           processes: inputs.processes,
+                           transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
+                           paths: paths, parents: parents)
+        }
+        guard tools.contains(.codex) else { return }
+        handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
+                       processes: inputs.codexProcesses,
+                       transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },
+                       scannedAt: inputs.scannedAt, codexReached: inputs.codexReached,
+                       paths: paths, parents: parents)
+    }
+
+    /// A hidden tool: drop its baseline and cancel its already-scheduled resumes.
+    private func cancelPending(_ tool: AgentTool) {
+        if states[tool] != nil { states[tool] = nil }
+        epochs[tool, default: 0] += 1
     }
 }

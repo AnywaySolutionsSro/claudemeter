@@ -245,8 +245,9 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   **only while the popover is closed** (otherwise it waits for `popoverDidClose`) and skips
   no-ops, since resizing under an open popover misaligns it. The other modes keep a fixed slot and render as before,
   Claude only.
-- **Dropdown = `DropdownPlan.make` (core, tested).** Connected tools' data first, then a
-  compact connect button per disconnected tool (`ClaudeConnectSection`: "Connect Claude
+- **Dropdown = `DropdownPlan.make` (core, tested).** Connected tools' data first
+  (`dataSections`, then API spend), then — directly above the footer — a compact connect
+  button per disconnected tool (`connectSections`) (`ClaudeConnectSection`: "Connect Claude
   account" + "Paste code manually" + a failed login's error; `CodexConnectSection`: "Connect
   Codex account" = the ChatGPT login), then **one footer, always last**: Claude's status /
   "Updated …" + Refresh (only while Claude's usage shows), the "⋯" menu, and **Quit at the very
@@ -258,9 +259,11 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   General, shown once Codex is present or signed in). `ToolVisibility` resolves them: never
   both hidden (the last toggle on is disabled, and a hidden Claude comes back whenever Codex
   isn't available). A hidden tool leaves the dropdown, the battery, the widget (gauges and
-  session rows, via the optional `SessionSnapshot.hiddenTools`), its limit alerts and
-  auto-resume (`AutoResumeCoordinator.handleScan(tools:)` also drops its baseline so showing
-  it again can't read the gap as a refill); the Sessions window still lists everything.
+  session rows and the running-count chip, via the optional `SessionSnapshot.hiddenTools`),
+  its limit alerts (`LimitAlertTracker.resetBaseline` while hidden, so the first reading after
+  showing it again seeds silently) and auto-resume (`AutoResumeCoordinator.handleScan(tools:)`
+  drops its baseline the same way and bumps a per-tool epoch that cancels already-scheduled
+  staggered resumes); the Sessions window still lists everything.
   `showCodex` replaced `showCodexInMenuBar`: its stored value is migrated once and the old
   key removed. Widget gauges follow the battery's rule — only connected, shown tools.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget

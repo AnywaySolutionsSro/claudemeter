@@ -71,6 +71,16 @@ public struct DropdownPlan: Equatable, Sendable {
     /// The footer's "Updated …" line and Refresh (Claude's usage poll).
     public let showsRefresh: Bool
 
+    /// Connected tools' data, shown first (API spend follows them).
+    public var dataSections: [DropdownSection] {
+        sections.filter { $0 == .claudeUsage || $0 == .codexUsage }
+    }
+
+    /// The connect buttons, directly above the footer.
+    public var connectSections: [DropdownSection] {
+        sections.filter { $0 == .connectClaude || $0 == .connectCodex }
+    }
+
     public static func make(visibility: ToolVisibility, claudeSignedIn: Bool, codexConnected: Bool) -> DropdownPlan {
         var usage: [DropdownSection] = []
         var connect: [DropdownSection] = []
