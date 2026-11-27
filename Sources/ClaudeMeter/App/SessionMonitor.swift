@@ -15,6 +15,8 @@ struct UsageContextInputs {
     let armableIDs: [String]
     /// The Codex limit reading as of this scan (past-reset windows read as full), or nil.
     let codexLimits: UsageSnapshot?
+    /// The Codex window `rate_limit_reached_type` says cut sessions off, until it resets.
+    let codexReached: LimitWindow?
     /// When this scan ran — the instant `codexLimits` was evaluated at.
     let scannedAt: Date
 }
@@ -239,7 +241,9 @@ final class SessionMonitor: ObservableObject {
         if let codexUsage { onCodexLimits?(codexUsage, now) }
         onScan?(UsageContextInputs(sessions: allSessions, processes: processes,
                                    codexProcesses: codex.processes, armableIDs: armable,
-                                   codexLimits: codexUsage, scannedAt: now))
+                                   codexLimits: codexUsage,
+                                   codexReached: CodexLimits.reachedWindow(codex.limits, now: now),
+                                   scannedAt: now))
     }
 
     /// Last `maxLines` non-empty lines of a session's transcript, for the cutoff gate.

@@ -22,11 +22,37 @@ public extension CodexLimits {
     }
 
     /// `AutoResumePlanner.gate` for Codex: blocked while an account-wide window is
-    /// exhausted (past-reset windows already read as full in `current`), else the
-    /// windows that refilled per `refilledWindows`.
-    static func gate(previous: [LimitWindow], previousAt: Date?, current: UsageSnapshot, now: Date) -> ResumeGate {
+    /// exhausted (past-reset windows already read as full in `current`) or while the
+    /// `reached` window (`reachedWindow`) has not reset, else the windows that
+    /// refilled per `refilledWindows`. Without `reached`, a 5-h refill under a weekly
+    /// limit that cut the session off below 100% would type `continue` into a wall.
+    static func gate(
+        previous: [LimitWindow], previousAt: Date?, current: UsageSnapshot, now: Date, reached: LimitWindow? = nil,
+    ) -> ResumeGate {
         if let blocking = current.blockingWindow { return .blocked(blocking) }
+        if let reached { return .blocked(reached) }
         return .clear(refilled: refilledWindows(previous: previous, previousAt: previousAt, current: current, now: now))
+    }
+
+    /// The window a reading's `rate_limit_reached_type` cut the session off at, while
+    /// its reset has not passed; `nil` when nothing is reached. The type's values are
+    /// unverified, so the reached window is the reading's fullest one (ties: the later
+    /// reset, the conservative choice). Without windows there is no reset to wait
+    /// for, so nothing blocks (blocking would wedge auto-resume for good).
+    static func reachedWindow(_ reading: CodexLimitReading?, now: Date) -> LimitWindow? {
+        guard let reading, reading.reachedType != nil,
+              let fullest = reading.windows.max(by: isLessReached),
+              !isPastReset(fullest, now: now)
+        else { return nil }
+        let alone = CodexLimitReading(
+            limitID: reading.limitID, observedAt: reading.observedAt, windows: [fullest], reachedType: nil,
+        )
+        return snapshot(from: alone, now: now).limitWindows.first
+    }
+
+    private static func isLessReached(_ lhs: CodexWindowReading, _ rhs: CodexWindowReading) -> Bool {
+        if lhs.usedPercent != rhs.usedPercent { return lhs.usedPercent < rhs.usedPercent }
+        return (lhs.resetsAt ?? .distantFuture) < (rhs.resetsAt ?? .distantFuture)
     }
 
     private static func isPast(_ resetsAt: Date?, at date: Date) -> Bool {

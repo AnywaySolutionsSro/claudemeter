@@ -98,4 +98,50 @@ struct CodexRefillTests {
             current: snapshot(10, resetsAt: nil, now: now), now: now,
         ).isEmpty)
     }
+
+    // MARK: rate_limit_reached_type blocks the gate
+
+    private func reading(session: Double, weekly: Double, reached: String?) -> CodexLimitReading {
+        CodexLimitReading(
+            limitID: "codex", observedAt: observed,
+            windows: [
+                CodexWindowReading(usedPercent: session, windowMinutes: 300, resetsAt: resets),
+                CodexWindowReading(
+                    usedPercent: weekly,
+                    windowMinutes: 10080,
+                    resetsAt: resets.addingTimeInterval(86400),
+                ),
+            ],
+            reachedType: reached,
+        )
+    }
+
+    @Test func sessionRefillUnderAReachedWeeklyLimitStaysBlocked() {
+        // Weekly cut the session off below 100%; then the 5-h window resets.
+        let limits = reading(session: 60, weekly: 97, reached: "secondary")
+        let before = resets.addingTimeInterval(-10)
+        let now = resets.addingTimeInterval(10)
+        let reached = CodexLimits.reachedWindow(limits, now: now)
+        #expect(reached?.id == "Weekly")
+        let gate = CodexLimits.gate(
+            previous: CodexLimits.snapshot(from: limits, now: before).limitWindows, previousAt: before,
+            current: CodexLimits.snapshot(from: limits, now: now), now: now, reached: reached,
+        )
+        guard case let .blocked(window) = gate else { Issue.record("expected blocked, got \(gate)"); return }
+        #expect(window.id == "Weekly")
+    }
+
+    @Test func reachedWindowClearsOnceItsResetPasses() {
+        let limits = reading(session: 100, weekly: 40, reached: "primary")
+        #expect(CodexLimits.reachedWindow(limits, now: resets.addingTimeInterval(-10))?.id == "Session")
+        #expect(CodexLimits.reachedWindow(limits, now: resets.addingTimeInterval(10)) == nil)
+    }
+
+    @Test func noReachedTypeOrNoWindowsIsNotReached() {
+        let now = observed.addingTimeInterval(60)
+        #expect(CodexLimits.reachedWindow(reading(session: 60, weekly: 97, reached: nil), now: now) == nil)
+        #expect(CodexLimits.reachedWindow(nil, now: now) == nil)
+        let bare = CodexLimitReading(limitID: "codex", observedAt: observed, windows: [], reachedType: "primary")
+        #expect(CodexLimits.reachedWindow(bare, now: now) == nil)
+    }
 }

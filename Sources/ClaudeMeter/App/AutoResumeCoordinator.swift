@@ -176,7 +176,8 @@ final class AutoResumeCoordinator {
         handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
                        processes: inputs.codexProcesses,
                        transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },
-                       scannedAt: inputs.scannedAt, paths: paths, parents: parents)
+                       scannedAt: inputs.scannedAt, codexReached: inputs.codexReached,
+                       paths: paths, parents: parents)
     }
 
     /// Run one tool's plan for this scan. `sessions` may hold every tool's sessions:
@@ -190,6 +191,7 @@ final class AutoResumeCoordinator {
         transcriptTail: (String) -> [String],
         classify: (([String]) -> SessionEligibility)? = nil,
         scannedAt: Date? = nil,
+        codexReached: LimitWindow? = nil,
         paths: @escaping (Int32) -> String?,
         parents: @escaping (Int32) -> Int32,
     ) {
@@ -217,7 +219,7 @@ final class AutoResumeCoordinator {
         let gate: ResumeGate = switch tool {
         case .claude: AutoResumePlanner.gate(previous: state.lastWindows, current: usage)
         case .codex: CodexLimits.gate(previous: state.lastWindows, previousAt: state.lastScanAt,
-                                      current: usage, now: scanAt)
+                                      current: usage, now: scanAt, reached: codexReached)
         }
         state.lastWindows = usage.limitWindows
         state.lastScanAt = scanAt
