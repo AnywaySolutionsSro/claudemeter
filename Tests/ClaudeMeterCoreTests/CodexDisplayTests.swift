@@ -128,3 +128,33 @@ struct CodexMenuBarLineTests {
         #expect(!CodexDisplay.showsCodexLine(enabled: true, present: false))
     }
 }
+
+struct CodexMenuBarBucketTests {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// Weekly is the most constrained, but the burn is measured on the session window.
+    private var limits: UsageSnapshot {
+        UsageSnapshot(
+            fiveHour: UsageBucket(utilization: 20, resetsAt: now.addingTimeInterval(3600)),
+            sevenDay: UsageBucket(utilization: 90, resetsAt: now.addingTimeInterval(86400)),
+            sevenDayOpus: nil, sevenDaySonnet: nil, fetchedAt: now,
+        )
+    }
+
+    @Test func burnRateShowsTheTrackedWindowNotTheMostConstrained() {
+        #expect(CodexDisplay.menuBarBucket(showsBurn: true, limits: limits) == limits.fiveHour)
+    }
+
+    @Test func otherModesShowTheMostConstrainedWindow() {
+        #expect(CodexDisplay.menuBarBucket(showsBurn: false, limits: limits) == limits.sevenDay)
+        #expect(CodexDisplay.menuBarBucket(showsBurn: true, limits: nil) == nil)
+    }
+
+    @Test func burnRateFallsBackToWeeklyWithoutASessionWindow() {
+        let weeklyOnly = UsageSnapshot(
+            fiveHour: nil, sevenDay: UsageBucket(utilization: 40, resetsAt: nil),
+            sevenDayOpus: nil, sevenDaySonnet: nil, fetchedAt: now,
+        )
+        #expect(CodexDisplay.menuBarBucket(showsBurn: true, limits: weeklyOnly) == weeklyOnly.sevenDay)
+    }
+}

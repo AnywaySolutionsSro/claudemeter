@@ -304,15 +304,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
             if stacked {
-                let codex = sessionMonitor.codexLimits
-                image = MenuBarLabel.stackedImage(
-                    claude: MenuBarLabel.content(mode: mode, signedIn: signedIn, bucket: snapshot?.primary,
-                                                 burn: burn, errorMessage: error, now: now),
-                    codex: MenuBarLabel.content(mode: mode, signedIn: true, bucket: codex?.mostConstrained,
-                                                burn: sessionMonitor.codexInsights.burn,
-                                                errorMessage: nil, now: now),
-                    scale: scale,
-                )
+                let claude = MenuBarLabel.content(mode: mode, signedIn: signedIn, bucket: snapshot?.primary,
+                                                  burn: burn, errorMessage: error, now: now)
+                image = stackedLabel(claude: claude, mode: mode, now: now, scale: scale)
             } else {
                 image = MenuBarLabel.image(
                     mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
@@ -437,6 +431,18 @@ private extension AppDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLabel() }
             .store(in: &cancellables)
+    }
+
+    /// Claude's line above Codex's. In burn-rate mode the Codex line shows the window
+    /// its burn is measured on, so the ETA meets that window's own reset.
+    func stackedLabel(claude: MenuBarContent, mode: DisplayMode, now: Date, scale: TextScale) -> NSImage {
+        let limits = sessionMonitor.codexLimits
+        let codex = MenuBarLabel.content(
+            mode: mode, signedIn: true,
+            bucket: CodexDisplay.menuBarBucket(showsBurn: mode == .burnRate, limits: limits),
+            burn: sessionMonitor.codexInsights.burn, errorMessage: nil, now: now,
+        )
+        return MenuBarLabel.stackedImage(claude: claude, codex: codex, scale: scale)
     }
 
     /// Whether the menu bar stacks Codex's line under Claude's.

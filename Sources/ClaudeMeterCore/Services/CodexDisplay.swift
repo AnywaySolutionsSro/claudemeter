@@ -10,6 +10,14 @@ public enum CodexDisplay {
         enabled && present
     }
 
+    /// The Codex window the menu-bar line shows. The burn-rate mode (`showsBurn`)
+    /// shows the window Codex's burn is measured on (session, else weekly — the
+    /// `UsageSample` rule), so its ETA is compared with that window's own reset;
+    /// every other mode shows the most constrained window.
+    public static func menuBarBucket(showsBurn: Bool, limits: UsageSnapshot?) -> UsageBucket? {
+        showsBurn ? limits?.primary : limits?.mostConstrained
+    }
+
     /// `reset at 07:00 · no reading since` for a window whose reset has passed with no
     /// newer Codex reading (Codex limits only refresh when a Codex turn runs). Same-day
     /// resets show the clock time, older ones the date too. `nil` for an upcoming reset.

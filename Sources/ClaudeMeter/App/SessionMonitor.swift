@@ -65,6 +65,10 @@ final class SessionMonitor: ObservableObject {
     private var timer: Timer?
     private var isScanning = false
     private var codexHistory: [UsageSample] = CodexUsageHistory.load()
+    /// When `codexInsights` was last computed, so an unchanged history is re-derived
+    /// (for the burn's decay to idle) at most once a minute, not every scan.
+    private var codexInsightsAt: Date?
+    private static let codexInsightsInterval: TimeInterval = 60
 
     /// Bundle id of the widget extension.
     nonisolated static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
@@ -252,10 +256,14 @@ final class SessionMonitor: ObservableObject {
     }
 
     /// Append the reading to Codex's history (once per reading, plus one reset point)
-    /// and refresh the insights — every scan, since an idle hour must read as idle.
+    /// and refresh the insights: at once when samples were added, else at most once a
+    /// minute — the burn depends on `now` (it decays to idle), so it can't wait forever.
     private func recordCodexHistory(_ reading: CodexLimitReading?, now: Date) {
         let samples = CodexHistory.samplesToRecord(reading: reading, now: now, history: codexHistory)
         codexHistory = CodexUsageHistory.append(samples, to: codexHistory)
+        let due = codexInsightsAt.map { now.timeIntervalSince($0) >= Self.codexInsightsInterval } ?? true
+        guard !samples.isEmpty || due else { return }
+        codexInsightsAt = now
         let insights = UsageInsights.compute(history: codexHistory, now: now)
         if insights != codexInsights { codexInsights = insights }
     }
