@@ -16,14 +16,23 @@ public protocol CodexTranscriptDiscovering: TranscriptDiscovering {
 /// - Titles from `session_index.jsonl` (`id`, `thread_name`; the last entry per id wins).
 ///
 /// Never touches `auth.json`. A missing home or file contributes nothing.
+/// Discovery runs every 10 s, so a rollout's meta and the parsed index are cached
+/// (`CodexSourceCache`): an unchanged file is never re-read.
 /// `@unchecked Sendable`: `FileManager` is only used for read-only enumeration.
 public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Sendable {
     private let codexHome: URL
     private let fileManager: FileManager
+    private let reader: CodexSourceReader
+    private let cache = CodexSourceCache()
 
     public init(codexHome: URL = CodexTranscriptSource.defaultHome, fileManager: FileManager = .default) {
+        self.init(codexHome: codexHome, fileManager: fileManager, reader: .live)
+    }
+
+    init(codexHome: URL, fileManager: FileManager, reader: CodexSourceReader) {
         self.codexHome = codexHome
         self.fileManager = fileManager
+        self.reader = reader
     }
 
     /// `~/.codex`.
@@ -47,6 +56,7 @@ public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Send
         for case let url as URL in enumerator where isRollout(url) {
             refs.append(makeRef(url: url, titles: titles))
         }
+        cache.retainMetas(forPaths: Set(refs.map(\.url.path)))
         return refs
     }
 
@@ -74,12 +84,12 @@ public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Send
     }
 
     private func makeRef(url: URL, titles: [String: String]) -> TranscriptRef {
-        let meta = sessionMeta(of: url)
-        let id = meta.id ?? fallbackID(of: url)
+        let meta = cache.meta(forPath: url.path) { sessionMeta(of: url) }
+        let id = meta?.id ?? fallbackID(of: url)
         let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? Date(timeIntervalSince1970: 0)
         return TranscriptRef(
-            id: id, url: url, origin: Self.origin(ofOriginator: meta.originator),
+            id: id, url: url, origin: Self.origin(ofOriginator: meta?.originator),
             title: titles[id], modifiedAt: modifiedAt,
         )
     }
@@ -92,11 +102,11 @@ public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Send
     }
 
     /// `id` / `originator` from the first line when it is a `session_meta` entry.
-    private func sessionMeta(of url: URL) -> (id: String?, originator: String?) {
-        guard let line = TranscriptFileReader.firstLine(of: url),
+    private func sessionMeta(of url: URL) -> CodexSourceCache.Meta? {
+        guard let line = reader.firstLine(url),
               case let .meta(id, _, originator, _)? = CodexTranscriptParser.parse(line)?.event
-        else { return (nil, nil) }
-        return (id, originator)
+        else { return nil }
+        return CodexSourceCache.Meta(id: id, originator: originator)
     }
 
     /// `rollout-2026-11-26T22-57-51-<uuid>` → `<uuid>`; the whole stem if it is shorter.
@@ -108,8 +118,18 @@ public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Send
 
     private func threadTitles() -> [String: String] {
         let url = codexHome.appendingPathComponent("session_index.jsonl")
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let stamp = values.flatMap { values in
+            values.contentModificationDate.map {
+                CodexSourceCache.IndexStamp(modifiedAt: $0, size: values.fileSize ?? 0)
+            }
+        }
+        return cache.titles(stamp: stamp) { parseTitles(reader.lines(url)) }
+    }
+
+    private func parseTitles(_ lines: [String]) -> [String: String] {
         var titles: [String: String] = [:]
-        for line in TranscriptFileReader.lines(of: url) {
+        for line in lines {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                   let id = object["id"] as? String,
                   let name = object["thread_name"] as? String, !name.isEmpty

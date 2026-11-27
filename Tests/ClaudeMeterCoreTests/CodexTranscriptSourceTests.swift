@@ -1,5 +1,6 @@
 @testable import ClaudeMeterCore
 import Foundation
+import Synchronization
 import Testing
 
 struct CodexTranscriptSourceTests {
@@ -114,5 +115,89 @@ struct CodexTranscriptSourceTests {
 
     @Test func defaultHomeIsDotCodex() {
         #expect(CodexTranscriptSource.defaultHome.path.hasSuffix("/.codex"))
+    }
+
+    @Test func secondDiscoverReusesMetaAndUnchangedIndex() throws {
+        defer { cleanup() }
+        try copyFixture(CodexFixtures.tuiURL, to: "sessions/2026/11/26")
+        try write("""
+        {"id":"\(CodexFixtures.tuiSessionID)","thread_name":"Show render"}
+        """, to: "session_index.jsonl")
+        let reads = ReadCounter()
+        let source = CodexTranscriptSource(codexHome: home, fileManager: fm, reader: reads.reader)
+
+        let first = source.discover()
+        let second = source.discover()
+
+        #expect(first == second)
+        #expect(second.first?.title == "Show render")
+        #expect(second.first?.origin == .codexCLI)
+        #expect(reads.firstLineReads == 1)
+        #expect(reads.indexReads == 1)
+
+        // A changed index is read again; a new rollout gets its own first-line read.
+        try write("""
+        {"id":"\(CodexFixtures.tuiSessionID)","thread_name":"Renamed thread"}
+        """, to: "session_index.jsonl")
+        try fm.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(60)],
+            ofItemAtPath: home.appendingPathComponent("session_index.jsonl").path,
+        )
+        try copyFixture(CodexFixtures.importedURL, to: "sessions/2026/11/27")
+        let third = source.discover()
+        #expect(third.first { $0.id == CodexFixtures.tuiSessionID }?.title == "Renamed thread")
+        #expect(reads.indexReads == 2)
+        #expect(reads.firstLineReads == 2)
+    }
+
+    @Test func metaWithoutIDKeepsItsOriginator() throws {
+        defer { cleanup() }
+        let id = "01a21d99-0000-7000-8000-000000000004"
+        try write("""
+        {"type":"session_meta","payload":{"originator":"codex-tui"}}\n
+        """, to: "sessions/2026/11/27/rollout-2026-11-27T16-00-00-\(id).jsonl")
+        let source = CodexTranscriptSource(codexHome: home, fileManager: fm)
+        for ref in [source.discover(), source.discover()].flatMap(\.self) {
+            #expect(ref.id == id)
+            #expect(ref.origin == .codexCLI)
+        }
+    }
+
+    @Test func fileWithoutMetaIsRetriedNextDiscover() throws {
+        defer { cleanup() }
+        let id = "01a21d99-0000-7000-8000-000000000003"
+        try write("", to: "sessions/2026/11/27/rollout-2026-11-27T16-00-00-\(id).jsonl")
+        let reads = ReadCounter()
+        let source = CodexTranscriptSource(codexHome: home, fileManager: fm, reader: reads.reader)
+        _ = source.discover()
+        _ = source.discover()
+        // Not cached until a session_meta line exists (the first line may not be written yet).
+        #expect(reads.firstLineReads == 2)
+    }
+}
+
+/// Counts the reads `CodexTranscriptSource` makes through its injected reader.
+private final class ReadCounter: Sendable {
+    private let counts = Mutex((firstLine: 0, index: 0))
+
+    var firstLineReads: Int {
+        counts.withLock { $0.firstLine }
+    }
+
+    var indexReads: Int {
+        counts.withLock { $0.index }
+    }
+
+    var reader: CodexSourceReader {
+        CodexSourceReader(
+            firstLine: { url in
+                self.counts.withLock { $0.firstLine += 1 }
+                return TranscriptFileReader.firstLine(of: url)
+            },
+            lines: { url in
+                self.counts.withLock { $0.index += 1 }
+                return TranscriptFileReader.lines(of: url)
+            },
+        )
     }
 }
