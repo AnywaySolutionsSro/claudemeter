@@ -178,12 +178,21 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category ==
   "autoresume"'`; `logCodexTails` dumps the armed sessions' last records) and fix the detector
   against the real shape.
-- **Menu bar:** with Codex present and `showCodexInMenuBar` on (the default), the label is **one
-  pill with two concentric fuel rings** — outer = Claude (orange), inner = Codex (green, most
-  constrained window), each draining with its % left over a faint track — and "68% · 96%" in the
-  tools' colours (red under 10%), whatever the display mode. Geometry/text are pure in
-  `DualRingPill`; drawing in `MenuBarLabel+DualRing`. Width is sized for "100% · 100%" and depends
-  only on presence + toggle + scale, never on a reading. Claude-only users keep the old label.
+- **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`; new users
+  get it, and users on Classic were moved to it once — `batteryModeMigrated` — so picking
+  Classic again sticks). A rounded body with a terminal nub on the right, figures in **white**
+  with a dark halo. Claude alone: the whole body is Claude's (orange), filled from the left and
+  draining from the right. With Codex present and `showCodexInMenuBar` on (the default), the
+  battery is used **whatever the mode** — one item for both tools: a divider splits the body,
+  Claude (orange) on the left, Codex (green) on the right, each fill **anchored at the
+  divider** and draining from its outer edge. The figure per tool is its session window, else
+  weekly (`snapshot.primary`; Codex's past-reset window reads as full); no reading = empty
+  track and "—", never a fake 0%. The drained track is the tool colour darkened at half alpha
+  so white stays legible in light and dark bars. Geometry is pure in `BatteryPill` (tested);
+  drawing in `MenuBarLabel+Battery`. The width is sized from `BatteryPill.references` at the
+  text scale and depends only on mode + presence + toggle + scale, never on a reading (a
+  signed-out Claude-only slot also fits the "Sign in" pill). The other modes render as before,
+  Claude only.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool
   (`LimitEvents`, "Codex · …"), so same-named alerts never replace each other. All Codex UI stays

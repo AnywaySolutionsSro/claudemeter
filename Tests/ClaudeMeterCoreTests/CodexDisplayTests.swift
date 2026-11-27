@@ -121,10 +121,10 @@ struct CodexDisplayTests {
     }
 }
 
-struct CodexMenuBarRingTests {
-    @Test func theCodexRingNeedsBothTheSettingAndCodex() {
-        #expect(CodexDisplay.showsCodexRing(enabled: true, present: true))
-        #expect(!CodexDisplay.showsCodexRing(enabled: false, present: true))
-        #expect(!CodexDisplay.showsCodexRing(enabled: true, present: false))
+struct CodexMenuBarTests {
+    @Test func codexInTheMenuBarNeedsBothTheSettingAndCodex() {
+        #expect(CodexDisplay.showsCodexInMenuBar(enabled: true, present: true))
+        #expect(!CodexDisplay.showsCodexInMenuBar(enabled: false, present: true))
+        #expect(!CodexDisplay.showsCodexInMenuBar(enabled: true, present: false))
     }
 }
