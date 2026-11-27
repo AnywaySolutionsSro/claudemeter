@@ -120,11 +120,3 @@ struct CodexDisplayTests {
         #expect(note == "as of 6:00 AM")
     }
 }
-
-struct CodexMenuBarTests {
-    @Test func codexInTheMenuBarNeedsBothTheSettingAndCodex() {
-        #expect(CodexDisplay.showsCodexInMenuBar(enabled: true, present: true))
-        #expect(!CodexDisplay.showsCodexInMenuBar(enabled: false, present: true))
-        #expect(!CodexDisplay.showsCodexInMenuBar(enabled: true, present: false))
-    }
-}

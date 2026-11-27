@@ -59,11 +59,16 @@ final class Settings: ObservableObject {
         didSet { defaults.set(codexNotificationsEnabled, forKey: Keys.codexNotificationsEnabled) }
     }
 
-    /// Codex's ring and figure in the menu-bar pill (Codex's most constrained window).
-    /// On by default, but it only appears once Codex is present: a Claude-only user
-    /// keeps the single-line label.
-    @Published var showCodexInMenuBar: Bool {
-        didSet { defaults.set(showCodexInMenuBar, forKey: Keys.showCodexInMenuBar) }
+    /// Show Claude (dropdown, menu-bar battery, widget, alerts, auto-resume). The toggle
+    /// appears once Codex is available; `ToolVisibility` never lets both be hidden.
+    @Published var showClaude: Bool {
+        didSet { defaults.set(showClaude, forKey: Keys.showClaude) }
+    }
+
+    /// Show Codex everywhere Claude can be hidden from. Replaces the old
+    /// `showCodexInMenuBar` toggle, whose stored value it takes over once.
+    @Published var showCodex: Bool {
+        didSet { defaults.set(showCodex, forKey: Keys.showCodex) }
     }
 
     /// Threshold nudges for paid extra usage (spending started / 80% / cap reached).
@@ -132,7 +137,8 @@ final class Settings: ObservableObject {
         self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
         self.codexNotificationsEnabled = defaults.object(forKey: Keys.codexNotificationsEnabled) as? Bool ?? true
-        self.showCodexInMenuBar = defaults.object(forKey: Keys.showCodexInMenuBar) as? Bool ?? true
+        self.showClaude = defaults.object(forKey: Keys.showClaude) as? Bool ?? true
+        self.showCodex = Self.migratedShowCodex(defaults)
         self.extraUsageNotificationsEnabled =
             defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
@@ -150,6 +156,16 @@ final class Settings: ObservableObject {
         self.pendingInstallVersion = defaults.string(forKey: Keys.pendingInstallVersion)
     }
 
+    /// `showCodex`, seeded once from the retired `showCodexInMenuBar` (whose key is then
+    /// removed), so someone who had switched Codex off keeps it off.
+    private static func migratedShowCodex(_ defaults: UserDefaults) -> Bool {
+        if let stored = defaults.object(forKey: Keys.showCodex) as? Bool { return stored }
+        let legacy = defaults.object(forKey: Keys.legacyShowCodexInMenuBar) as? Bool ?? true
+        defaults.set(legacy, forKey: Keys.showCodex)
+        defaults.removeObject(forKey: Keys.legacyShowCodexInMenuBar)
+        return legacy
+    }
+
     private enum Keys {
         static let displayMode = "displayMode"
         static let batteryModeMigrated = "batteryModeMigrated"
@@ -158,7 +174,9 @@ final class Settings: ObservableObject {
         static let notificationsEnabled = "notificationsEnabled"
         static let codexNotificationsEnabled = "codexNotificationsEnabled"
         static let extraUsageNotificationsEnabled = "extraUsageNotificationsEnabled"
-        static let showCodexInMenuBar = "showCodexInMenuBar"
+        static let showClaude = "showClaude"
+        static let showCodex = "showCodex"
+        static let legacyShowCodexInMenuBar = "showCodexInMenuBar"
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
         static let autoResumeContinueText = "autoResumeContinueText"

@@ -24,7 +24,7 @@ enum MenuBarLabel {
             return pill(text: "Sign in", textColor: .labelColor, borderColor: claudeOrange,
                         font: font, verticalPadding: verticalPadding)
         case let .battery(remaining):
-            return battery(claudeLeft: remaining, scale: scale)
+            return battery(left: remaining, scale: scale)
         case let .glyph(text, color):
             return glyph(text, color: color, font: font, verticalPadding: verticalPadding)
         case let .gauge(text, remaining):

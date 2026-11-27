@@ -227,11 +227,14 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 - **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`; new users
   get it, and users on Classic were moved to it once — `batteryModeMigrated` — so picking
   Classic again sticks). A rounded body (no terminal nub), figures in **white**
-  with a dark halo. Claude alone: the whole body is Claude's (orange), filled from the left and
-  draining from the right. With Codex present and `showCodexInMenuBar` on (the default), the
-  battery is used **whatever the mode** — one item for both tools: a divider splits the body,
-  Claude (orange) on the left, Codex (green) on the right, each fill **anchored at the
-  divider** and draining from its outer edge. The figure per tool is its session window, else
+  with a dark halo. **The battery shows only CONNECTED, shown tools**
+  (`ToolVisibility.limitTools(claudeSignedIn:codexConnected:)`, test table in
+  `ToolVisibilityTests`; Codex "connected" = signed in to ChatGPT, transcripts don't count):
+  Claude alone → the mode's own label (battery: the whole body orange, filled from the left
+  and draining from the right); Codex alone → a whole-body **green** battery whatever the mode
+  (`BatteryPill.single(left:tool:)`); both → the split battery whatever the mode — a divider
+  splits the body, Claude (orange) on the left, Codex (green) on the right, each fill
+  **anchored at the divider** and draining from its outer edge; neither → the "Sign in" pill. The figure per tool is its session window, else
   weekly (`snapshot.primary`; Codex's past-reset window reads as full); no reading = empty
   track and "—", never a fake 0%. The drained track is the tool colour darkened at half alpha
   so white stays legible in light and dark bars. Geometry is pure in `BatteryPill` (tested);
@@ -242,6 +245,24 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
   **only while the popover is closed** (otherwise it waits for `popoverDidClose`) and skips
   no-ops, since resizing under an open popover misaligns it. The other modes keep a fixed slot and render as before,
   Claude only.
+- **Dropdown = `DropdownPlan.make` (core, tested).** Connected tools' data first, then a
+  compact connect button per disconnected tool (`ClaudeConnectSection`: "Connect Claude
+  account" + "Paste code manually" + a failed login's error; `CodexConnectSection`: "Connect
+  Codex account" = the ChatGPT login), then **one footer, always last**: Claude's status /
+  "Updated …" + Refresh (only while Claude's usage shows), the "⋯" menu, and **Quit at the very
+  bottom** whatever is signed in. Codex without ChatGPT is only the connect button in the
+  dropdown — no transcript gauges there — while transcripts still drive Codex sessions, the
+  Sessions window, auto-resume and the widget's session rows. The Codex button appears only
+  once Codex is available (present or signed in).
+- **Show Claude / Show Codex** (`Settings.showClaude` / `showCodex`, default on; Settings →
+  General, shown once Codex is present or signed in). `ToolVisibility` resolves them: never
+  both hidden (the last toggle on is disabled, and a hidden Claude comes back whenever Codex
+  isn't available). A hidden tool leaves the dropdown, the battery, the widget (gauges and
+  session rows, via the optional `SessionSnapshot.hiddenTools`), its limit alerts and
+  auto-resume (`AutoResumeCoordinator.handleScan(tools:)` also drops its baseline so showing
+  it again can't read the gap as a refill); the Sessions window still lists everything.
+  `showCodex` replaced `showCodexInMenuBar`: its stored value is migrated once and the old
+  key removed. Widget gauges follow the battery's rule — only connected, shown tools.
 - **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
   reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool
   (`LimitEvents`, "Codex · …"), so same-named alerts never replace each other. All Codex UI stays

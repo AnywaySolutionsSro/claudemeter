@@ -213,7 +213,7 @@ struct ClaudeMeterWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
 
-    private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
+    private var sessions: [SessionUsage] { entry.snapshot?.visibleSessions ?? [] }
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
     private var armedIDs: Set<String> { entry.effectiveArmed }
     /// Nothing is armable from a stale snapshot: the processes it names may be gone.

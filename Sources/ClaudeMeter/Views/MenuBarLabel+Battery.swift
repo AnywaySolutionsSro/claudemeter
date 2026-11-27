@@ -1,7 +1,7 @@
 import AppKit
 import ClaudeMeterCore
 
-/// The battery pill: Claude alone, or Claude and Codex side by side. Geometry is pure in
+/// The battery pill: one tool alone, or Claude and Codex side by side. Geometry is pure in
 /// `BatteryPill`; this only measures the font and draws.
 extension MenuBarLabel {
     private static let batteryLineWidth: CGFloat = 1
@@ -13,9 +13,10 @@ extension MenuBarLabel {
     /// Clear space between the image and the status item's edge.
     private static let batterySlotMargin: CGFloat = 1
 
-    /// Claude alone: the whole body is Claude's, filled from the left.
-    static func battery(claudeLeft: Double?, scale: TextScale) -> NSImage {
-        drawBattery(BatteryPill.single(claudeLeft: claudeLeft, metrics: batteryMetrics(for: scale),
+    /// One tool alone (Claude, or Codex when it is the only one shown): the whole body
+    /// is that tool's, in its colour, filled from the left.
+    static func battery(left: Double?, tool: AgentTool = .claude, scale: TextScale) -> NSImage {
+        drawBattery(BatteryPill.single(left: left, tool: tool, metrics: batteryMetrics(for: scale),
                                        measure: figureMeasure(for: scale)), scale: scale)
     }
 
@@ -39,7 +40,7 @@ extension MenuBarLabel {
         let measure = figureMeasure(for: scale)
         let layout = dual
             ? BatteryPill.dual(claudeLeft: nil, codexLeft: nil, metrics: metrics, measure: measure)
-            : BatteryPill.single(claudeLeft: nil, metrics: metrics, measure: measure)
+            : BatteryPill.single(left: nil, metrics: metrics, measure: measure)
         return batterySlotWidth(imageWidth: CGFloat(layout.width))
     }
 

@@ -16,35 +16,59 @@ struct MenuContentView: View {
     @EnvironmentObject var settings: Settings
     @EnvironmentObject var updates: UpdateService
     @EnvironmentObject var monitor: SessionMonitor
+    @EnvironmentObject var chatGPT: ChatGPTAuthModel
     @Environment(\.textScale) private var scale
     @State private var now = Date()
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
+        let plan = plan
         VStack(alignment: .leading, spacing: scale.pt(12)) {
             header
             Divider()
             UpdateBanner()
-            // The tool headings appear only once Codex is present: a Claude-only
-            // dropdown looks exactly as it did before.
-            if monitor.codexPresent { ToolHeader(tool: .claude) }
-            if auth.isSignedIn {
-                usageContent
-                codexContent
-                Divider()
-                signedInFooter
-            } else {
-                loginContent
-                codexContent
+            ForEach(Array(plan.sections.enumerated()), id: \.offset) { index, section in
+                if index > 0 { Divider() }
+                view(for: section, plan: plan)
             }
-            // Outside the sign-in branch on purpose: API spend uses the admin key, which
+            // Outside the sign-in sections on purpose: API spend uses the admin key, which
             // has nothing to do with the OAuth subscription login.
             ApiSpendSection(now: now)
+            Divider()
+            footer(plan)
         }
         .padding(scale.pt(14))
         .frame(width: scale.pt(300))
         .onReceive(ticker) { now = $0 }
+    }
+
+    /// Connected tools' data first, connect buttons last, hidden tools left out.
+    private var visibility: ToolVisibility {
+        ToolVisibility(showClaude: settings.showClaude, showCodex: settings.showCodex,
+                       codexAvailable: monitor.codexPresent || chatGPT.isSignedIn)
+    }
+
+    private var plan: DropdownPlan {
+        DropdownPlan.make(visibility: visibility, claudeSignedIn: auth.isSignedIn,
+                          codexConnected: chatGPT.isSignedIn)
+    }
+
+    @ViewBuilder private func view(for section: DropdownSection, plan: DropdownPlan) -> some View {
+        switch section {
+        case .claudeUsage:
+            VStack(alignment: .leading, spacing: scale.pt(12)) {
+                // Headed only next to Codex: a Claude-only dropdown looks as it always did.
+                if plan.showsToolHeaders { ToolHeader(tool: .claude) }
+                usageContent
+            }
+        case .codexUsage:
+            CodexSection(now: now, onRemind: onRemindCodex)
+        case .connectClaude:
+            ClaudeConnectSection()
+        case .connectCodex:
+            CodexConnectSection()
+        }
     }
 
     private var header: some View {
@@ -67,13 +91,6 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Settings")
-        }
-    }
-
-    @ViewBuilder private var codexContent: some View {
-        if monitor.codexPresent {
-            Divider()
-            CodexSection(now: now, onRemind: onRemindCodex)
         }
     }
 
@@ -129,23 +146,25 @@ struct MenuContentView: View {
         }
     }
 
-    private var signedInFooter: some View {
+    /// The one footer, always last whatever is signed in: Claude's status and Refresh
+    /// (while its usage shows), the extra-options menu, and Quit at the very bottom.
+    private func footer(_ plan: DropdownPlan) -> some View {
         VStack(alignment: .leading, spacing: scale.pt(8)) {
-            if let note = store.statusNote {
-                Text(note).font(scale.font(10)).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack {
-                if let updated = store.lastUpdated {
-                    Text("Updated \(Formatting.clockTime(updated, style: settings.clockStyle))")
-                        .font(scale.font(10)).foregroundColor(.secondary)
+            if plan.showsRefresh {
+                if let note = store.statusNote {
+                    Text(note).font(scale.font(10)).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                Button("Refresh") { Task { await store.refresh(force: true) } }
-                    .font(scale.font(11))
+                HStack {
+                    if let updated = store.lastUpdated {
+                        Text("Updated \(Formatting.clockTime(updated, style: settings.clockStyle))")
+                            .font(scale.font(10)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button("Refresh") { Task { await store.refresh(force: true) } }
+                        .font(scale.font(11))
+                }
             }
-
             HStack {
                 quickLinksMenu
                 Spacer()
@@ -170,10 +189,13 @@ struct MenuContentView: View {
 
     private var quickLinksMenu: some View {
         Menu("⋯") {
-            if monitor.codexPresent {
+            let visibility = visibility
+            if visibility.showsClaude, visibility.showsCodex {
                 // Both tools: one titled group each, so it is clear whose page opens.
                 Section("Claude") { claudeLinks }
                 Section("Codex") { codexLinks }
+            } else if visibility.showsCodex {
+                codexLinks
             } else {
                 claudeLinks
             }
@@ -181,72 +203,5 @@ struct MenuContentView: View {
         .menuStyle(.borderlessButton)
         .frame(width: scale.pt(28))
         .font(scale.font(11))
-    }
-
-    // MARK: - Signed out / login
-
-    @ViewBuilder private var loginContent: some View {
-        switch auth.state {
-        case .signedOut:
-            VStack(alignment: .leading, spacing: scale.pt(10)) {
-                Text("Connect your Claude account to see your usage and reset times.")
-                    .font(scale.font(12)).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let error = auth.errorMessage {
-                    Text(error).font(scale.font(10)).foregroundColor(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Button("Connect Claude account") { auth.beginLogin() }
-                    .keyboardShortcut(.defaultAction)
-                Button("Paste code manually") { auth.beginManualLogin() }
-                    .buttonStyle(.link).font(scale.font(10))
-                quitRow
-            }
-
-        case .waitingForBrowser:
-            VStack(alignment: .leading, spacing: scale.pt(10)) {
-                HStack(spacing: scale.pt(8)) {
-                    ProgressView().controlSize(.small)
-                    Text("Waiting for approval in your browser…")
-                        .font(scale.font(12)).foregroundColor(.secondary)
-                }
-                Text("Approve access in the browser tab that opened. This window updates on its own.")
-                    .font(scale.font(10)).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack { Button("Cancel") { auth.cancel() }.font(scale.font(11)); Spacer() }
-            }
-
-        case .awaitingCode, .connecting:
-            VStack(alignment: .leading, spacing: scale.pt(8)) {
-                Text("Approve access in the browser, copy the code shown, and paste it here:")
-                    .font(scale.font(11)).foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                TextField("Paste authorization code", text: $auth.pastedCode)
-                    .textFieldStyle(.roundedBorder).font(scale.font(11))
-                    .disabled(auth.state == .connecting)
-                    .onSubmit { auth.submitCode() }
-                if let error = auth.errorMessage {
-                    Text(error).font(scale.font(10)).foregroundColor(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack {
-                    Button("Cancel") { auth.cancel() }.font(scale.font(11))
-                    Spacer()
-                    if auth.state == .connecting {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button("Sign in") { auth.submitCode() }
-                            .font(scale.font(11)).keyboardShortcut(.defaultAction)
-                    }
-                }
-            }
-
-        case .signedIn:
-            EmptyView()
-        }
-    }
-
-    private var quitRow: some View {
-        HStack { Spacer(); Button("Quit") { NSApplication.shared.terminate(nil) }.font(scale.font(11)) }
     }
 }

@@ -26,10 +26,11 @@ extension ToolHeader where Trailing == EmptyView {
     }
 }
 
-/// Codex's limit windows and sessions in the dropdown. Without a ChatGPT sign-in, Codex
-/// limits are only as fresh as the last Codex turn, so the reading's age is shown (it
-/// hides while a live reading is under 2 minutes old), and a window whose reset passed
-/// since says so instead of counting down.
+/// Codex's limit windows and sessions in the dropdown, shown once signed in to ChatGPT
+/// (signed out, the dropdown has only `CodexConnectSection`). A transcript reading can
+/// still be the newer one, so the reading's age is shown (it hides while a live reading
+/// is under 2 minutes old), and a window whose reset passed since says so instead of
+/// counting down.
 struct CodexSection: View {
     let now: Date
     /// "Remind me when it resets" for Codex's blocking window.
@@ -69,9 +70,7 @@ struct CodexSection: View {
                 )
                 cooldownBox(limits)
             } else {
-                Text(chatGPT.isSignedIn
-                    ? "Fetching live Codex limits…"
-                    : "No Codex limit reading yet — it arrives with the next Codex turn.")
+                Text("Fetching live Codex limits…")
                     .font(scale.font(11)).foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -79,35 +78,11 @@ struct CodexSection: View {
                 sessions: monitor.sessions, armedIDs: Set(monitor.snapshot?.armedSessionIDs ?? []),
             ))
             .font(scale.font(11)).foregroundColor(.secondary)
-            liveSignIn
         }
     }
 
     private var isFreshLive: Bool {
         CodexLimitSource.isFreshLive(monitor.codexLiveReading, shown: monitor.codexReading, now: now)
-    }
-
-    /// A small "Sign in for live limits" link while signed out of ChatGPT.
-    @ViewBuilder private var liveSignIn: some View {
-        switch chatGPT.state {
-        case .signedIn:
-            EmptyView()
-        case .waitingForBrowser:
-            HStack(spacing: scale.pt(6)) {
-                Text("Waiting for the browser…").font(scale.font(11)).foregroundColor(.secondary)
-                Button("Cancel") { chatGPT.cancel() }.font(scale.font(11))
-            }
-        case .signedOut:
-            VStack(alignment: .leading, spacing: scale.pt(4)) {
-                Button("Sign in for live limits") { chatGPT.beginLogin() }
-                    .buttonStyle(.link).font(scale.font(11))
-                    .help("Sign in to ChatGPT so Codex limits stay current between Codex turns")
-                if let error = chatGPT.errorMessage {
-                    Text(error).font(scale.font(10)).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
     }
 
     /// Mirrors Claude's cooling-down box, with the reminder namespaced to Codex.

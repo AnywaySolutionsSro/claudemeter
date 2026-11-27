@@ -8,8 +8,25 @@ extension AppDelegate {
     /// Codex limit readings arrive with each session scan; alerts (and the menu-bar ring) start only once Codex
     /// is present, and that is also when its alerts first need the notification permission.
     func installCodex() {
+        sessionMonitor.widgetToolsProvider = { [weak self] in
+            guard let self else { return (limitTools: [.claude], hidden: []) }
+            let visibility = self.toolVisibility
+            return (limitTools: visibility.limitTools(claudeSignedIn: self.authSignedIn,
+                                                      codexConnected: self.chatGPTAuth.isSignedIn),
+                    hidden: visibility.hiddenTools)
+        }
+        // A hidden or shown tool, or a ChatGPT sign-in, changes what the widget shows.
+        Publishers.Merge3(
+            settings.$showClaude.removeDuplicates().map { _ in () },
+            settings.$showCodex.removeDuplicates().map { _ in () },
+            chatGPTAuth.$state.removeDuplicates().map { _ in () },
+        )
+        .dropFirst(3)
+        .receive(on: RunLoop.main)
+        .sink { [weak self] in Task { await self?.sessionMonitor.refresh() } }
+        .store(in: &cancellables)
         sessionMonitor.onCodexLimits = { [weak self] snapshot, now in
-            guard let self, self.sessionMonitor.codexPresent else { return }
+            guard let self, self.sessionMonitor.codexPresent, self.toolVisibility.showsCodex else { return }
             self.limitAlerts.ingest(tool: .codex, snapshot: snapshot, now: now)
         }
         sessionMonitor.$codexPresent
@@ -45,10 +62,16 @@ extension AppDelegate {
         if chatGPTAuth.isSignedIn { codexLive.start() }
     }
 
-    /// Whether the menu-bar battery carries Codex's half next to Claude's.
-    var showsCodexInMenuBar: Bool {
-        CodexDisplay.showsCodexInMenuBar(enabled: settings.showCodexInMenuBar,
-                                         present: sessionMonitor.codexPresent)
+    /// The Show Claude / Show Codex settings, resolved (never both hidden; Codex only
+    /// once it is present or signed in).
+    var toolVisibility: ToolVisibility {
+        ToolVisibility(showClaude: settings.showClaude, showCodex: settings.showCodex,
+                       codexAvailable: sessionMonitor.codexPresent || chatGPTAuth.isSignedIn)
+    }
+
+    /// The tools the menu-bar battery shows: connected and not hidden.
+    func menuBarTools(claudeSignedIn: Bool) -> [AgentTool] {
+        toolVisibility.limitTools(claudeSignedIn: claudeSignedIn, codexConnected: chatGPTAuth.isSignedIn)
     }
 }
 
@@ -56,13 +79,15 @@ extension AppDelegate {
     /// One Claude usage event → its notification. Claude titles name the tool only
     /// once Codex is present, so a Claude-only user sees the pre-Codex copy.
     func handle(_ event: UsageEvent) {
+        // A hidden Claude raises no limit alerts (extra-usage spend is money, so it still does).
+        let claudeShown = toolVisibility.showsClaude
         switch event {
         case let .reset(window):
-            if settings.notificationsEnabled {
+            if settings.notificationsEnabled, claudeShown {
                 notifications.notifyRefill(window, tool: .claude, codexPresent: sessionMonitor.codexPresent)
             }
         case let .crossedThreshold(threshold, window, eta):
-            if settings.notificationsEnabled {
+            if settings.notificationsEnabled, claudeShown {
                 notifications.notifyThreshold(
                     threshold, window: window, etaToReset: eta, tool: .claude,
                     codexPresent: sessionMonitor.codexPresent,

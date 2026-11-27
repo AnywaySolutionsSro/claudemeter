@@ -166,13 +166,21 @@ final class AutoResumeCoordinator {
     }
 
     /// Run the Claude and the Codex plan for one scan, against the live process table.
-    func handleScan(claudeUsage: UsageSnapshot?, inputs: UsageContextInputs) {
+    /// A tool left out of `tools` (hidden in Settings) is not planned, and its baseline
+    /// is dropped so showing it again can't read the gap as a refill.
+    func handleScan(claudeUsage: UsageSnapshot?, inputs: UsageContextInputs, tools: [AgentTool] = AgentTool.allCases) {
         let paths: (Int32) -> String? = { LibprocProcessProbe.executablePathForPID($0) }
         let parents: (Int32) -> Int32 = { LibprocProcessProbe.parentPIDForPID($0) }
-        handleSnapshot(tool: .claude, usage: claudeUsage, sessions: inputs.sessions,
-                       processes: inputs.processes,
-                       transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
-                       paths: paths, parents: parents)
+        for tool in AgentTool.allCases where !tools.contains(tool) {
+            states[tool] = nil
+        }
+        if tools.contains(.claude) {
+            handleSnapshot(tool: .claude, usage: claudeUsage, sessions: inputs.sessions,
+                           processes: inputs.processes,
+                           transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
+                           paths: paths, parents: parents)
+        }
+        guard tools.contains(.codex) else { return }
         handleSnapshot(tool: .codex, usage: inputs.codexLimits, sessions: inputs.sessions,
                        processes: inputs.codexProcesses,
                        transcriptTail: { SessionMonitor.tailLines(forSessionID: $0, tool: .codex) },

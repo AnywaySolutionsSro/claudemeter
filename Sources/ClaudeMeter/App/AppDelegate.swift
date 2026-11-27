@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
+    /// Claude's sign-in, for the extensions in other files (`auth` stays private).
+    var authSignedIn: Bool { auth.isSignedIn }
     /// ChatGPT sign-in for live Codex limits (its own login and Keychain item).
     private let chatGPTAccount = ChatGPTAccountStore()
     lazy var chatGPTAuth = ChatGPTAuthModel(account: chatGPTAccount)
@@ -89,7 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.onAuthExpired = { [weak self] in self?.auth.sessionExpired() }
 
         // Redraw the bar on usage/auth/settings changes (e.g. async refresh, mode switch).
-        for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange] {
+        for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange,
+                          chatGPTAuth.objectWillChange] {
             publisher.receive(on: RunLoop.main)
                 .sink { [weak self] in self?.updateLabel() }
                 .store(in: &cancellables)
@@ -135,8 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             // Keep the Mac awake while anything is armed.
             self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
-            // Drive auto-resume: Claude and Codex plan independently.
-            self.autoResume.handleScan(claudeUsage: self.store.snapshotForRefillDetection, inputs: inputs)
+            // Drive auto-resume: Claude and Codex plan independently; a hidden tool's is off.
+            self.autoResume.handleScan(claudeUsage: self.store.snapshotForRefillDetection, inputs: inputs,
+                                       tools: AgentTool.allCases.filter(self.toolVisibility.shows))
         }
         // React to arming changes immediately (sleep assertion + republish).
         // Arming is also the fallback moment to surface the iTerm2 Automation
@@ -286,20 +290,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let error = store.errorMessage
         let now = Date()
 
-        let codexShown = showsCodexInMenuBar
+        // Only connected, shown tools: both = the split battery, one = that tool's own
+        // battery, none = the "Sign in" pill.
+        let tools = menuBarTools(claudeSignedIn: signedIn)
+        let codexShown = tools.contains(.codex)
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            if codexShown {
+            let codexLeft = sessionMonitor.codexLimits?.primary?.percentRemaining
+            if tools == [.claude, .codex] {
                 // One item for both tools: the two-tool battery, whatever the mode.
                 image = MenuBarLabel.dualBattery(
-                    claudeLeft: signedIn ? snapshot?.primary?.percentRemaining : nil,
-                    codexLeft: sessionMonitor.codexLimits?.primary?.percentRemaining,
-                    scale: scale,
+                    claudeLeft: snapshot?.primary?.percentRemaining, codexLeft: codexLeft, scale: scale,
                 )
+            } else if tools == [.codex] {
+                // Codex alone: its own green battery, whatever the mode.
+                image = MenuBarLabel.battery(left: codexLeft, tool: .codex, scale: scale)
             } else {
                 image = MenuBarLabel.image(
-                    mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
+                    mode: mode, signedIn: tools == [.claude], snapshot: snapshot, burn: burn,
                     errorMessage: error, now: now, scale: scale,
                 )
             }

@@ -32,9 +32,9 @@ struct BatteryPillTests {
     private let measure: (String) -> Double = { Double($0.count) * 10 }
 
     @Test func aShortFigureGetsTheMinimumCellAndALongOneGrows() {
-        let short = BatteryPill.single(claudeLeft: 5, metrics: metrics, measure: measure)
-        let mid = BatteryPill.single(claudeLeft: 89, metrics: metrics, measure: measure)
-        let full = BatteryPill.single(claudeLeft: 100, metrics: metrics, measure: measure)
+        let short = BatteryPill.single(left: 5, metrics: metrics, measure: measure)
+        let mid = BatteryPill.single(left: 89, metrics: metrics, measure: measure)
+        let full = BatteryPill.single(left: 100, metrics: metrics, measure: measure)
         #expect(short.width == mid.width)
         #expect(short.cells[0].area.width == 38)
         #expect(full.cells[0].area.width == 48)
@@ -61,7 +61,7 @@ struct BatteryPillTests {
     // MARK: - Claude only
 
     @Test func singleBodyIsOneCellWide() {
-        let layout = BatteryPill.single(claudeLeft: 68, metrics: metrics)
+        let layout = BatteryPill.single(left: 68, metrics: metrics)
         #expect(layout.body == PillRect(x: 0, y: 0, width: 42, height: 18))
         #expect(layout.inner == PillRect(x: 2, y: 2, width: 38, height: 14))
         #expect(layout.innerRadius == 2)
@@ -71,7 +71,7 @@ struct BatteryPillTests {
     }
 
     @Test func singleFillStartsAtTheLeftAndDrainsFromTheRight() throws {
-        let cell = try #require(BatteryPill.single(claudeLeft: 68, metrics: metrics).cells.first)
+        let cell = try #require(BatteryPill.single(left: 68, metrics: metrics).cells.first)
         #expect(cell.tool == .claude)
         #expect(cell.text == "68%")
         #expect(cell.area == PillRect(x: 2, y: 2, width: 38, height: 14))
@@ -82,11 +82,21 @@ struct BatteryPillTests {
     }
 
     @Test func singleFullAndEmptyFills() throws {
-        let full = try #require(BatteryPill.single(claudeLeft: 100, metrics: metrics).cells.first)
+        let full = try #require(BatteryPill.single(left: 100, metrics: metrics).cells.first)
         #expect(full.fill == full.area)
-        let missing = try #require(BatteryPill.single(claudeLeft: nil, metrics: metrics).cells.first)
+        let missing = try #require(BatteryPill.single(left: nil, metrics: metrics).cells.first)
         #expect(missing.fill.width == 0)
         #expect(missing.text == "—")
+    }
+
+    @Test func singleCodexBatteryIsTheSameShapeInCodexColour() throws {
+        let claude = BatteryPill.single(left: 40, metrics: metrics)
+        let codex = BatteryPill.single(left: 40, tool: .codex, metrics: metrics)
+        let cell = try #require(codex.cells.first)
+        #expect(cell.tool == .codex)
+        #expect(codex.body == claude.body)
+        #expect(cell.fill == claude.cells.first?.fill)
+        #expect(codex.divider == nil)
     }
 
     // MARK: - Claude and Codex
@@ -133,7 +143,7 @@ struct BatteryPillTests {
 
     @Test func widthDependsOnlyOnTheMetricsNeverOnTheReading() {
         let readings: [Double?] = [nil, 0, 5, 68, 100]
-        let singles = Set(readings.map { BatteryPill.single(claudeLeft: $0, metrics: metrics).width })
+        let singles = Set(readings.map { BatteryPill.single(left: $0, metrics: metrics).width })
         let duals = Set(readings.map { BatteryPill.dual(claudeLeft: $0, codexLeft: $0, metrics: metrics).width })
         #expect(singles.count == 1)
         #expect(duals.count == 1)

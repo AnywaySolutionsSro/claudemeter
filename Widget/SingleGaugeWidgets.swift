@@ -116,8 +116,8 @@ struct CodexWeeklyGaugeWidget: Widget {
 private var noCodexData: some View {
     VStack(spacing: 6) {
         Circle().fill(Color(tool: .codex)).frame(width: 10, height: 10)
-        Text("No Codex usage yet").font(.system(size: 11, weight: .semibold))
-        Text("Shows up after your next Codex turn")
+        Text("No Codex limits").font(.system(size: 11, weight: .semibold))
+        Text("Connect your Codex account in ClaudeMeter")
             .font(.system(size: 10)).foregroundStyle(.secondary).multilineTextAlignment(.center)
     }
 }

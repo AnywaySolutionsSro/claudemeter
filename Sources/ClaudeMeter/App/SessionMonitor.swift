@@ -57,6 +57,9 @@ final class SessionMonitor: ObservableObject {
     var onScan: ((UsageContextInputs) -> Void)?
     /// Set by AppDelegate so the widget snapshot can carry account usage gauges.
     var usageProvider: (() -> UsageSnapshot?)?
+    /// Which tools the widget may show: `limitTools` get gauges (connected and shown),
+    /// `hidden` lose their gauges and session rows. Read after `codexPresent` is set.
+    var widgetToolsProvider: (() -> (limitTools: [AgentTool], hidden: [AgentTool]))?
     /// The time-format setting, stamped into each snapshot for the widget.
     var clockStyleProvider: (() -> ClockStyle)?
     /// Called after every scan that has a Codex limit reading, with that snapshot and
@@ -254,14 +257,19 @@ final class SessionMonitor: ObservableObject {
         // Preserve the true running count across ALL sessions, not just the filtered set.
         let trueRunning = allSessions.filter { $0.running == .running }.count
         let usage = usageProvider?()
-        let showCodex = present ? codexUsage : nil
+        let widgetTools = widgetToolsProvider?() ?? (limitTools: [.claude], hidden: [])
+        // Gauges only for connected, shown tools: transcript-only Codex limits stay off
+        // the widget's rings (its sessions still show).
+        let showCodex = present && widgetTools.limitTools.contains(.codex) ? codexUsage : nil
+        let claudeGauges = widgetTools.limitTools.contains(.claude) ? usage?.gauges ?? [] : []
         snapshot = SessionSnapshot(
             generatedAt: snap.generatedAt, sessions: snap.sessions,
             totalTokens: allSessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
-            usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
+            usageGauges: claudeGauges, extraUsage: widgetTools.hidden.contains(.claude) ? nil : usage?.extraUsage,
             clockStyle: clockStyleProvider?(),
             codexGauges: showCodex?.gauges, codexAsOf: showCodex == nil ? nil : reading?.observedAt,
+            hiddenTools: widgetTools.hidden.isEmpty ? nil : widgetTools.hidden,
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)

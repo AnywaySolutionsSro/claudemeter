@@ -82,7 +82,7 @@ public struct BatteryLayout: Equatable, Sendable {
 }
 
 /// The menu-bar battery: a rounded body, filled with
-/// each tool's % left. Claude alone fills the whole body from the left and drains from
+/// each tool's % left. One tool alone fills the whole body from the left and drains from
 /// the right; with Codex the body splits in the middle, and each half's fill is anchored
 /// at the divider and drains from its outer edge. The pure geometry.
 public enum BatteryPill {
@@ -100,15 +100,16 @@ public enum BatteryPill {
         percentLeft.map(Formatting.percent) ?? "—"
     }
 
-    /// Claude alone: one cell over the whole body, filled from the left.
+    /// One tool alone (Claude by default, or Codex when it is the only one shown): one
+    /// cell over the whole body in that tool's colour, filled from the left.
     /// `measure` gives a figure's width in the menu-bar font; the cell follows its figure.
-    public static func single(claudeLeft: Double?, metrics: BatteryMetrics,
+    public static func single(left: Double?, tool: AgentTool = .claude, metrics: BatteryMetrics,
                               measure: (String) -> Double = { _ in 0 }) -> BatteryLayout {
-        let text = figure(percentLeft: claudeLeft)
+        let text = figure(percentLeft: left)
         let frame = frame(innerWidth: metrics.cellWidth(forText: measure(text)), metrics: metrics)
-        let fillWidth = frame.inner.width * level(percentLeft: claudeLeft)
+        let fillWidth = frame.inner.width * level(percentLeft: left)
         let fill = PillRect(x: frame.inner.x, y: frame.inner.y, width: fillWidth, height: frame.inner.height)
-        let cell = BatteryCell(tool: .claude, area: frame.inner, fill: fill, text: figure(percentLeft: claudeLeft))
+        let cell = BatteryCell(tool: tool, area: frame.inner, fill: fill, text: text)
         return BatteryLayout(body: frame.body, inner: frame.inner, innerRadius: frame.innerRadius,
                              divider: nil, cells: [cell])
     }

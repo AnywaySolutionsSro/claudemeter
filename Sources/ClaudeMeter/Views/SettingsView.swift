@@ -44,10 +44,9 @@ struct SettingsView: View {
                 Picker("Time format", selection: $settings.clockStyle) {
                     ForEach(ClockStyle.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                if codexPresent {
-                    Toggle(isOn: $settings.showCodexInMenuBar) {
-                        Label("Show Codex in menu bar", systemImage: "menubar.rectangle")
-                    }
+                if codexPresent || chatGPT.isSignedIn {
+                    toolToggle(.claude, isOn: $settings.showClaude)
+                    toolToggle(.codex, isOn: $settings.showCodex)
                 }
                 Toggle(isOn: launchAtLoginBinding) {
                     Label("Start at login", systemImage: "power")
@@ -201,6 +200,17 @@ struct SettingsView: View {
     }
 
     // MARK: - Helpers
+
+    /// "Show Claude" / "Show Codex": a hidden tool leaves the dropdown, menu bar, widget,
+    /// alerts and auto-resume. The last one still on can't be switched off.
+    private func toolToggle(_ tool: AgentTool, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Label("Show \(ToolPalette.name(for: tool))", systemImage: "eye")
+        }
+        .disabled(isOn.wrappedValue
+            && !ToolVisibility.canHide(tool, showClaude: settings.showClaude, showCodex: settings.showCodex))
+        .help("Hide it if you only use one subscription; the Sessions window still lists everything")
+    }
 
     /// "Account" for a Claude-only user, exactly as before; once Codex has its own account
     /// group, both say whose account they are.

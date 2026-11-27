@@ -1,15 +1,8 @@
 import Foundation
 
-/// The small decisions behind how Codex shows up next to Claude: whether the menu-bar
-/// battery carries a Codex half, the note on a window whose reset passed unseen, and the activity line.
+/// The small decisions behind how Codex shows up next to Claude: the note on a window whose reset passed unseen, and
+/// the activity line.
 public enum CodexDisplay {
-    /// Whether the menu-bar battery carries Codex's half and figure next to Claude's.
-    /// Decided by the setting and Codex's presence only — never by whether a reading
-    /// exists — so the status item's width doesn't change from one scan to the next.
-    public static func showsCodexInMenuBar(enabled: Bool, present: Bool) -> Bool {
-        enabled && present
-    }
-
     /// `reset at 07:00 · no reading since` for a window whose reset has passed with no
     /// newer Codex reading (Codex limits only refresh when a Codex turn runs). Same-day
     /// resets show the clock time, older ones the date too. `nil` for an upcoming reset.
@@ -77,18 +70,32 @@ public struct ToolGauge: Equatable, Sendable, Identifiable {
 }
 
 public extension SessionSnapshot {
+    /// Whether the user hid `tool` in Settings (an older snapshot hides nothing).
+    func hides(_ tool: AgentTool) -> Bool {
+        hiddenTools?.contains(tool) ?? false
+    }
+
+    /// The session rows the widget lists: hidden tools' sessions left out.
+    var visibleSessions: [SessionUsage] {
+        sessions.filter { !hides($0.effectiveTool) }
+    }
+
     /// Whether Codex appears in this snapshot at all (limits or sessions). Without it
     /// the widget renders exactly as it did before Codex support.
     var includesCodex: Bool {
-        codexGauges != nil || sessions.contains { $0.effectiveTool == .codex }
+        guard !hides(.codex) else { return false }
+        return codexGauges != nil || sessions.contains { $0.effectiveTool == .codex }
     }
 
-    /// The rings a gauge row shows: Claude's, then Codex's, at most `limit`. With Codex
-    /// present Claude's per-model windows give way first, but Claude keeps at least two.
+    /// The rings a gauge row shows: Claude's, then Codex's, at most `limit`, leaving out
+    /// a hidden tool. With Codex present Claude's per-model windows give way first, but
+    /// Claude keeps at least two.
     func ringGauges(limit: Int) -> [ToolGauge] {
-        let codex = (codexGauges ?? []).map { ToolGauge(tool: .codex, gauge: $0) }
+        let codexSource = hides(.codex) ? [] : (codexGauges ?? [])
+        let claudeSource = hides(.claude) ? [] : usageGauges
+        let codex = codexSource.map { ToolGauge(tool: .codex, gauge: $0) }
         let claudeSlots = max(limit - codex.count, min(2, limit))
-        let claude = usageGauges.prefix(claudeSlots).map { ToolGauge(tool: .claude, gauge: $0) }
+        let claude = claudeSource.prefix(claudeSlots).map { ToolGauge(tool: .claude, gauge: $0) }
         return Array((claude + codex).prefix(limit))
     }
 }
