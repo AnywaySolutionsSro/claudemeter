@@ -69,6 +69,9 @@ final class SessionMonitor: ObservableObject {
     /// (for the burn's decay to idle) at most once a minute, not every scan.
     private var codexInsightsAt: Date?
     private static let codexInsightsInterval: TimeInterval = 60
+    /// Whether this run has seeded `codexHistory` from the transcripts (once, after
+    /// the first scan).
+    private var codexBackfillDone = false
 
     /// Bundle id of the widget extension.
     nonisolated static let widgetBundleID = "com.jakubzak.claudemeter.ClaudeMeterWidget"
@@ -224,6 +227,7 @@ final class SessionMonitor: ObservableObject {
         codexLimits = codexUsage
         codexAsOf = codex.limits?.observedAt
         codexPresent = codex.isPresent
+        await backfillCodexHistoryOnce(reading: codex.limits, now: now)
         recordCodexHistory(codex.limits, now: now)
         let armedSet = Set(armedIDs)
         let armable = result.armableSessionIDs + (codex.isPresent ? codex.armableSessionIDs : [])
@@ -253,6 +257,20 @@ final class SessionMonitor: ObservableObject {
                                    codexLimits: codexUsage,
                                    codexReached: CodexLimits.reachedWindow(codex.limits, now: now),
                                    scannedAt: now))
+    }
+
+    /// Seed Codex's history from the readings already in its transcripts when it lacks
+    /// the current window's start (a fresh install, or history recorded only since the
+    /// last update), so the graph and pace don't start from nothing.
+    private func backfillCodexHistoryOnce(reading: CodexLimitReading?, now: Date) async {
+        guard !codexBackfillDone else { return }
+        codexBackfillDone = true
+        guard CodexHistory.needsBackfill(history: codexHistory, reading: reading) else { return }
+        let readings = await codexScanner.limitReadingHistory()
+        let merged = CodexHistory.backfilled(readings: readings, now: now, history: codexHistory)
+        guard merged != codexHistory else { return }
+        codexHistory = CodexUsageHistory.replace(with: merged)
+        codexInsightsAt = nil
     }
 
     /// Append the reading to Codex's history (once per reading, plus one reset point)

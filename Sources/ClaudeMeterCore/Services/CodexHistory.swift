@@ -7,6 +7,9 @@ import Foundation
 public enum CodexHistory {
     /// Same retention as Claude's `history.json`.
     public static let maxSamples = 4000
+    /// An unchanged figure is recorded at most this often. Live ChatGPT polling yields a
+    /// reading a minute; recording each would fill `maxSamples` in under three days.
+    static let unchangedSpacing: TimeInterval = 5 * 60
 
     /// The samples to append for `reading` as seen at `now`, oldest first; empty when
     /// it was already recorded. `history` must be oldest first (it is append-only).
@@ -26,7 +29,7 @@ public enum CodexHistory {
         else { return [] }
         let lastRecorded = history.last?.timestamp ?? .distantPast
         var samples: [UsageSample] = []
-        if observed.timestamp > lastRecorded { samples.append(observed) }
+        if observed.timestamp > lastRecorded, !isRepeat(observed, of: history.last) { samples.append(observed) }
         if let point = resetPoint(after: observed, now: now),
            point.timestamp > max(lastRecorded, observed.timestamp) {
             samples.append(point)
@@ -39,6 +42,15 @@ public enum CodexHistory {
                                  cap: Int = maxSamples) -> [UsageSample] {
         guard !new.isEmpty else { return existing }
         return Array((existing + new).suffix(cap))
+    }
+
+    /// The same figures as the last sample, too soon after it to be worth a point.
+    private static func isRepeat(_ sample: UsageSample, of last: UsageSample?) -> Bool {
+        guard let last else { return false }
+        return sample.timestamp.timeIntervalSince(last.timestamp) < unchangedSpacing
+            && sample.tracksSession == last.tracksSession
+            && sample.sessionUtilization == last.sessionUtilization
+            && sample.weeklyUtilization == last.weeklyUtilization
     }
 
     /// The tracked window at 0% from the moment its reset passed, or `nil` while it

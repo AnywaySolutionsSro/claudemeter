@@ -51,6 +51,8 @@ public actor CodexScanner {
     private let terminalDetector = TerminalDetector()
     /// Keyed by file path.
     private var cache: [String: CacheEntry] = [:]
+    /// Paths of the last scan's non-import transcripts.
+    private var includedPaths: [String] = []
 
     public init(
         source: CodexTranscriptDiscovering,
@@ -88,6 +90,7 @@ public actor CodexScanner {
             }
         }
         cache = nextCache
+        includedPaths = included.map(\.ref.url.path)
 
         let usages = included.map { usage(ref: $0.ref, state: $0.state) }
         let processes = processProbe.liveCodexProcesses()
@@ -106,6 +109,12 @@ public actor CodexScanner {
             limits: CodexLimits.newest(included.flatMap { Array($0.state.latestLimitsByID.values) }),
             isPresent: included.contains { $0.state.tokens.total > 0 || !$0.state.latestLimitsByID.isEmpty },
         )
+    }
+
+    /// Every past limit reading the last scan's non-import transcripts carry (one per
+    /// minute per session and `limit_id`, unordered), to seed Codex's history.
+    public func limitReadingHistory() -> [CodexLimitReading] {
+        includedPaths.compactMap { cache[$0] }.flatMap { $0.state.limitHistoryByID.values.joined() }
     }
 
     /// An imported Claude thread that has not accrued Codex tokens. Checked against

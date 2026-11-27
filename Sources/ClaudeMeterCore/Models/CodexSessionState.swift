@@ -19,6 +19,9 @@ public struct CodexSessionState: Sendable, Equatable {
     /// Newest `rate_limits` reading in this transcript **per `limit_id`**: a later
     /// reading under another id must not replace the "codex" one.
     public var latestLimitsByID: [String: CodexLimitReading]
+    /// Past `rate_limits` readings per `limit_id`, oldest first, thinned to the newest
+    /// one per minute and capped, to seed Codex's history (`CodexHistory.backfilled`).
+    public var limitHistoryByID: [String: [CodexLimitReading]]
     /// Turns started (`task_started` events).
     public var turnCount: Int
     /// `session_meta.history_mode == "legacy"`.
@@ -38,6 +41,7 @@ public struct CodexSessionState: Sendable, Equatable {
         firstActivity: Date? = nil,
         lastActivity: Date? = nil,
         latestLimitsByID: [String: CodexLimitReading] = [:],
+        limitHistoryByID: [String: [CodexLimitReading]] = [:],
         turnCount: Int = 0,
         isLegacyHistory: Bool = false,
         isImportedLegacy: Bool = false,
@@ -51,6 +55,7 @@ public struct CodexSessionState: Sendable, Equatable {
         self.firstActivity = firstActivity
         self.lastActivity = lastActivity
         self.latestLimitsByID = latestLimitsByID
+        self.limitHistoryByID = limitHistoryByID
         self.turnCount = turnCount
         self.isLegacyHistory = isLegacyHistory
         self.isImportedLegacy = isImportedLegacy
@@ -97,11 +102,27 @@ public struct CodexSessionState: Sendable, Equatable {
                 tokens = newTokens
                 if newTokens.total > 0 { isImportedLegacy = false }
             }
-            if let limits, limits.observedAt >= latestLimitsByID[limits.limitID]?.observedAt ?? .distantPast {
-                latestLimitsByID[limits.limitID] = limits
+            if let limits {
+                if limits.observedAt >= latestLimitsByID[limits.limitID]?.observedAt ?? .distantPast {
+                    latestLimitsByID[limits.limitID] = limits
+                }
+                limitHistoryByID[limits.limitID] = Self.keeping(limits, in: limitHistoryByID[limits.limitID] ?? [])
             }
         case .other:
             break
         }
+    }
+
+    /// At most this many past readings per `limit_id`: a day of one-a-minute turns.
+    static let maxLimitHistory = 1440
+
+    /// `history` with `reading` kept: a reading in the same clock minute as the last
+    /// kept one replaces it (a turn writes one every few seconds), and the oldest go
+    /// beyond `maxLimitHistory`.
+    static func keeping(_ reading: CodexLimitReading, in history: [CodexLimitReading]) -> [CodexLimitReading] {
+        let minute = { (date: Date) in (date.timeIntervalSince1970 / 60).rounded(.down) }
+        let base = history.last.map { minute($0.observedAt) == minute(reading.observedAt) } == true
+            ? Array(history.dropLast()) : history
+        return Array((base + [reading]).suffix(maxLimitHistory))
     }
 }

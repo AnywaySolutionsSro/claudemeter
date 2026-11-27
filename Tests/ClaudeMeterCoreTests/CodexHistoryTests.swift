@@ -47,6 +47,22 @@ struct CodexHistoryTests {
         #expect(history.map(\.sessionUtilization) == [20, 25])
     }
 
+    /// Live polling sees an unchanged figure every minute; that must not fill the
+    /// 4000-sample history in under three days.
+    @Test func anUnchangedLiveFigureIsRecordedAtMostEveryFiveMinutes() {
+        var history: [UsageSample] = []
+        for minute in 0 ..< 12 {
+            let offset = Double(minute) * 60
+            history += CodexHistory.samplesToRecord(reading: reading(at: offset, session: 20),
+                                                    now: t0.addingTimeInterval(offset), history: history)
+        }
+        #expect(history.map(\.timestamp) == [t0, t0.addingTimeInterval(300), t0.addingTimeInterval(600)])
+        // A changed figure is recorded at once.
+        history += CodexHistory.samplesToRecord(reading: reading(at: 660, session: 21),
+                                                now: t0.addingTimeInterval(660), history: history)
+        #expect(history.last?.sessionUtilization == 21)
+    }
+
     @Test func weeklyIsTrackedWithoutASessionWindow() {
         let samples = CodexHistory.samplesToRecord(reading: reading(at: 0, session: nil, weekly: 55),
                                                    now: t0, history: [])

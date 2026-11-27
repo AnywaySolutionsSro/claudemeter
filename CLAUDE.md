@@ -160,8 +160,14 @@ Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` 
 - **History:** `codex-history.json` (beside `history.json`, never mixed with it, survives a Claude
   sign-out) feeds the Codex section's burn/pace lines and green sparkline (`UsageInsights`,
   `UsageInsightsView`, shared with Claude). `CodexHistory.samplesToRecord` adds one sample per
-  reading (`observedAt`), never per scan, plus **one** 0% reset point (in a new window) once the
-  tracked window's reset passes unseen.
+  reading (`observedAt`), never per scan (an unchanged figure at most every 5 min), plus **one**
+  0% reset point (in a new window) once the tracked window's reset passes unseen. **Backfill:**
+  after the first scan of a run, if the history lacks the tracked window's start,
+  `CodexHistory.backfilled` replays the readings already in the rollouts (kept per session,
+  one per minute, `CodexScanner.limitReadingHistory`, imports excluded) through the same rules
+  and merges them in — recording only began at install, so a fresh graph was ~20 min of 10→11%.
+  Sparklines (both tools) scale to the data (`SparklineScale.top`: 10…100, +15%, round 5), and
+  "N× your usual pace" hides under 24 h of history (`UsageInsights.paceRatio`).
 - **Processes:** only Codex CLI binaries that own a tty count — the standalone installer
   (`~/.codex/packages/standalone`), npm's vendored binary (`node_modules/@openai/codex/`) and
   Homebrew (`Cellar/codex/`, `Caskroom/codex/`); the Codex `app-server-daemon` and anything in
