@@ -54,7 +54,7 @@ final class Settings: ObservableObject {
         didSet { defaults.set(codexNotificationsEnabled, forKey: Keys.codexNotificationsEnabled) }
     }
 
-    /// Codex's line under Claude's in the menu bar (Codex's most constrained window).
+    /// Codex's ring and figure in the menu-bar pill (Codex's most constrained window).
     /// On by default, but it only appears once Codex is present: a Claude-only user
     /// keeps the single-line label.
     @Published var showCodexInMenuBar: Bool {

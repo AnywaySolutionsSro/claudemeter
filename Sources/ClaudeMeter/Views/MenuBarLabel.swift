@@ -56,7 +56,7 @@ enum MenuBarLabel {
 
     /// Font and vertical padding for a scale, clamped to the real menu-bar height.
     /// The line-height measurement is what `TextScale` cannot compute itself.
-    private static func metrics(for scale: TextScale) -> (font: NSFont, verticalPadding: CGFloat) {
+    static func metrics(for scale: TextScale) -> (font: NSFont, verticalPadding: CGFloat) {
         let clamped = scale.menuBarMetrics(
             base: baseFontSize,
             padding: basePadding,

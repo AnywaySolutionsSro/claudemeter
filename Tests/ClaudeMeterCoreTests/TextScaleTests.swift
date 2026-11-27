@@ -82,34 +82,3 @@ struct TextScaleTests {
         #expect(result.padding == 2)
     }
 }
-
-struct StackedMenuBarFontTests {
-    /// Line heights roughly `font * 1.25`, ceiled, like the real measurement.
-    private func height(_ font: Double) -> Double { (font * 1.25).rounded(.up) }
-
-    @Test func twoLinesShrinkToFitTheBar() {
-        // 9 → 12 per line: 24 overflows 22; 8 → 10: 20 fits.
-        let font = TextScale.standard.stackedMenuBarFont(base: 9, minimum: 7, lines: 2,
-                                                         thickness: 22, textHeight: height)
-        #expect(font == 8)
-    }
-
-    @Test func largerScalesStartHigherButStillFit() {
-        for scale in TextScale.allCases {
-            let font = scale.stackedMenuBarFont(base: 9, minimum: 7, lines: 2, thickness: 30, textHeight: height)
-            #expect(2 * height(font) <= 30)
-            #expect(font <= scale.scaled(9))
-        }
-        // Room to spare: the largest scale gets a bigger font than the default one.
-        let roomy = { (scale: TextScale) in
-            scale.stackedMenuBarFont(base: 9, minimum: 7, lines: 2, thickness: 40, textHeight: height)
-        }
-        #expect(roomy(.largest) > roomy(.standard))
-    }
-
-    @Test func neverBelowTheMinimum() {
-        let font = TextScale.largest.stackedMenuBarFont(base: 9, minimum: 7, lines: 2,
-                                                        thickness: 10, textHeight: height)
-        #expect(font == 7)
-    }
-}

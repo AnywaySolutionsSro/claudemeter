@@ -1,21 +1,13 @@
 import Foundation
 
-/// The small decisions behind how Codex shows up next to Claude: whether the menu bar
-/// stacks a Codex line, the note on a window whose reset passed unseen, and the activity line.
+/// The small decisions behind how Codex shows up next to Claude: whether the menu-bar
+/// pill carries a Codex ring, the note on a window whose reset passed unseen, and the activity line.
 public enum CodexDisplay {
-    /// Whether the menu bar stacks a Codex line under Claude's. Decided by the setting
-    /// and Codex's presence only — never by whether a reading exists — so the status
-    /// item's width doesn't change from one scan to the next.
-    public static func showsCodexLine(enabled: Bool, present: Bool) -> Bool {
+    /// Whether the menu-bar pill carries Codex's ring and figure next to Claude's.
+    /// Decided by the setting and Codex's presence only — never by whether a reading
+    /// exists — so the status item's width doesn't change from one scan to the next.
+    public static func showsCodexRing(enabled: Bool, present: Bool) -> Bool {
         enabled && present
-    }
-
-    /// The Codex window the menu-bar line shows. The burn-rate mode (`showsBurn`)
-    /// shows the window Codex's burn is measured on (session, else weekly — the
-    /// `UsageSample` rule), so its ETA is compared with that window's own reset;
-    /// every other mode shows the most constrained window.
-    public static func menuBarBucket(showsBurn: Bool, limits: UsageSnapshot?) -> UsageBucket? {
-        showsBurn ? limits?.primary : limits?.mostConstrained
     }
 
     /// `reset at 07:00 · no reading since` for a window whose reset has passed with no

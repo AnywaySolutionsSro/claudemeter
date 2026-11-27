@@ -292,21 +292,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let now = Date()
 
         // Re-assert the slot width here, not just at launch: the width is fixed
-        // *per scale* (and per stack), and a text-size change must widen the slot or
+        // *per scale* (and per pill), and a text-size change must widen the slot or
         // the new image lands in a stale one. `settings.objectWillChange` already
-        // routes here. The stack depends only on the setting and Codex's presence,
-        // never on a reading, so the width holds still from scan to scan.
-        let stacked = showsCodexLine
-        statusItem.length = stacked
-            ? MenuBarLabel.stackedSlotWidth(for: scale)
+        // routes here. The two-ring pill depends only on the setting and Codex's
+        // presence, never on a reading, so the width holds still from scan to scan.
+        let dualRing = showsCodexRing
+        statusItem.length = dualRing
+            ? MenuBarLabel.dualRingSlotWidth(for: scale)
             : MenuBarLabel.recommendedSlotWidth(for: scale)
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            if stacked {
-                let claude = MenuBarLabel.content(mode: mode, signedIn: signedIn, bucket: snapshot?.primary,
-                                                  burn: burn, errorMessage: error, now: now)
-                image = stackedLabel(claude: claude, mode: mode, now: now, scale: scale)
+            if dualRing {
+                image = MenuBarLabel.dualRingPill(
+                    claudeLeft: signedIn ? snapshot?.primary?.percentRemaining : nil,
+                    codexLeft: sessionMonitor.codexLimits?.mostConstrained?.percentRemaining,
+                    scale: scale,
+                )
             } else {
                 image = MenuBarLabel.image(
                     mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
@@ -399,7 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 // MARK: - Codex
 
 private extension AppDelegate {
-    /// Codex limit readings arrive with each session scan; alerts (and the menu-bar line) start only once Codex
+    /// Codex limit readings arrive with each session scan; alerts (and the menu-bar ring) start only once Codex
     /// is present, and that is also when its alerts first need the notification permission.
     func installCodex() {
         sessionMonitor.onCodexLimits = { [weak self] snapshot, now in
@@ -416,38 +418,18 @@ private extension AppDelegate {
                 self.updateLabel()
             }
             .store(in: &cancellables)
-        // A new reading, or a reset passing, changes the Codex line; so does its burn
-        // rate (the burn-rate mode's ETA).
+        // A new reading, or a reset passing, changes the Codex ring.
         sessionMonitor.$codexLimits
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateLabel() }
             .store(in: &cancellables)
-        sessionMonitor.$codexInsights
-            .map(\.burn)
-            .removeDuplicates()
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateLabel() }
-            .store(in: &cancellables)
     }
 
-    /// Claude's line above Codex's. In burn-rate mode the Codex line shows the window
-    /// its burn is measured on, so the ETA meets that window's own reset.
-    func stackedLabel(claude: MenuBarContent, mode: DisplayMode, now: Date, scale: TextScale) -> NSImage {
-        let limits = sessionMonitor.codexLimits
-        let codex = MenuBarLabel.content(
-            mode: mode, signedIn: true,
-            bucket: CodexDisplay.menuBarBucket(showsBurn: mode == .burnRate, limits: limits),
-            burn: sessionMonitor.codexInsights.burn, errorMessage: nil, now: now,
-        )
-        return MenuBarLabel.stackedImage(claude: claude, codex: codex, scale: scale)
-    }
-
-    /// Whether the menu bar stacks Codex's line under Claude's.
-    var showsCodexLine: Bool {
-        CodexDisplay.showsCodexLine(enabled: settings.showCodexInMenuBar, present: sessionMonitor.codexPresent)
+    /// Whether the menu-bar pill carries Codex's ring next to Claude's.
+    var showsCodexRing: Bool {
+        CodexDisplay.showsCodexRing(enabled: settings.showCodexInMenuBar, present: sessionMonitor.codexPresent)
     }
 }
 
