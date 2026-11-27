@@ -69,4 +69,17 @@ struct CodexCutoffDetectorTests {
         #expect(classify(["not json", "{}"]) == .unknown)
         #expect(classify([]) == .unknown)
     }
+
+    @Test func mirroredMessageEventsMentioningLimitAreNotCutoffs() {
+        let text = "You've hit your usage limit"
+        let agent = #"{"type":"event_msg","payload":{"type":"agent_message","message":""# + text + #""}}"#
+        let user = #"{"type":"event_msg","payload":{"type":"user_message","message":""# + text + #""}}"#
+        #expect(classify([complete, agent]) == .cleanlyFinished)
+        #expect(classify([complete, user]) == .cleanlyFinished)
+    }
+
+    @Test func errorTextUnderErrorKeyIsCutoff() {
+        let line = #"{"type":"event_msg","payload":{"type":"error","error":"You've hit your usage limit."}}"#
+        #expect(classify([started, line]) == .eligibleCutoff)
+    }
 }

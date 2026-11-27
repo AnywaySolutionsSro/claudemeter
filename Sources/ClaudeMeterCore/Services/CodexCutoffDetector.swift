@@ -17,8 +17,9 @@ import Foundation
 /// `reasoning`, `agent_message` / `user_message` event mirrors, `item_completed`,
 /// `thread_settings_applied`, and `developer`-role messages.
 ///
-/// The usage-limit error shape is unverified; any `event_msg` payload of type
-/// `error` (or carrying a `message` string) containing "usage limit" counts.
+/// The usage-limit error shape is unverified; an `event_msg` payload of type
+/// `error` or `stream_error` whose `message`, `error` or `text` string contains
+/// "usage limit" counts. Other event types (e.g. mirrored `agent_message`) never do.
 public struct CodexCutoffDetector: Sendable {
     public init() {}
 
@@ -46,11 +47,11 @@ public struct CodexCutoffDetector: Sendable {
     }
 
     private func eventVerdict(_ payloadType: String, _ payload: [String: Any]) -> SessionEligibility? {
-        if let message = payload["message"] as? String,
-           message.localizedCaseInsensitiveContains("usage limit") {
-            return .eligibleCutoff
-        }
         switch payloadType {
+        case "error", "stream_error":
+            // Shape unverified: look for the text under `message`, `error`, then `text`.
+            let texts = ["message", "error", "text"].compactMap { payload[$0] as? String }
+            return texts.contains { $0.localizedCaseInsensitiveContains("usage limit") } ? .eligibleCutoff : nil
         case "token_count":
             let limits = payload["rate_limits"] as? [String: Any]
             let reached = limits?["rate_limit_reached_type"]
