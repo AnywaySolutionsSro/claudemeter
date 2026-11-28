@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// A minimal line chart of values (0–100), oldest → newest.
+/// A minimal line chart of values (percent), oldest → newest, from 0 at the bottom to
+/// `top` at the top (`SparklineScale.top`).
 struct Sparkline: View {
     let values: [Double]
+    var top: Double = 100
     var color: Color = .init(nsColor: MenuBarLabel.claudeOrange)
     @Environment(\.textScale) private var scale
 
@@ -13,7 +15,7 @@ struct Sparkline: View {
                 let points = values.enumerated().map { index, value in
                     CGPoint(
                         x: CGFloat(index) * stepX,
-                        y: geo.size.height - CGFloat(min(100, max(0, value)) / 100) * geo.size.height,
+                        y: geo.size.height - CGFloat(min(top, max(0, value)) / max(top, 1)) * geo.size.height,
                     )
                 }
                 ZStack {

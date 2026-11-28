@@ -5,7 +5,7 @@ struct SessionEnumsTests {
     @Test func originRoundTripsRawValue() {
         #expect(SessionOrigin(rawValue: "cli") == .cli)
         #expect(SessionOrigin(rawValue: "desktop") == .desktop)
-        #expect(SessionOrigin.allCases.count == 2)
+        #expect(SessionOrigin.allCases.count == 4)
     }
 
     @Test func runningStateRoundTripsRawValue() {

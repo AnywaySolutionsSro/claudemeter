@@ -24,6 +24,14 @@ struct SnapshotEntry: TimelineEntry {
 
     static let staleAfter: TimeInterval = 15 * 60
 
+    /// "as of 06:00" once the Codex limit reading is over an hour old: Codex limits
+    /// only refresh when a Codex turn runs, so an old ring must not pass for live.
+    var codexReadingAge: String? {
+        CodexDisplay.readingAgeNote(
+            asOf: snapshot?.codexAsOf, now: date, style: snapshot?.clockStyle ?? .system,
+        )
+    }
+
     /// Representative content for the gallery preview / first paint.
     static var sample: SnapshotEntry {
         let now = Date()
@@ -102,6 +110,9 @@ struct GaugeRingView: View {
     var size: CGFloat
     var showLabel: Bool = true
     var showReset: Bool = true
+    /// The tool whose colour the ring takes. `nil` keeps the level colours (green →
+    /// amber → red), which is how a Claude-only widget has always looked.
+    var tint: AgentTool?
 
     var body: some View {
         let fraction = max(0.0001, min(1, gauge.percentLeft / 100))
@@ -110,12 +121,13 @@ struct GaugeRingView: View {
                 Circle().stroke(Color.secondary.opacity(0.18), lineWidth: size * 0.11)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(Self.style(gauge.percentLeft),
+                    .stroke(ringStyle,
                             style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: -1) {
                     Text("\(Int(gauge.percentLeft.rounded()))")
                         .font(.system(size: size * 0.30, weight: .bold)).monospacedDigit()
+                        .foregroundStyle(numberColor)
                     Text("% left").font(.system(size: max(7, size * 0.12), weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -124,12 +136,36 @@ struct GaugeRingView: View {
             if showLabel {
                 Text(gauge.label)
                     .font(.system(size: min(15, max(10, size * 0.15)), weight: .semibold)).lineLimit(1)
+                    .foregroundStyle(tint.map { Color(tool: $0) } ?? Color.primary)
             }
             if showReset, let reset = gauge.resetsAt {
                 Text(Self.resetShort(reset))
                     .font(.system(size: min(12, max(8.5, size * 0.12))))
                     .foregroundStyle(.secondary).lineLimit(1)
             }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityTitle)
+        .accessibilityValue("\(Int(gauge.percentLeft.rounded())) percent left")
+    }
+
+    /// "Codex Weekly" once tools are told apart by colour; the visible label is unchanged.
+    private var accessibilityTitle: String {
+        tint.map { "\(ToolPalette.name(for: $0)) \(gauge.label)" } ?? gauge.label
+    }
+
+    /// A tinted ring is the tool's colour; the tightening warning moves to the number.
+    private var ringStyle: AnyShapeStyle {
+        guard let tint else { return AnyShapeStyle(Self.style(gauge.percentLeft)) }
+        return AnyShapeStyle(Color(tool: tint))
+    }
+
+    private var numberColor: Color {
+        guard tint != nil else { return .primary }
+        switch gauge.percentLeft {
+        case ..<15: return .red
+        case ..<40: return .orange
+        default: return .primary
         }
     }
 
@@ -177,12 +213,16 @@ struct ClaudeMeterWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
 
-    private var sessions: [SessionUsage] { entry.snapshot?.sessions ?? [] }
+    private var sessions: [SessionUsage] { entry.snapshot?.visibleSessions ?? [] }
     private var maxTokens: Int { max(1, sessions.map(\.totalTokens).max() ?? 1) }
     private var armedIDs: Set<String> { entry.effectiveArmed }
     /// Nothing is armable from a stale snapshot: the processes it names may be gone.
     private var armableIDs: Set<String> { entry.isStale ? [] : Set(entry.snapshot?.armableSessionIDs ?? []) }
-    private var gauges: [UsageGauge] { entry.snapshot?.usageGauges ?? [] }
+    /// Claude's rings then Codex's; the two never share a collection, as both have a "Weekly".
+    private var rings: [ToolGauge] { entry.snapshot?.ringGauges(limit: 4) ?? [] }
+    /// Tool colours (ring tints, session dots, the plain "Sessions" title) only once Codex
+    /// shows up; until then the widget looks exactly as it always has.
+    private var showsTools: Bool { entry.snapshot?.includesCodex ?? false }
     /// Paid extra-usage spend, shown only while it is actually costing money.
     private var extraUsage: ExtraUsage? {
         guard let usage = entry.snapshot?.extraUsage, usage.isEnabled, !usage.used.isZero else { return nil }
@@ -208,7 +248,7 @@ struct ClaudeMeterWidgetEntryView: View {
             Image(systemName: "gauge.with.dots.needle.67percent")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(activeGradient)
-            Text("Claude Sessions").font(.system(size: 12, weight: .bold))
+            Text(showsTools ? "Sessions" : "Claude Sessions").font(.system(size: 12, weight: .bold))
             Spacer()
             if !armedIDs.isEmpty {
                 HStack(spacing: 3) {
@@ -260,6 +300,10 @@ struct ClaudeMeterWidgetEntryView: View {
             // Left column: name + current model + token count + progress bar.
             VStack(alignment: .leading, spacing: compact ? 2 : 3) {
                 HStack(spacing: 5) {
+                    if showsTools {
+                        Circle().fill(Color(tool: s.effectiveTool))
+                            .frame(width: compact ? 6 : 7, height: compact ? 6 : 7)
+                    }
                     // Name and token count outrank the model label, so the model
                     // truncates first on narrow rows. NB: a negative priority on
                     // the model does NOT work — the Spacer (priority 0) claims all
@@ -354,18 +398,23 @@ struct ClaudeMeterWidgetEntryView: View {
 
     /// Medium widget: just the gauges, evenly spread and vertically centred.
     @ViewBuilder private var gaugesOnlyView: some View {
-        if gauges.isEmpty {
+        if rings.isEmpty {
             HStack { Spacer(); noGaugeData; Spacer() }.frame(maxHeight: .infinity)
         } else {
-            // Rings are a fixed 58pt; systemMedium fits four. Session and Weekly come
-            // first, so the cap only ever drops surplus per-model windows.
+            // Rings are a fixed 58pt; systemMedium fits four. Claude's Session and Weekly
+            // come first, so the cap only ever drops surplus per-model windows.
             VStack(spacing: 6) {
                 HStack(alignment: .center, spacing: 0) {
-                    ForEach(gauges.prefix(4)) { gauge in
-                        GaugeRingView(gauge: gauge, size: 58).frame(maxWidth: .infinity)
+                    ForEach(rings) { ring in
+                        GaugeRingView(gauge: ring.gauge, size: 58, tint: showsTools ? ring.tool : nil)
+                            .frame(maxWidth: .infinity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if rings.contains(where: { $0.tool == .codex }), let age = entry.codexReadingAge {
+                    Text("Codex " + age).font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.orange).lineLimit(1)
+                }
                 extraUsageRow
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

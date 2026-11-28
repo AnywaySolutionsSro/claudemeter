@@ -13,6 +13,18 @@ public enum RetryAfter {
         return delay > 0 ? delay : nil
     }
 
+    /// Bounds for a server-supplied delay. A huge or non-finite value (`inf`, `1e400`)
+    /// must never reach an `Int` conversion or park polling for days.
+    public static let minimumDelay: TimeInterval = 1
+    public static let maximumDelay: TimeInterval = 3600
+    public static let defaultDelay: TimeInterval = 60
+
+    /// `seconds` clamped to 1 s…1 h; missing, non-finite or non-positive → 60 s.
+    public static func clamped(_ seconds: TimeInterval?) -> TimeInterval {
+        guard let seconds, seconds.isFinite, seconds > 0 else { return defaultDelay }
+        return min(max(seconds, minimumDelay), maximumDelay)
+    }
+
     private static let httpDate: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

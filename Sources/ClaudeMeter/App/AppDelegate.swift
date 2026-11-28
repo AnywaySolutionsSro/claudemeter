@@ -7,26 +7,39 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let account = AccountStore()
-    private let settings = Settings()
-    private let notifications = NotificationManager()
+    let settings = Settings()
+    let notifications = NotificationManager()
+    /// Codex's limit alerts (Claude's flow through `UsageStore.onEvents`).
+    lazy var limitAlerts = LimitAlertTracker(
+        settings: settings, notifications: notifications,
+        codexPresent: { [weak self] in self?.sessionMonitor.codexPresent ?? false },
+    )
     private let hotKey = HotKey()
     private lazy var store = UsageStore(client: UsageClient(account: account))
     private lazy var auth = AuthModel(account: account)
-    private let sessionMonitor = SessionMonitor()
+    /// Claude's sign-in, for the extensions in other files (`auth` stays private).
+    var authSignedIn: Bool { auth.isSignedIn }
+    /// ChatGPT sign-in for live Codex limits (its own login and Keychain item).
+    private let chatGPTAccount = ChatGPTAccountStore()
+    lazy var chatGPTAuth = ChatGPTAuthModel(account: chatGPTAccount)
+    lazy var codexLive = CodexLiveLimits(client: ChatGPTUsageClient(account: chatGPTAccount))
+    let sessionMonitor = SessionMonitor()
     private lazy var sessionsWindow = SessionsWindowController(
         monitor: sessionMonitor, armed: armedSessions, settings: settings,
         onTestResume: { [weak self] session in
             guard let self else { return }
             self.autoResume.testResume(
                 session: session,
-                processes: self.sessionMonitor.latestProcesses,
+                processes: session.effectiveTool == .codex
+                    ? self.sessionMonitor.latestCodexProcesses : self.sessionMonitor.latestProcesses,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
                 parents: { LibprocProcessProbe.parentPIDForPID($0) },
             )
         },
     )
     private lazy var settingsWindow = SettingsWindowController(
-        settings: settings, auth: auth, updates: updates, apiSpend: apiSpend,
+        settings: settings, auth: auth, updates: updates, apiSpend: apiSpend, monitor: sessionMonitor,
+        chatGPT: chatGPTAuth,
     )
     private lazy var updates = UpdateService(settings: settings)
     private let apiSpend = ApiSpendStore()
@@ -43,7 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popover = NSPopover()
     private var labelTimer: Timer?
     private var outsideClickMonitor: Any?
-    private var cancellables = Set<AnyCancellable>()
+    /// A status-item length that arrived while the popover was open; applied when it closes.
+    private var pendingSlotLength: CGFloat?
+    var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_: Notification) {
         LoginItem.enableOnFirstLaunchIfNeeded()
@@ -52,10 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // permission even when the usage nudges are switched off.
         if settings.notificationsEnabled || settings.autoResumeEnabled { notifications.requestAuthorization() }
 
-        // Fixed width (content centered) so switching modes / changing the countdown never
-        // resizes the item — that would shift the button and misalign the open popover.
+        // Launch width; `updateLabel` resizes it while the popover is closed (see applySlotLength).
         statusItem = NSStatusBar.system
-            .statusItem(withLength: MenuBarLabel.recommendedSlotWidth(for: settings.textScale))
+            .statusItem(withLength: MenuBarLabel.slotWidth(mode: settings.displayMode, codexShown: false,
+                                                           for: settings.textScale))
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
@@ -76,7 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         store.onAuthExpired = { [weak self] in self?.auth.sessionExpired() }
 
         // Redraw the bar on usage/auth/settings changes (e.g. async refresh, mode switch).
-        for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange] {
+        for publisher in [store.objectWillChange, auth.objectWillChange, settings.objectWillChange,
+                          chatGPTAuth.objectWillChange] {
             publisher.receive(on: RunLoop.main)
                 .sink { [weak self] in self?.updateLabel() }
                 .store(in: &cancellables)
@@ -100,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sessionMonitor.usageProvider = { [weak self] in self?.store.snapshot }
         bindClockStyle(settings: settings, monitor: sessionMonitor, apiSpend: apiSpend)
             .store(in: &cancellables)
+        installCodex()
         sessionMonitor.onScan = { [weak self] inputs in
             guard let self else { return }
             // Apply any arm/disarm requests issued from the widget. Arm requests
@@ -121,15 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             // Keep the Mac awake while anything is armed.
             self.sleepInhibitor.update(active: !self.armedSessions.armed.isEmpty)
-            // Drive auto-resume.
-            self.autoResume.handleSnapshot(
-                usage: self.store.snapshotForRefillDetection,
-                sessions: inputs.sessions,
-                processes: inputs.processes,
-                transcriptTail: { SessionMonitor.tailLines(forSessionID: $0) },
-                paths: { LibprocProcessProbe.executablePathForPID($0) },
-                parents: { LibprocProcessProbe.parentPIDForPID($0) },
-            )
+            // Drive auto-resume: Claude and Codex plan independently; a hidden tool's is off.
+            self.autoResume.handleScan(claudeUsage: self.store.snapshotForRefillDetection, inputs: inputs,
+                                       tools: AgentTool.allCases.filter(self.toolVisibility.shows))
         }
         // React to arming changes immediately (sleep assertion + republish).
         // Arming is also the fallback moment to surface the iTerm2 Automation
@@ -233,21 +244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func handle(_ event: UsageEvent) {
-        switch event {
-        case let .reset(window):
-            if settings.notificationsEnabled { notifications.notifyRefill(window) }
-        case let .crossedThreshold(threshold, window, eta):
-            if settings.notificationsEnabled {
-                notifications.notifyThreshold(threshold, window: window, etaToReset: eta)
-            }
-        case let .extraUsage(alert, usage):
-            if settings.extraUsageNotificationsEnabled {
-                notifications.notifyExtraUsage(alert, usage: usage)
-            }
-        }
-    }
-
     /// Every window reports only its highest crossing, but two windows can cross in the
     /// same poll, and the Shortcut must still run once. A model window doesn't run it:
     /// other models keep working, so the account isn't running low.
@@ -260,19 +256,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return false
         }
         if runningLow { ShortcutRunner.run(settings.lowUsageShortcut) }
-    }
-
-    private func installEditMenu() {
-        let mainMenu = NSMenu()
-        let editMenuItem = NSMenuItem()
-        mainMenu.addItem(editMenuItem)
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        editMenuItem.submenu = editMenu
-        NSApp.mainMenu = mainMenu
     }
 
     /// "Install on next restart": the swap happens here, on the way out (Quit, logout,
@@ -290,13 +273,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         autoResume.noteWake()
         updates.checkIfDue()
         updates.retryCurrentReleaseNotes()
+        if chatGPTAuth.isSignedIn { Task { await codexLive.refresh() } }
         guard auth.isSignedIn else { return }
         Task { await store.refresh(); updateLabel() }
     }
 
     @objc private func handleThemeChange() { updateLabel() }
 
-    private func updateLabel() {
+    func updateLabel() {
         guard let button = statusItem.button else { return }
         let mode = settings.displayMode
         let scale = settings.textScale
@@ -306,21 +290,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let error = store.errorMessage
         let now = Date()
 
-        // Re-assert the slot width here, not just at launch: the width is fixed
-        // *per scale*, and a text-size change must widen the slot or the new image
-        // lands in a stale one. `settings.objectWillChange` already routes here.
-        statusItem.length = MenuBarLabel.recommendedSlotWidth(for: scale)
+        // Only connected, shown tools: both = the split battery, one = that tool's own
+        // battery, none = the "Sign in" pill.
+        let tools = menuBarTools(claudeSignedIn: signedIn)
+        let codexShown = tools.contains(.codex)
 
         var image = NSImage()
         button.effectiveAppearance.performAsCurrentDrawingAppearance {
-            image = MenuBarLabel.image(
-                mode: mode, signedIn: signedIn, snapshot: snapshot, burn: burn,
-                errorMessage: error, now: now, scale: scale,
-            )
+            let codexLeft = sessionMonitor.codexLimits?.primary?.percentRemaining
+            if tools == [.claude, .codex] {
+                // One item for both tools: the two-tool battery, whatever the mode.
+                image = MenuBarLabel.dualBattery(
+                    claudeLeft: snapshot?.primary?.percentRemaining, codexLeft: codexLeft, scale: scale,
+                )
+            } else if tools == [.codex] {
+                // Codex alone: its own green battery, whatever the mode.
+                image = MenuBarLabel.battery(left: codexLeft, tool: .codex, scale: scale)
+            } else {
+                image = MenuBarLabel.image(
+                    mode: mode, signedIn: tools == [.claude], snapshot: snapshot, burn: burn,
+                    errorMessage: error, now: now, scale: scale,
+                )
+            }
         }
         button.image = image
         button.imagePosition = .imageOnly
         button.title = ""
+        // Classic modes keep a fixed slot per mode and scale; the battery's slot follows its
+        // image, which follows the figures.
+        applySlotLength(for: image, mode: mode, codexShown: codexShown, scale: scale)
     }
 
     // MARK: - Popover
@@ -339,9 +337,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let content = MenuContentView(
             onOpenSessions: { [weak self] in self?.openSessions() },
             onOpenSettings: { [weak self] in self?.openSettings() },
+            onRemindCodex: { [weak self] window in
+                self?.limitAlerts.scheduleResetReminder(tool: .codex, window: window)
+            },
         )
+        .environmentObject(sessionMonitor)
         .environmentObject(store)
         .environmentObject(auth)
+        .environmentObject(chatGPTAuth)
         .environmentObject(settings)
         .environmentObject(updates)
         .environmentObject(apiSpend)
@@ -363,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             Task { @MainActor in self?.closePopover() }
         }
 
+        if chatGPTAuth.isSignedIn { Task { await codexLive.refresh() } }
         if auth.isSignedIn { Task { await store.refresh(); updateLabel() } }
     }
 
@@ -393,5 +397,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_: Notification) {
         popover.contentViewController = nil
         removeOutsideClickMonitor()
+        if let length = pendingSlotLength {
+            pendingSlotLength = nil
+            statusItem.length = length
+        }
+    }
+}
+
+// MARK: - Slot width
+
+private extension AppDelegate {
+    /// Resizing the item while the popover is open shifts the button under it, so a new
+    /// length waits for `popoverDidClose`; an unchanged one is skipped.
+    private func applySlotLength(for image: NSImage, mode: DisplayMode, codexShown: Bool, scale: TextScale) {
+        let length = MenuBarLabel.followsFigures(mode: mode, codexShown: codexShown)
+            ? MenuBarLabel.batterySlotWidth(imageWidth: image.size.width)
+            : MenuBarLabel.slotWidth(mode: mode, codexShown: codexShown, for: scale)
+        guard popover.isShown else {
+            pendingSlotLength = nil
+            if statusItem.length != length { statusItem.length = length }
+            return
+        }
+        pendingSlotLength = length
+    }
+}
+
+// MARK: - Edit menu
+
+private extension AppDelegate {
+    /// Agent apps have no menu bar, so Cmd+V/C/X/A never reach text fields without this.
+    func installEditMenu() {
+        let mainMenu = NSMenu()
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        NSApp.mainMenu = mainMenu
     }
 }

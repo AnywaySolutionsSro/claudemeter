@@ -30,14 +30,28 @@ final class LoopbackCallbackServer: @unchecked Sendable {
 
     private var _expectedState: String?
 
-    /// Starts listening on an OS-assigned ephemeral port and returns it.
-    func start() async throws -> UInt16 {
+    /// The redirect's path (e.g. `/auth/callback`); `nil` accepts any path, as the
+    /// Claude login always has. Set before `start`.
+    var expectedPath: String? {
+        get { queue.sync { _expectedPath } }
+        set { queue.sync { _expectedPath = newValue } }
+    }
+
+    private var _expectedPath: String?
+    private var isFixedPort = false
+
+    /// Starts listening and returns the bound port: an OS-assigned ephemeral one by
+    /// default, or exactly `port` (no address reuse, so a port another login already
+    /// holds fails with `EADDRINUSE` instead of being shared).
+    func start(port: UInt16? = nil) async throws -> UInt16 {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 do {
                     let parameters = NWParameters.tcp
-                    parameters.allowLocalEndpointReuse = true
-                    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+                    self.isFixedPort = port != nil
+                    parameters.allowLocalEndpointReuse = port == nil
+                    let fixed = port.flatMap { NWEndpoint.Port(rawValue: $0) } ?? .any
+                    parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: fixed)
                     let listener = try NWListener(using: parameters)
                     self.listener = listener
                     self.portContinuation = continuation
@@ -97,14 +111,22 @@ final class LoopbackCallbackServer: @unchecked Sendable {
             didResumePort = true
             portContinuation?.resume(returning: port)
             portContinuation = nil
+        case let .waiting(error) where isFixedPort:
+            // A busy fixed port can surface as `.waiting` rather than `.failed`.
+            failBeforeReady(error, listener: listener)
         case let .failed(error):
-            guard !didResumePort else { return }
-            didResumePort = true
-            portContinuation?.resume(throwing: error)
-            portContinuation = nil
+            failBeforeReady(error, listener: listener)
         default:
             break
         }
+    }
+
+    private func failBeforeReady(_ error: Error, listener: NWListener) {
+        guard !didResumePort else { return }
+        didResumePort = true
+        listener.cancel()
+        portContinuation?.resume(throwing: error)
+        portContinuation = nil
     }
 
     private func handle(_ connection: NWConnection) {
@@ -112,10 +134,11 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, _, _ in
             guard let self else { connection.cancel(); return }
 
-            let query = data
-                .flatMap { String(data: $0, encoding: .utf8) }
-                .flatMap(Self.parseQuery)
+            let requestText = data.flatMap { String(data: $0, encoding: .utf8) }
+            let query = requestText.flatMap(Self.parseQuery)
+            let pathMatches = self._expectedPath.map { requestText.flatMap(Self.parsePath) == $0 } ?? true
             let accepted = !self.didDeliver
+                && pathMatches
                 && query?["code"] != nil
                 && query?["state"] != nil
                 && query?["state"] == self._expectedState
@@ -163,6 +186,14 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         } else {
             bufferedResult = query
         }
+    }
+
+    /// The request line's path, without its query.
+    static func parsePath(_ request: String) -> String? {
+        guard let requestLine = request.split(separator: "\r\n").first else { return nil }
+        let tokens = requestLine.split(separator: " ")
+        guard tokens.count >= 2 else { return nil }
+        return URLComponents(string: "http://localhost\(tokens[1])")?.path
     }
 
     static func parseQuery(_ request: String) -> [String: String]? {

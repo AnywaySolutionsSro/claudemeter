@@ -28,10 +28,11 @@ struct SessionsView: View {
     /// One libproc walk per running session per scan — never per row per tick. The
     /// 1 s ticker re-renders the list; recomputing this inside each row multiplied
     /// the syscalls by the number of rows every second.
-    private func terminalKinds(index: SessionProcessIndex) -> [String: TerminalKind] {
+    private func terminalKinds(indexes: [AgentTool: SessionProcessIndex]) -> [String: TerminalKind] {
         let detector = TerminalDetector()
         var map: [String: TerminalKind] = [:]
         for session in monitor.sessions where session.running == .running {
+            guard let index = indexes[session.effectiveTool] else { continue }
             map[session.id] = index.terminalKind(
                 forCwd: session.projectPath, detector: detector,
                 paths: { LibprocProcessProbe.executablePathForPID($0) },
@@ -45,11 +46,14 @@ struct SessionsView: View {
     /// armable gating exactly; the text is what the disabled toggle's tooltip shows.
     private func armDisabledReason(_ session: SessionUsage, kind: TerminalKind,
                                    index: SessionProcessIndex) -> String? {
+        if session.origin == .codexDesktop { return "Codex Desktop session — desktop sessions are not resumable" }
         guard session.running == .running else { return "Only live sessions can be armed" }
+        let tool = session.effectiveTool == .codex ? "Codex" : "Claude"
+        let process = session.effectiveTool == .codex ? "Codex" : "Claude Code"
         switch index.matchCount(forCwd: session.projectPath) {
-        case 0: return "No live Claude Code process found for this folder"
+        case 0: return "No live \(process) process found for this folder"
         case 1: break
-        case let n: return "\(n) Claude tabs share this folder — can't safely target one"
+        case let n: return "\(n) \(tool) tabs share this folder — can't safely target one"
         }
         guard kind.isDrivable else { return "Supports iTerm2 only for now (\(kind.displayName))" }
         return nil
@@ -70,7 +74,7 @@ struct SessionsView: View {
         HStack(spacing: scale.pt(8)) {
             Image(systemName: "list.bullet.rectangle").font(scale.font(13))
             VStack(alignment: .leading, spacing: scale.pt(1)) {
-                Text("Claude Sessions").font(scale.font(13, weight: .bold))
+                Text(monitor.codexPresent ? "Sessions" : "Claude Sessions").font(scale.font(13, weight: .bold))
                 Text(summary).font(scale.font(10)).foregroundColor(.secondary)
             }
             Spacer()
@@ -105,15 +109,21 @@ struct SessionsView: View {
                 Text(activeOnly ? "No active sessions" : "No sessions found")
                     .font(scale.font(12)).foregroundColor(.secondary)
                 Text(activeOnly
-                    ? "Running Claude Code sessions show up here live."
+                    ? (monitor.codexPresent
+                        ? "Running Claude Code and Codex sessions show up here live."
+                        : "Running Claude Code sessions show up here live.")
                     : "Start a Claude Code session and it will appear here.")
                     .font(scale.font(10)).foregroundColor(.secondary)
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let index = SessionProcessIndex(processes: monitor.latestProcesses)
-            let kinds = terminalKinds(index: index)
+            // Each session matches only its own tool's processes.
+            let indexes: [AgentTool: SessionProcessIndex] = [
+                .claude: SessionProcessIndex(processes: monitor.latestProcesses),
+                .codex: SessionProcessIndex(processes: monitor.latestCodexProcesses),
+            ]
+            let kinds = terminalKinds(indexes: indexes)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleSessions) { session in
@@ -121,8 +131,12 @@ struct SessionsView: View {
                         SessionRow(
                             session: session, now: now,
                             terminalKind: kind,
-                            armDisabledReason: armDisabledReason(session, kind: kind, index: index),
+                            armDisabledReason: armDisabledReason(
+                                session, kind: kind,
+                                index: indexes[session.effectiveTool] ?? SessionProcessIndex(processes: []),
+                            ),
                             isArmed: armed.isArmed(session.id),
+                            showsTool: monitor.codexPresent,
                             onArmChange: { armed.setArmed(session.id, $0) },
                         )
                         .padding(.horizontal, scale.pt(12))
@@ -131,7 +145,7 @@ struct SessionsView: View {
                             Button("Send “continue” now (test resume)") {
                                 onTestResume(session)
                             }
-                            .disabled(session.running != .running)
+                            .disabled(session.running != .running || session.origin == .codexDesktop)
                         }
                         Divider().padding(.leading, scale.pt(30))
                     }

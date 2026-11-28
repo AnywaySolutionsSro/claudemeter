@@ -2,33 +2,6 @@ import ClaudeMeterCore
 import Foundation
 import SwiftUI
 
-/// How the menu-bar item presents usage.
-enum DisplayMode: String, CaseIterable, Identifiable {
-    case classic
-    case burnRate
-    case mood
-    case fuelGauge
-    case pet
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .classic: "Classic" // percentage + reset countdown
-        case .burnRate: "Burn rate"
-        case .mood: "Mood face"
-        case .fuelGauge: "Fuel gauge"
-        case .pet: "Pet"
-        }
-    }
-
-    /// Map persisted values, including the legacy `"percentage"` key, to a mode.
-    static func fromStored(_ raw: String?) -> DisplayMode {
-        if raw == "percentage" { return .classic }
-        return DisplayMode(rawValue: raw ?? "") ?? .classic
-    }
-}
-
 /// User preferences, backed by `UserDefaults`.
 @MainActor
 final class Settings: ObservableObject {
@@ -47,6 +20,23 @@ final class Settings: ObservableObject {
 
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
+    }
+
+    /// Threshold and refill alerts for Codex's limits, reported separately from Claude's.
+    @Published var codexNotificationsEnabled: Bool {
+        didSet { defaults.set(codexNotificationsEnabled, forKey: Keys.codexNotificationsEnabled) }
+    }
+
+    /// Show Claude (dropdown, menu-bar battery, widget, alerts, auto-resume). The toggle
+    /// appears once Codex is available; `ToolVisibility` never lets both be hidden.
+    @Published var showClaude: Bool {
+        didSet { defaults.set(showClaude, forKey: Keys.showClaude) }
+    }
+
+    /// Show Codex everywhere Claude can be hidden from. Replaces the old
+    /// `showCodexInMenuBar` toggle, whose stored value it takes over once.
+    @Published var showCodex: Bool {
+        didSet { defaults.set(showCodex, forKey: Keys.showCodex) }
     }
 
     /// Threshold nudges for paid extra usage (spending started / 80% / cap reached).
@@ -108,6 +98,9 @@ final class Settings: ObservableObject {
         self.textScale = TextScale.fromStored(defaults.string(forKey: Keys.textScale))
         self.clockStyle = ClockStyle(rawValue: defaults.string(forKey: Keys.clockStyle) ?? "") ?? .system
         self.notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? true
+        self.codexNotificationsEnabled = defaults.object(forKey: Keys.codexNotificationsEnabled) as? Bool ?? true
+        self.showClaude = defaults.object(forKey: Keys.showClaude) as? Bool ?? true
+        self.showCodex = Self.migratedShowCodex(defaults)
         self.extraUsageNotificationsEnabled =
             defaults.object(forKey: Keys.extraUsageNotificationsEnabled) as? Bool ?? true
         self.lowUsageShortcut = defaults.string(forKey: Keys.lowUsageShortcut) ?? ""
@@ -125,12 +118,26 @@ final class Settings: ObservableObject {
         self.pendingInstallVersion = defaults.string(forKey: Keys.pendingInstallVersion)
     }
 
+    /// `showCodex`, seeded once from the retired `showCodexInMenuBar` (whose key is then
+    /// removed), so someone who had switched Codex off keeps it off.
+    private static func migratedShowCodex(_ defaults: UserDefaults) -> Bool {
+        if let stored = defaults.object(forKey: Keys.showCodex) as? Bool { return stored }
+        let legacy = defaults.object(forKey: Keys.legacyShowCodexInMenuBar) as? Bool ?? true
+        defaults.set(legacy, forKey: Keys.showCodex)
+        defaults.removeObject(forKey: Keys.legacyShowCodexInMenuBar)
+        return legacy
+    }
+
     private enum Keys {
         static let displayMode = "displayMode"
         static let textScale = "textScale"
         static let clockStyle = "clockStyle"
         static let notificationsEnabled = "notificationsEnabled"
+        static let codexNotificationsEnabled = "codexNotificationsEnabled"
         static let extraUsageNotificationsEnabled = "extraUsageNotificationsEnabled"
+        static let showClaude = "showClaude"
+        static let showCodex = "showCodex"
+        static let legacyShowCodexInMenuBar = "showCodexInMenuBar"
         static let lowUsageShortcut = "lowUsageShortcut"
         static let autoResumeEnabled = "autoResumeEnabled"
         static let autoResumeContinueText = "autoResumeContinueText"

@@ -9,24 +9,79 @@ if CommandLine.arguments.contains("--dump-sessions") {
         processProbe: LibprocProcessProbe(),
         desktopDetector: DesktopAppProbe(),
     )
+    let codexScanner = SessionMonitor.makeDefaultCodexScanner()
     let semaphore = DispatchSemaphore(value: 0)
     Task {
-        let result = await scanner.scan(now: Date())
+        let now = Date()
+        let result = await scanner.scan(now: now)
+        let codex = await codexScanner.scan(now: now)
         print(
             "sessions: \(result.sessions.count)  running: \(result.snapshot.runningCount)  total: \(Formatting.tokenCount(result.snapshot.totalTokens))",
         )
-        for s in result.sessions.prefix(20) {
+        let rows = (result.sessions.prefix(20) + codex.sessions.prefix(20)).sorted { $0.totalTokens > $1.totalTokens }
+        for s in rows {
             let dot = s.running == .running ? "●" : "○"
-            let origin = s.origin == .cli ? "CLI" : "APP"
+            let origin = s.origin.isTerminal ? "CLI" : "APP"
+            let tool = s.effectiveTool == .codex ? "CODEX " : "CLAUDE"
             let burn = String(format: "%.0f", s.burnRate)
             print(
-                "\(dot) \(origin)  \(Formatting.tokenCount(s.totalTokens).padding(toLength: 6, withPad: " ", startingAt: 0))  +\(Formatting.tokenCount(s.cacheReadTokens)) cached  \(burn) t/m  \(s.projectName)",
+                "\(dot) \(tool) \(origin)  \(Formatting.tokenCount(s.totalTokens).padding(toLength: 6, withPad: " ", startingAt: 0))  +\(Formatting.tokenCount(s.cacheReadTokens)) cached  \(burn) t/m  \(s.projectName)",
             )
+        }
+        let running = codex.sessions.filter { $0.running == .running }.count
+        print(
+            "codex: present \(codex.isPresent)  sessions: \(codex.sessions.count)  running: \(running)  processes: \(codex.processes.count)  armable: \(codex.armableSessionIDs.count)",
+        )
+        if let reading = codex.limits {
+            for gauge in CodexLimits.snapshot(from: reading, now: now).gauges {
+                print(
+                    "codex limit: \(gauge.label) \(Int(gauge.percentLeft))% left  resets \(gauge.resetsAt.map { "\($0)" } ?? "—")  as of \(reading.observedAt)",
+                )
+            }
         }
         semaphore.signal()
     }
     semaphore.wait()
     exit(0)
+}
+
+// Diagnostic: fetch live Codex usage with the stored ChatGPT login and print the
+// response's STRUCTURE only — key paths and value types, never values or tokens.
+if CommandLine.arguments.contains("--codex-usage-dump") {
+    // Never refreshes: a refresh here would rotate the token the running app holds.
+    let semaphore = DispatchSemaphore(value: 0)
+    var status: Int32 = 0
+    Task {
+        defer { semaphore.signal() }
+        let account = ChatGPTAccountStore()
+        guard account.exists else {
+            print("not signed in to ChatGPT (Settings → Codex → Sign in to ChatGPT)")
+            status = 1
+            return
+        }
+        do {
+            let now = Date()
+            let data = try await ChatGPTUsageClient(account: account).fetchRaw(now: now, allowRefresh: false)
+            print("GET \(ChatGPTAuth.usageURL.absoluteString): \(data.count) bytes")
+            JSONShape.describe(data).forEach { print("  \($0)") }
+            if let reading = WhamUsageDecoder.decode(data, observedAt: now) {
+                let minutes = reading.windows.map { "\($0.windowMinutes) min" }.joined(separator: ", ")
+                print(
+                    "decoded: \(reading.windows.count) window(s) [\(minutes)]  reached: \(reading.reachedType != nil)",
+                )
+            } else {
+                print("decoded: NO — unrecognised shape, the app keeps the previous reading")
+            }
+        } catch ChatGPTError.tokenExpired {
+            print("token expired; let the app refresh it (open the ClaudeMeter dropdown), then retry")
+            status = 1
+        } catch {
+            print("FAILED: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)")
+            status = 1
+        }
+    }
+    semaphore.wait()
+    exit(status)
 }
 
 // Diagnostic: report where the widget snapshot resolves and whether writing works.

@@ -10,9 +10,14 @@ import Foundation
 public protocol ProcessProbing: Sendable {
     /// Every live Claude Code CLI process with its pid, cwd, controlling tty, and parent pid.
     func liveClaudeProcesses() -> [LiveProcess]
+    /// Every live terminal Codex CLI process (with a `/dev/tty*` controlling tty).
+    func liveCodexProcesses() -> [LiveProcess]
 }
 
 public extension ProcessProbing {
+    /// Probes without Codex support (test fakes) report none.
+    func liveCodexProcesses() -> [LiveProcess] { [] }
+
     /// Working-directory path -> count of live `claude` processes whose cwd is that path.
     func liveClaudeCwdCounts() -> [String: Int] {
         LibprocProcessProbe.tally(processes: liveClaudeProcesses())
@@ -43,6 +48,20 @@ public struct LibprocProcessProbe: ProcessProbing {
         return result
     }
 
+    /// Live terminal Codex CLI processes. A Codex process without a real
+    /// `/dev/tty*` controlling tty (daemon, desktop helper, piped exec) is not
+    /// something auto-resume can type into, so it is not reported.
+    public func liveCodexProcesses() -> [LiveProcess] {
+        var result: [LiveProcess] = []
+        for pid in Self.allPids() {
+            guard let path = Self.executablePath(pid), Self.isCodexTerminalExecutable(path),
+                  let tty = Self.controllingTTY(pid), tty.hasPrefix("/dev/tty"),
+                  let cwd = Self.currentWorkingDirectory(pid) else { continue }
+            result.append(LiveProcess(pid: pid, cwd: cwd, tty: tty, ppid: Self.parentPID(pid)))
+        }
+        return result
+    }
+
     /// Pure, separately-testable tally helper. Returns `[cwd: count]`.
     public static func tally(processes: [LiveProcess]) -> [String: Int] {
         processes.reduce(into: [String: Int]()) { counts, p in
@@ -58,6 +77,26 @@ public struct LibprocProcessProbe: ProcessProbing {
     public static func isClaudeCodeExecutable(_ path: String) -> Bool {
         guard !path.contains("ClaudeMeter") else { return false }
         return path.contains("/claude/versions/") || path.contains("/claude-code/")
+    }
+
+    /// Install layouts of the terminal Codex CLI binary: the standalone installer
+    /// (`~/.codex/packages/standalone/<version>/bin/codex`), the npm package's
+    /// vendored native binary (`…/node_modules/@openai/codex/vendor/…`), and
+    /// Homebrew (formula `Cellar/codex/`, cask `Caskroom/codex/`).
+    private static let codexInstallMarkers = [
+        "/.codex/packages/standalone/",
+        "/node_modules/@openai/codex/",
+        "/Cellar/codex/",
+        "/Caskroom/codex/",
+    ]
+
+    /// Whether an executable path is the terminal Codex CLI (see
+    /// `codexInstallMarkers`). The `app-server-daemon` release and anything inside
+    /// the ChatGPT desktop app are different processes with no terminal to drive,
+    /// so they never match.
+    public static func isCodexTerminalExecutable(_ path: String) -> Bool {
+        guard !path.contains("/app-server-daemon/"), !path.contains("ChatGPT.app") else { return false }
+        return codexInstallMarkers.contains { path.contains($0) }
     }
 
     // MARK: - Public static wrappers for later tasks

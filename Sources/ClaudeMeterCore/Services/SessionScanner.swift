@@ -133,7 +133,7 @@ public actor SessionScanner {
         let liveCounts = LibprocProcessProbe.tally(processes: processes)
         let desktopRunning = desktopDetector.isClaudeDesktopRunning()
         let resolved = resolver.resolve(
-            sessions: usages, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning,
+            sessions: usages, tool: .claude, liveCwdCounts: liveCounts, desktopAppRunning: desktopRunning,
             activityAt: activityAt, now: now,
         )
         let sorted = resolved.sorted { $0.totalTokens > $1.totalTokens }

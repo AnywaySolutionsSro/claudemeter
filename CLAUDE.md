@@ -136,6 +136,153 @@ A successful resume posts a "▶︎ Resumed X" notification (the only way to tel
 from a manual one — both write an identical `user:"continue"` transcript entry). The window-close
 summary notifies if armed sessions never became eligible.
 
+### Codex support (OpenAI Codex CLI next to Claude, same app)
+
+Everything is tagged with `AgentTool` (`.claude`/`.codex`); `SessionUsage.tool` is optional
+(nil = Claude, so old snapshots still decode). Codex never touches Claude's pipeline state.
+
+- **Sources:** `~/.codex/sessions` rollout JSONL (`CodexTranscriptParser`, `CodexScanner`, same
+  incremental mtime/offset folding), titles from `session_index.jsonl`. Each rollout's ~28 KB
+  `session_meta` first line is read once per path and the index only when its mtime/size change
+  (`CodexSourceCache`) — discovery runs every 10 s. `RunningResolver.resolve` takes a `tool` and
+  only touches that tool's sessions, so one tool's process counts can't mark the other's live. Sessions listed in
+  `external_agent_session_imports.json` are imports of *Claude* transcripts and are skipped.
+  **Never read or write `~/.codex/auth.json`** — the live-limits sign-in below is ClaudeMeter's own.
+- **Tokens:** Codex logs *cumulative* `total_token_usage`, so a session's figure is the last
+  reading, never a sum (summing inflates it quadratically).
+- **Limits: live from ChatGPT when signed in, transcripts otherwise.** `CodexLimits` turns a
+  `CodexLimitReading` into a `UsageSnapshot`: one entry per `limit_id`, window id from
+  `window_minutes` (never a plan name), a window whose `resets_at` already passed reads as
+  *full*, and the reading carries its age ("as of …", hidden while a live reading is < 2 min
+  old). Transcript readings only refresh when a Codex turn runs. `SessionMonitor` takes
+  `CodexLimitSource.pick(live:transcript:)` — the newer `observedAt` wins — so gauges, pill,
+  history, alerts and the auto-resume gate all see one reading; signed out = transcripts only.
+- **Live limits = ClaudeMeter's own ChatGPT OAuth** (Settings → General → Codex). PKCE S256
+  against `auth.openai.com` with the Codex CLI's public client id `app_EMoamEEZ73f0CkXaXp7hrann`
+  (`ChatGPTAuth`); the redirect must be `http://localhost:1455/auth/callback` (the only one
+  registered), so `LoopbackCallbackServer.start(port: 1455)` binds 127.0.0.1:1455 without
+  address reuse and a busy port (a `codex login` running) is `ChatGPTError.portBusy`, never
+  another port. Code exchange is form-encoded, refresh is JSON (as Codex sends them). Tokens +
+  `chatgpt_account_id` (id-token claim `https://api.openai.com/auth`) live in Keychain item
+  `com.jakubzak.claudemeter.chatgpt`; the UI uses only the metadata `exists` check and the
+  email cached in UserDefaults. Like the Claude token, the item is in the **legacy login
+  keychain** — the same accepted trade-off as the admin key (see API spend), don't reopen it.
+  **Refresh-token rotation rule** (`ChatGPTTokenVault` + `ChatGPTRotation`, core, tested
+  with a fake item/endpoint; `ChatGPTAccountStore` only adapts Keychain + endpoint): OpenAI
+  rotates the refresh token on every refresh and the item is shared by every ClaudeMeter
+  process, so every refresh re-reads the item. A forced refresh (the server refused an access
+  token) uses stored tokens whose access token is unexpired and *differs from the refused
+  one* instead of refreshing again. Refreshed tokens go into memory first; a failed write marks
+  them pending with `staleStored` = the spent token the item still holds. While pending, memory
+  wins and the write is retried each poll **only over that stale item**: an item replaced
+  elsewhere is adopted, and one deleted by a sign-out elsewhere is never recreated (signed
+  out). Only a *missing* item means signed out (refresh then tells the auth model); other read
+  errors back off and keep everything. On a dead grant a newer stored token is adopted (valid),
+  retried once (expired) or kept (retry spent) — never deleted; the login is cleared only when
+  the dead token is ours (`stored == used` or `stored == staleStored`); a dead grant is a 401,
+  or a 400/403 with `invalid_grant` / `refresh_token_*` (`ChatGPTAuth.isDeadGrant`), and it
+  signs out with "sign in again". A 401 from the usage endpoint after a successful refresh keeps the login and backs off 10 min. `--codex-usage-dump` **never
+  refreshes** (expired token → message, exit 1). `CodexLiveLimits` polls
+  `GET chatgpt.com/backend-api/wham/usage` (`Authorization: Bearer` + `chatgpt-account-id`,
+  ephemeral `URLSession`, nothing cached to disk) every 60 s (≥ 30 s throttle, `Retry-After`
+  on 429 clamped to 1 s…1 h, refresh-and-retry once on 401);
+  `WhamUsageDecoder` is lenient (`rate_limit.primary_window`/`secondary_window` with
+  `used_percent`, `limit_window_seconds`, `reset_at`/`reset_after_seconds`, or the transcript
+  shape) and an unknown body is **no reading**, never zeros; out-of-range numbers (window
+  outside 1…525600 min, absurd resets) drop the window or its reset before any `Int`
+  conversion. Unchanged figures are recorded in
+  `codex-history.json` at most every 5 min. The response shape is unverified until a real
+  sign-in: `ClaudeMeter --codex-usage-dump` prints its key paths and types (no values). Logs:
+  category `chatgpt` at `.notice`, never tokens.
+- **Refill rule:** past-reset **or** a ≥25-point drop (`CodexLimits.gate`). Unlike Claude's 5-h
+  on-disk carry-over, a Codex baseline is **not** carried across an app restart, by design: a
+  restart reseeds from the live transcript, so a stale reading can't fire `continue`.
+- **History:** `codex-history.json` (beside `history.json`, never mixed with it, survives a Claude
+  sign-out) feeds the Codex section's burn/pace lines and green sparkline (`UsageInsights`,
+  `UsageInsightsView`, shared with Claude). `CodexHistory.samplesToRecord` adds one sample per
+  reading (`observedAt`), never per scan (an unchanged figure at most every 5 min), plus **one**
+  0% reset point (in a new window) once the tracked window's reset passes unseen. **Backfill:**
+  after the first scan of a run, if the history lacks the tracked window's start,
+  `CodexHistory.backfilled` replays the readings already in the rollouts (kept per session,
+  one per minute, `CodexScanner.limitReadingHistory`, imports excluded) through the same rules
+  and merges them in — recording only began at install, so a fresh graph was ~20 min of 10→11%.
+  Sparklines (both tools) scale to the data (`SparklineScale.top`: 10…100, +15%, round 5), and
+  "N× your usual pace" hides under 24 h of history (`UsageInsights.paceRatio`).
+- **Processes:** only Codex CLI binaries that own a tty count — the standalone installer
+  (`~/.codex/packages/standalone`), npm's vendored binary (`node_modules/@openai/codex/`) and
+  Homebrew (`Cellar/codex/`, `Caskroom/codex/`); the Codex `app-server-daemon` and anything in
+  ChatGPT.app are excluded, and only originator `codex-tui` is armable.
+- **Auto-resume:** `AutoResumeCoordinator` keeps state per tool; `ToolResumeGuard` skips a tty
+  shared by a Claude and a Codex session, so one `continue` never lands in the wrong agent.
+  Decisions log in category `autoresume`, prefixed `codex:`.
+- **`CodexCutoffDetector` is PROVISIONAL.** No real limit hit has been observed; it treats an
+  `error`/`stream_error` event containing "usage limit", or a `rate_limit_reached_type`, as the
+  cutoff — judged over the **last turn** (since the last `task_started`), because Codex closes a
+  cut-off turn with `task_complete`/`turn_aborted`; a later user message cancels it. A reached
+  type also **blocks the gate** (`CodexLimits.reachedWindow`, the reading's fullest window until
+  its reset), so a 5-h refill under a weekly limit reached below 100% doesn't resume. On the first real hit read the `codex:` lines in the `autoresume` log (`/usr/bin/log
+  show --last 6h --predicate 'subsystem == "com.jakubzak.claudemeter" AND category ==
+  "autoresume"'`; `logCodexTails` dumps the armed sessions' last records) and fix the detector
+  against the real shape.
+- **Menu bar:** the default display mode is the **battery** (`DisplayMode.battery`, in core;
+  `DisplayMode.fromStored` gives it to anyone with no stored mode — **no migration**: a mode
+  someone explicitly picked, Classic included, is respected). Without a reading a signed-in
+  label shows `…` while loading and a red `⚠︎` on error (`NoReading`), in every mode. A rounded body (no terminal nub), figures in **white**
+  with a dark halo. **The battery shows only CONNECTED, shown tools**
+  (`ToolVisibility.limitTools(claudeSignedIn:codexConnected:)`, test table in
+  `ToolVisibilityTests`; Codex "connected" = signed in to ChatGPT, transcripts don't count):
+  Claude alone → the mode's own label (battery: the whole body orange, filled from the left
+  and draining from the right); Codex alone → a whole-body **green** battery whatever the mode
+  (`BatteryPill.single(left:tool:)`); both → the split battery whatever the mode — a divider
+  splits the body, Claude (orange) on the left, Codex (green) on the right, each fill
+  **anchored at the divider** and draining from its outer edge; neither → the "Sign in" pill. The figure per tool is its session window, else
+  weekly (`snapshot.primary`; Codex's past-reset window reads as full); no reading = empty
+  track and "—", never a fake 0%. The drained track is the tool colour darkened at half alpha
+  so white stays legible in light and dark bars. Geometry is pure in `BatteryPill` (tested);
+  drawing in `MenuBarLabel+Battery`. **Width follows the figures:** each
+  cell is as wide as its own figure (`5%`, `89%`, `100%`, `—`) with a minimum of `00%`'s width,
+  and the status item is the image plus 1 pt either side (no extra padding, so gaps to
+  neighbours are macOS's own). `AppDelegate.applySlotLength` applies a new `statusItem.length`
+  **only while the popover is closed** (otherwise it waits for `popoverDidClose`) and skips
+  no-ops, since resizing under an open popover misaligns it. The other modes keep a fixed slot and render as before,
+  Claude only.
+- **Dropdown = `DropdownPlan.make` (core, tested).** Connected tools' data first
+  (`dataSections`, then API spend), then — directly above the footer — a compact connect
+  button per disconnected tool (`connectSections`) (`ClaudeConnectSection`: "Connect Claude
+  account" + "Paste code manually" + a failed login's error; `CodexConnectSection`: "Connect
+  Codex account" = the ChatGPT login), then **one footer, always last**: Claude's status /
+  "Updated …" + Refresh (only while Claude's usage shows), the "⋯" menu, and **Quit at the very
+  bottom** whatever is signed in. Codex without ChatGPT is only the connect button in the
+  dropdown — no transcript gauges there — while transcripts still drive Codex sessions, the
+  Sessions window, auto-resume and the widget's session rows. The Codex button appears only
+  once Codex is available (present or signed in).
+- **Show Claude / Show Codex** (`Settings.showClaude` / `showCodex`, default on; Settings →
+  General, shown once Codex is present or signed in). `ToolVisibility` resolves them: never
+  both hidden (the last toggle on is disabled, and a hidden Claude comes back whenever Codex
+  isn't available). A hidden tool leaves the dropdown, the battery, the widget (gauges and
+  session rows and the running-count chip, via the optional `SessionSnapshot.hiddenTools`),
+  its limit alerts (`LimitAlertTracker.resetBaseline` while hidden, so the first reading after
+  showing it again seeds silently) and auto-resume (`AutoResumeCoordinator.handleScan(tools:)`
+  drops its baseline the same way and bumps a per-tool epoch that cancels already-scheduled
+  staggered resumes); the Sessions window still lists everything.
+  `showCodex` replaced `showCodexInMenuBar`: its stored value is migrated once and the old
+  key removed. Widget gauges follow the battery's rule — only connected, shown tools.
+- **UI/alerts:** colours only via `ToolPalette` (Claude `#D97757`, Codex `#10A37F`; the widget
+  reads them through `WidgetToolColor`). Notification ids and titles are namespaced per tool
+  (`LimitEvents`, "Codex · …"), so same-named alerts never replace each other. All Codex UI stays
+  hidden until `codexPresent` — and so is the "Claude · " title prefix and the "Claude limit
+  alerts" label (`NotificationIDs.title(_:tool:codexPresent:)`): a Claude-only user sees exactly
+  the pre-Codex copy. Codex widget rings say "as of …" once their reading is over an hour old. The new widget kind `CodexGaugeWeekly` needs the chrono purge
+  (see API spend gotchas). Widget rings carry the tool in their accessibility label ("Codex
+  Weekly") without changing the visible one.
+
+### Time format setting
+
+`Settings.clockStyle` (`ClockStyle`: system / 12-hour / 24-hour) drives every clock time through
+one formatter in core (`Formatting.clockTime`, `resetMoment`); nothing else formats a time of
+day. The widget can't read app settings, so `clockStyle` is an optional field in `snapshot.json`
+and `api-spend.json` (optionals only, since decoding is all-or-nothing).
+
 ### Self-update feature (daily GitHub check, background download, restart prompt)
 
 Flow: check (every launch, throttled to 1 h, then daily + on wake) → a newer in-place-installable

@@ -122,6 +122,7 @@ public enum AutoResumePlanner {
         transcriptTail: (String) -> [String],
         executablePath: (Int32) -> String?,
         parentPID: (Int32) -> Int32,
+        classify: ([String]) -> SessionEligibility = { CutoffDetector().classify(tailLines: $0, isRunning: false) },
     ) -> ResumePlan {
         var refilled = refillObserved
         // A real refill cannot recur within the cooldown; a second "drop" that soon is
@@ -152,7 +153,6 @@ public enum AutoResumePlanner {
 
         // Map cwd -> unique live process (ambiguous cwd => skip, never type into the wrong tab).
         let byCwd = Dictionary(grouping: processes, by: { $0.cwd })
-        let detector = CutoffDetector()
         let terminals = TerminalDetector()
         var targets: [PlannedResume] = []
         var skipped: [ResumeSkip] = []
@@ -183,7 +183,7 @@ public enum AutoResumePlanner {
 
             // The live process means "alive"; isRunning=false because the tail, not
             // token activity, tells us whether a turn is in flight.
-            let eligibility = detector.classify(tailLines: transcriptTail(session.id), isRunning: false)
+            let eligibility = classify(transcriptTail(session.id))
             guard eligibility.shouldFire else {
                 skip(.notEligible(String(describing: eligibility))); continue
             }

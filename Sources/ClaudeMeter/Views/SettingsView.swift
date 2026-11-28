@@ -8,6 +8,9 @@ struct SettingsView: View {
     @ObservedObject var auth: AuthModel
     @ObservedObject var updates: UpdateService
     @ObservedObject var apiSpend: ApiSpendStore
+    @ObservedObject var chatGPT: ChatGPTAuthModel
+    /// Whether Codex has been seen on this machine; its alert toggle stays hidden until then.
+    var codexPresent = false
 
     /// Read from `settings` directly rather than the environment: this view sets
     /// the environment value for its own children, and a value set in `body`
@@ -41,12 +44,16 @@ struct SettingsView: View {
                 Picker("Time format", selection: $settings.clockStyle) {
                     ForEach(ClockStyle.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
+                if codexPresent || chatGPT.isSignedIn {
+                    toolToggle(.claude, isOn: $settings.showClaude)
+                    toolToggle(.codex, isOn: $settings.showCodex)
+                }
                 Toggle(isOn: launchAtLoginBinding) {
                     Label("Start at login", systemImage: "power")
                 }
             }
 
-            Section(header: sectionHeader("Account", "person.crop.circle.fill", .blue)) {
+            Section(header: claudeAccountHeader) {
                 if auth.isSignedIn {
                     HStack {
                         Label("Connected", systemImage: "checkmark.seal.fill")
@@ -61,6 +68,12 @@ struct SettingsView: View {
                         Label("Connect Claude account", systemImage: "link")
                     }
                     .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if codexPresent || chatGPT.isSignedIn {
+                Section(header: sectionHeader("Codex account", "circle.hexagongrid.fill", Color(tool: .codex))) {
+                    ChatGPTSettingsSection(chatGPT: chatGPT)
                 }
             }
 
@@ -86,10 +99,18 @@ struct SettingsView: View {
         Form {
             Section(header: sectionHeader("Notifications", "bell.badge.fill", .orange)) {
                 Toggle(isOn: $settings.notificationsEnabled) {
-                    Label("Usage notifications", systemImage: "bell")
+                    Label(NotificationIDs.claudeAlertsLabel(codexPresent: codexPresent), systemImage: "bell")
                 }
                 .onChange(of: settings.notificationsEnabled) { _, enabled in
                     if enabled { NotificationManager().requestAuthorization() }
+                }
+                if codexPresent {
+                    Toggle(isOn: $settings.codexNotificationsEnabled) {
+                        Label("Codex limit alerts", systemImage: "bell")
+                    }
+                    .onChange(of: settings.codexNotificationsEnabled) { _, enabled in
+                        if enabled { NotificationManager().requestAuthorization() }
+                    }
                 }
                 Toggle(isOn: $settings.extraUsageNotificationsEnabled) {
                     Label("Extra usage spend", systemImage: "creditcard")
@@ -179,6 +200,26 @@ struct SettingsView: View {
     }
 
     // MARK: - Helpers
+
+    /// "Show Claude" / "Show Codex": a hidden tool leaves the dropdown, menu bar, widget,
+    /// alerts and auto-resume. The last one still on can't be switched off.
+    private func toolToggle(_ tool: AgentTool, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Label("Show \(ToolPalette.name(for: tool))", systemImage: "eye")
+        }
+        .disabled(isOn.wrappedValue
+            && !ToolVisibility.canHide(tool, showClaude: settings.showClaude, showCodex: settings.showCodex,
+                                       codexConnected: chatGPT.isSignedIn))
+        .help("Hide it if you only use one subscription; the Sessions window still lists everything")
+    }
+
+    /// "Account" for a Claude-only user, exactly as before; once Codex has its own account
+    /// group, both say whose account they are.
+    private var claudeAccountHeader: some View {
+        codexPresent || chatGPT.isSignedIn
+            ? sectionHeader("Claude account", "person.crop.circle.fill", Color(tool: .claude))
+            : sectionHeader("Account", "person.crop.circle.fill", .blue)
+    }
 
     private func sectionHeader(_ title: String, _ symbol: String, _ tint: Color) -> some View {
         Label {

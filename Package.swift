@@ -24,6 +24,8 @@ let package = Package(
         .testTarget(
             name: "ClaudeMeterCoreTests",
             dependencies: ["ClaudeMeterCore"],
+            // Redacted transcript fixtures, read via #filePath (not bundled resources).
+            exclude: ["Fixtures"],
             swiftSettings: [.swiftLanguageMode(.v6)],
         ),
     ],

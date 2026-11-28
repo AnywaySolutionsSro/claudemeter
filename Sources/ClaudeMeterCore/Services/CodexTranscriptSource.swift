@@ -1,0 +1,141 @@
+import Foundation
+
+/// Discovers Codex transcripts, plus the ids of the Claude threads Codex imported
+/// (which are not Codex work and must be skipped).
+public protocol CodexTranscriptDiscovering: TranscriptDiscovering {
+    /// Thread ids listed in `~/.codex/external_agent_session_imports.json`.
+    func importedIDs() -> Set<String>
+}
+
+/// Filesystem discovery of Codex transcripts under `~/.codex`:
+///
+/// - `sessions/YYYY/MM/DD/rollout-<timestamp>-<sessionId>.jsonl`, walked recursively.
+///   The id is `session_meta.payload.id` (first line), else the filename's uuid suffix.
+///   Origin comes from `session_meta.payload.originator`: only `codex-tui` is a
+///   terminal session; anything else (or none) is `.codexDesktop`.
+/// - Titles from `session_index.jsonl` (`id`, `thread_name`; the last entry per id wins).
+///
+/// Never touches `auth.json`. A missing home or file contributes nothing.
+/// Discovery runs every 10 s, so a rollout's meta and the parsed index are cached
+/// (`CodexSourceCache`): an unchanged file is never re-read.
+/// `@unchecked Sendable`: `FileManager` is only used for read-only enumeration.
+public struct CodexTranscriptSource: CodexTranscriptDiscovering, @unchecked Sendable {
+    private let codexHome: URL
+    private let fileManager: FileManager
+    private let reader: CodexSourceReader
+    private let cache = CodexSourceCache()
+
+    public init(codexHome: URL = CodexTranscriptSource.defaultHome, fileManager: FileManager = .default) {
+        self.init(codexHome: codexHome, fileManager: fileManager, reader: .live)
+    }
+
+    init(codexHome: URL, fileManager: FileManager, reader: CodexSourceReader) {
+        self.codexHome = codexHome
+        self.fileManager = fileManager
+        self.reader = reader
+    }
+
+    /// `~/.codex`.
+    public static var defaultHome: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+    }
+
+    private static let uuidLength = 36
+
+    public func discover() -> [TranscriptRef] {
+        let sessionsRoot = codexHome.appendingPathComponent("sessions", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: sessionsRoot,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles],
+        ) else {
+            return []
+        }
+        let titles = threadTitles()
+        var refs: [TranscriptRef] = []
+        for case let url as URL in enumerator where isRollout(url) {
+            refs.append(makeRef(url: url, titles: titles))
+        }
+        cache.retainMetas(forPaths: Set(refs.map(\.url.path)))
+        return refs
+    }
+
+    public func lines(of ref: TranscriptRef) -> [String] {
+        TranscriptFileReader.lines(of: ref.url)
+    }
+
+    public func chunk(of ref: TranscriptRef, fromByteOffset offset: Int64) -> TranscriptChunk? {
+        TranscriptFileReader.chunk(of: ref.url, fromByteOffset: offset)
+    }
+
+    public func importedIDs() -> Set<String> {
+        let url = codexHome.appendingPathComponent("external_agent_session_imports.json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let records = root["records"] as? [[String: Any]]
+        else { return [] }
+        return Set(records.compactMap { $0["imported_thread_id"] as? String })
+    }
+
+    // MARK: - Helpers
+
+    private func isRollout(_ url: URL) -> Bool {
+        url.pathExtension == "jsonl" && url.lastPathComponent.hasPrefix("rollout-")
+    }
+
+    private func makeRef(url: URL, titles: [String: String]) -> TranscriptRef {
+        let meta = cache.meta(forPath: url.path) { sessionMeta(of: url) }
+        let id = meta?.id ?? fallbackID(of: url)
+        let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate ?? Date(timeIntervalSince1970: 0)
+        return TranscriptRef(
+            id: id, url: url, origin: Self.origin(ofOriginator: meta?.originator),
+            title: titles[id], modifiedAt: modifiedAt,
+        )
+    }
+
+    /// The terminal CLI identifies itself as `codex-tui`. Anything else — Codex
+    /// Desktop, `codex_exec`, an IDE, a missing or unknown originator — is treated as
+    /// non-terminal: monitored, never resumable (the safe default).
+    static func origin(ofOriginator originator: String?) -> SessionOrigin {
+        originator == "codex-tui" ? .codexCLI : .codexDesktop
+    }
+
+    /// `id` / `originator` from the first line when it is a `session_meta` entry.
+    private func sessionMeta(of url: URL) -> CodexSourceCache.Meta? {
+        guard let line = reader.firstLine(url),
+              case let .meta(id, _, originator, _)? = CodexTranscriptParser.parse(line)?.event
+        else { return nil }
+        return CodexSourceCache.Meta(id: id, originator: originator)
+    }
+
+    /// `rollout-2026-11-26T22-57-51-<uuid>` → `<uuid>`; the whole stem if it is shorter.
+    private func fallbackID(of url: URL) -> String {
+        let stem = url.deletingPathExtension().lastPathComponent
+        guard stem.count > Self.uuidLength + 1 else { return stem }
+        return String(stem.suffix(Self.uuidLength))
+    }
+
+    private func threadTitles() -> [String: String] {
+        let url = codexHome.appendingPathComponent("session_index.jsonl")
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let stamp = values.flatMap { values in
+            values.contentModificationDate.map {
+                CodexSourceCache.IndexStamp(modifiedAt: $0, size: values.fileSize ?? 0)
+            }
+        }
+        return cache.titles(stamp: stamp) { parseTitles(reader.lines(url)) }
+    }
+
+    private func parseTitles(_ lines: [String]) -> [String: String] {
+        var titles: [String: String] = [:]
+        for line in lines {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = object["id"] as? String,
+                  let name = object["thread_name"] as? String, !name.isEmpty
+            else { continue }
+            titles[id] = name
+        }
+        return titles
+    }
+}
