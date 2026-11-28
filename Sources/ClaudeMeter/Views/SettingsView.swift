@@ -38,6 +38,9 @@ struct SettingsView: View {
                 Picker("Text size", selection: $settings.textScale) {
                     ForEach(TextScale.allCases) { Text($0.title).tag($0) }
                 }
+                Picker("Time format", selection: $settings.clockStyle) {
+                    ForEach(ClockStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
                 Toggle(isOn: launchAtLoginBinding) {
                     Label("Start at login", systemImage: "power")
                 }

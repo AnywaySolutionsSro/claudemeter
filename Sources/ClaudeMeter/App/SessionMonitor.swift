@@ -29,6 +29,8 @@ final class SessionMonitor: ObservableObject {
     var onScan: ((UsageContextInputs) -> Void)?
     /// Set by AppDelegate so the widget snapshot can carry account usage gauges.
     var usageProvider: (() -> UsageSnapshot?)?
+    /// The time-format setting, stamped into each snapshot for the widget.
+    var clockStyleProvider: (() -> ClockStyle)?
 
     private let scanner: SessionScanner
     private let interval: TimeInterval
@@ -81,7 +83,8 @@ final class SessionMonitor: ObservableObject {
                "armable:\(snapshot.armableSessionIDs.sorted().joined(separator: ","))"]
             + snapshot.usageGauges
             .map { "\($0.label):\(Int($0.percentLeft)):\($0.resetsAt?.timeIntervalSince1970 ?? 0)" }
-            + [Self.extraUsageStructureKey(snapshot.extraUsage)]
+            + [Self.extraUsageStructureKey(snapshot.extraUsage),
+               "clock:\(snapshot.clockStyle?.rawValue ?? "")"]
         // Display-rounded, so a count that renders the same doesn't count as a change.
         // The extra-usage amount belongs here rather than in `structure` for the same
         // reason: spend moves on almost every scan while a session streams, and an
@@ -180,6 +183,7 @@ final class SessionMonitor: ObservableObject {
             totalTokens: result.sessions.reduce(0) { $0 + $1.totalTokens },
             runningCount: trueRunning, armedSessionIDs: armedIDs, armableSessionIDs: armable,
             usageGauges: usage?.gauges ?? [], extraUsage: usage?.extraUsage,
+            clockStyle: clockStyleProvider?(),
         )
         lastUpdated = snapshot!.generatedAt
         publish(snapshot!)

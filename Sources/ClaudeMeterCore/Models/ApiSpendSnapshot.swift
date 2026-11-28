@@ -32,10 +32,19 @@ public struct CostDay: Codable, Equatable, Sendable {
 public struct ApiSpendSnapshot: Codable, Equatable, Sendable {
     public let days: [CostDay]
     public let fetchedAt: Date
+    /// The app's time-format setting, stamped when the file is handed to the widget (which
+    /// can't read it). `nil` means follow the system. Optional so old files still decode.
+    public let clockStyle: ClockStyle?
 
-    public init(days: [CostDay], fetchedAt: Date) {
+    public init(days: [CostDay], fetchedAt: Date, clockStyle: ClockStyle? = nil) {
         self.days = days
         self.fetchedAt = fetchedAt
+        self.clockStyle = clockStyle
+    }
+
+    /// This reading, carrying `style` for the widget.
+    public func withClockStyle(_ style: ClockStyle?) -> ApiSpendSnapshot {
+        ApiSpendSnapshot(days: days, fetchedAt: fetchedAt, clockStyle: style)
     }
 
     /// Spend so far in the UTC month containing `now`.

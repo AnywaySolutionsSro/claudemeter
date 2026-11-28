@@ -148,7 +148,7 @@ struct MenuContentView: View {
 
             HStack {
                 if let updated = store.lastUpdated {
-                    Text("Updated \(updated.formatted(date: .omitted, time: .shortened))")
+                    Text("Updated \(Formatting.clockTime(updated, style: settings.clockStyle))")
                         .font(scale.font(10)).foregroundColor(.secondary)
                 }
                 Spacer()
